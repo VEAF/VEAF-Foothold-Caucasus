@@ -1,6 +1,6 @@
 BASE:I("CTLD : is loading.")
 
-Foothold_ctld = CTLD:New(coalition.side.BLUE,{"CH.47", "UH.1H", "Hercules", "8MT", "Bronco.OV", "UH.60L", "Mi.24P", "OH58D", "KA.50", "AH.64D"},"Lufttransportbrigade I")
+Foothold_ctld = CTLD:New(coalition.side.BLUE,{"CH.47", "UH.1H", "Hercules", "8MT", "Bronco.OV", "UH.60L", "Mi.24P", "OH58D", "KA.50", "AH.64D", "UH.60.DAP"},"Lufttransportbrigade I")
 local herccargo = CTLD_HERCULES:New("blue", "Hercules Test", Foothold_ctld)
 Foothold_ctld.useprefix = true
 Foothold_ctld.dropcratesanywhere = true
@@ -223,6 +223,7 @@ Foothold_ctld:SetUnitCapabilities("Mi-24P", true, true, 2, 8, 15, 1000)
 Foothold_ctld:SetUnitCapabilities("Mi-24V", true, true, 2, 8, 15, 1000)
 Foothold_ctld:SetUnitCapabilities("Hercules", true, true, 8, 20, 15, 20000)
 Foothold_ctld:SetUnitCapabilities("UH-60L", true, true, 2, 20, 16, 3500)
+Foothold_ctld:SetUnitCapabilities("UH-60L_DAP", true, true, 2, 20, 16, 3500)
 Foothold_ctld:SetUnitCapabilities("AH-64D_BLK_II", false, false, 0, 0, 15, 400)
 Foothold_ctld:SetUnitCapabilities("CH-47Fbl1", true, true, 5, 32, 20, 10800)
 Foothold_ctld:SetUnitCapabilities("OH58D", false, false, 0, 0, 14, 400)

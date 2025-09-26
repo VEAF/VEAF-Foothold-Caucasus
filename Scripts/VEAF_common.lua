@@ -5,7 +5,7 @@ UseStatics=true
 CreditLosewhenKilled=false -- if true, Blue coalition will lose 100 points for every player death
 NoSA10AndSA11=false
 SplashDamage=false
-ShowKills=false -- if true, a messagw will come up upon kills
+ShowKills=true -- if true, a messagw will come up upon kills
 StoreLimit = false
 CTLDCost=true -- if the above is false, then ctld stuff wil not cost anything. default is true
 

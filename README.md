@@ -6,6 +6,26 @@ This is a modification of the original [Foothold Caucasus](https://www.digitalco
 
 **Done using the latest version updated on 2025-09-01.**
 
+## Update
+
+### Triggers
+
+Add two triggers on MissionStart:
+
+#### First trigger
+
+choose scripts loading method (false = static, true = dynamic)
+return true -- scripts
+MA_DYNAMIC_PATH = [[C:\Users\veaf\Saved Games\DCS.missions\foothold\MA_Foothold_Caucasus\Modern\]]
+
+#### Second trigger
+
+mission start - dynamic
+return MA_DYNAMIC_PATH~=nil
+env.info("DYNAMIC MA LOADING")
+assert(loadfile(MA_DYNAMIC_PATH .. "VEAF_MA_loader.lua")) ()
+		
+
 ## Things to do
 
 - [x] silence all ATC

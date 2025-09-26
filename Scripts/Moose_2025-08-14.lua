@@ -2659,6 +2659,14 @@ if type_name=="UH-60L"and(unit:getDrawArgumentValue(38)>0 or unit:getDrawArgumen
 BASE:T(unit_name.." front door(s) are open")
 return true
 end
+if type_name=="UH-60L_DAP"and(unit:getDrawArgumentValue(401)==1 or unit:getDrawArgumentValue(402)==1)then
+BASE:T(unit_name.." cargo door is open")
+return true
+end
+if type_name=="UH-60L_DAP"and(unit:getDrawArgumentValue(38)>0 or unit:getDrawArgumentValue(400)==1)then
+BASE:T(unit_name.." front door(s) are open")
+return true
+end
 if type_name=="AH-64D_BLK_II"then
 BASE:T(unit_name.." front door(s) are open")
 return true
@@ -22998,7 +23006,7 @@ self.coordinate=COORDINATE:NewFromVec3(PositionableVec3)
 end
 return self.coordinate
 end
-BASE:E({"Cannot GetCoordinate",Positionable=self,Alive=self:IsAlive()})
+--BASE:E({"Cannot GetCoordinate",Positionable=self,Alive=self:IsAlive()})
 return nil
 end
 function POSITIONABLE:GetCoordinate()
@@ -23012,7 +23020,7 @@ coord.Heading=heading
 return coord
 end
 end
-self:E({"Cannot GetCoordinate",Positionable=self,Alive=self:IsAlive()})
+--self:E({"Cannot GetCoordinate",Positionable=self,Alive=self:IsAlive()})
 return nil
 end
 function POSITIONABLE:Explode(power,delay)
@@ -23118,7 +23126,7 @@ self:F("Radius is nil, returning the PointVec3 of the POSITIONABLE",Positionable
 return PositionablePointVec3
 end
 end
-BASE:E({"Cannot GetRandomVec3",Positionable=self,Alive=self:IsAlive()})
+--BASE:E({"Cannot GetRandomVec3",Positionable=self,Alive=self:IsAlive()})
 return nil
 end
 function POSITIONABLE:GetBoundingBox()
@@ -27828,7 +27836,7 @@ end
 end
 end
 end
-BASE:E({"Cannot GetCoordinate",Group=self,Alive=self:IsAlive()})
+--BASE:E({"Cannot GetCoordinate",Group=self,Alive=self:IsAlive()})
 end
 function GROUP:GetRandomVec3(Radius)
 local FirstUnit=self:GetUnit(1)
@@ -27836,7 +27844,7 @@ if FirstUnit then
 local FirstUnitRandomPointVec3=FirstUnit:GetRandomVec3(Radius)
 return FirstUnitRandomPointVec3
 end
-BASE:E({"Cannot GetRandomVec3",Group=self,Alive=self:IsAlive()})
+--BASE:E({"Cannot GetRandomVec3",Group=self,Alive=self:IsAlive()})
 return nil
 end
 function GROUP:GetHeading()
@@ -76240,7 +76248,6 @@ end
 function CTLD:IsUnitInZone(Unit,Zonetype)
 self:T(self.lid.." IsUnitInZone")
 self:T(Zonetype)
-local unitname=Unit:GetName()
 local zonetable={}
 local outcome=false
 if Zonetype==CTLD.CargoZoneType.LOAD then
@@ -76253,25 +76260,25 @@ else
 zonetable=self.wpZones
 end
 local zonecoord=nil
-local colorret=nil
 local maxdist=1000000
 local zoneret=nil
 local zonewret=nil
 local zonenameret=nil
-local unitcoord=Unit:GetCoordinate()
+local unitcoord=(Unit and Unit:IsAlive())and Unit:GetCoordinate() or nil
+if not unitcoord then if Zonetype==CTLD.CargoZoneType.SHIP then return false,nil,nil,maxdist,zonewret else return false,nil,nil,maxdist end end
 local unitVec2=unitcoord:GetVec2()
 for _,_cargozone in pairs(zonetable)do
 local czone=_cargozone
 local zonename=czone.name
 local active=czone.active
-local color=czone.color
 local zone=nil
+zonecoord=nil
 local zoneradius=100
 local zonewidth=20
 if Zonetype==CTLD.CargoZoneType.SHIP then
 self:T("Checking Type Ship: "..zonename)
 local ZoneUNIT=UNIT:FindByName(zonename)
-if not ZoneUNIT then return false end
+if not ZoneUNIT then return false,nil,nil,maxdist,zonewret end
 zonecoord=ZoneUNIT:GetCoordinate()
 zoneradius=czone.shiplength
 zonewidth=czone.shipwidth
@@ -76288,16 +76295,19 @@ zonecoord=zone:GetCoordinate()
 zoneradius=2000
 zonewidth=zoneradius
 end
+if zone and zonecoord and active==true then
+if(zone:IsVec2InZone(unitVec2)or Zonetype==CTLD.CargoZoneType.MOVE)then
 local distance=self:_GetDistance(zonecoord,unitcoord)
 self:T("Distance Zone: "..distance)
 self:T("Zone Active: "..tostring(active))
-if(zone:IsVec2InZone(unitVec2)or Zonetype==CTLD.CargoZoneType.MOVE)and active==true and distance<maxdist then
+if distance<maxdist then
 outcome=true
 maxdist=distance
 zoneret=zone
 zonenameret=zonename
 zonewret=zonewidth
-colorret=color
+end
+end
 end
 end
 if Zonetype==CTLD.CargoZoneType.SHIP then
@@ -104739,7 +104749,7 @@ self.Ndestroyed=self.Ndestroyed+1
 self:ElementDead(Element)
 end
 function OPSGROUP:onafterElementDead(From,Event,To,Element)
-self:I(self.lid..string.format("Element dead %s at t=%.3f",Element.name,timer.getTime()))
+--self:I(self.lid..string.format("Element dead %s at t=%.3f",Element.name,timer.getTime()))
 self:_UpdateStatus(Element,OPSGROUP.ElementStatus.DEAD)
 if self.spot.On and self.spot.element.name==Element.name then
 self:LaserOff()

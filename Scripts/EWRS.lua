@@ -183,9 +183,50 @@ function ewrs.buildThreatTable(activePlayer,bogeyDope)
       threatTable[j].aspect=aspect
     end
   end
+    if activePlayer.side==2 and ewrs.inAuto and not bogeyDope and ewrs.getGroupCategory(Unit.getByName(activePlayer.unitname))=="plane" then
+
+    local function addTanker(name,label)
+      local g=Group.getByName(name)
+      local t=g and g:isExist() and g:getUnits() and g:getUnits()[1] or nil
+      if t and t:isExist() and t:isActive() and t:getLife()>0 then
+        local tp=t:getPosition()
+        local vel=t:getVelocity()
+        local bearing=(math.floor((ewrs.getBearing(referenceX,referenceZ,tp.p.x,tp.p.z)+2.5)/5)*5)%360
+        if bearing==0 then bearing=360 end
+        local heading=ewrs.getHeading(vel)
+        local aspect=ewrs.getAspect(bearing,heading)
+        local range=ewrs.getDistance(referenceX,referenceZ,tp.p.x,tp.p.z)
+        local altitude=tp.p.y
+        local speed=ewrs.getSpeed(vel)
+        if ewrs.groupSettings[tostring(activePlayer.groupID)].measurements=="metric" then
+          local km=range/1000
+          if km>=60 then range=UTILS.Round(km,-1) elseif km>=20 then range=UTILS.Round(km/5,0)*5 else range=UTILS.Round(km,0) end
+          speed=UTILS.Round(UTILS.MpsToKmph(speed),-1)
+          altitude=UTILS.Round(altitude,-1)
+        else
+          local nm=UTILS.MetersToNM(range)
+          if nm>=60 then range=UTILS.Round(nm,-1) elseif nm>=20 then range=UTILS.Round(nm/5,0)*5 else range=UTILS.Round(nm,0) end
+          speed=UTILS.Round(UTILS.MpsToKnots(speed),-1)
+          altitude=UTILS.Round(UTILS.MetersToFeet(altitude),-3)
+        end
+        local j=#threatTable+1
+        threatTable[j]={}
+        threatTable[j].unitType="Friendly "..name.." ("..label..")"
+        threatTable[j].bearing=bearing
+        threatTable[j].range=range
+        threatTable[j].altitude=altitude
+        threatTable[j].speed=speed
+        threatTable[j].heading=heading
+        threatTable[j].aspect=aspect
+      end
+    end
+    addTanker("Arco","Drouge")
+    addTanker("Texaco","Boom")
+  end
   table.sort(threatTable,sortRanges)
   return threatTable
 end
+
 
 
 function ewrs.outText(activePlayer, threatTable, bogeyDope, greeting)
@@ -226,30 +267,22 @@ function ewrs.outText(activePlayer, threatTable, bogeyDope, greeting)
         maxThreats = ewrs.maxFriendlyDisplay
       end
       
-      --Display table
-   table.insert(message,messageGreeting)
+      table.insert(message,messageGreeting)
       table.insert(message,"\n")
+      
+
       for k=1,maxThreats do
         if threatTable[k]==nil then break end
-        local sd=""
-        if threatTable[k].range < 5 then sd="\t\tMERGED"
-        elseif threatTable[k].speed>500 then sd="\t\tFAST"
-        elseif threatTable[k].speed<200 then sd="\t\tslow" end
-
         if threatTable[k].range==ewrs.notAvailable then
           table.insert(message,string.format("%s Position: Unknown",(threatTable[k].unitType or "Unknown")))
         else
           local asp = string.upper(threatTable[k].aspect)
-          if sd == "\t\tMERGED" then
-            if asp == "FLANKING" then asp = "FLANK"
-            elseif asp == "BEAMING" then asp = "BEAM" end
-          end          
-          table.insert(message,string.format("\n%s\t\tBRA\t\t%03d for %s\t\t%s\t\t%s%s",
+          table.insert(message,string.format("\n%s\t\tBRA\t\t%03d for %s\t\t%s\t\t%s",
           (ewrs.showType and threatTable[k].unitType or "Unknown"),
           threatTable[k].bearing,
           threatTable[k].range..rangeUnits,
           threatTable[k].altitude..altUnits,
-          asp,sd))
+          asp))
         end
         if threatTable[k+1]~=nil then
           table.insert(message,"\n")
@@ -604,16 +637,16 @@ ewrs.notAvailable = 999999
 ewrs.update()
 if not ewrs.onDemand then
   timer.scheduleFunction(function(param, time)
-  -- run detection
   ewrs.findRadarUnits()
   ewrs.getDetectedTargets()
-  -- send each active player their BRA/Picture report
+  ewrs.inAuto=true
   for i = 1, #ewrs.activePlayers do
     local p = ewrs.activePlayers[i]
     if ewrs.groupSettings[tostring(p.groupID)].messages then
       ewrs.outText(p, ewrs.buildThreatTable(p))
     end
   end
+  ewrs.inAuto=false
   return time + 20
 end, nil, timer.getTime() + 6)
 end

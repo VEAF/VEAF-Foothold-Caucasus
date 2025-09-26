@@ -3919,7 +3919,7 @@ local function getRandTerrainPointInCircle(var, radius, innerRadius, requestV3)
         end
     end
 
-    env.info("[AIEN] Fallback exhausted: no valid coord found")
+    --env.info("[AIEN] Fallback exhausted: no valid coord found")
     return nil
 end
 
@@ -8697,20 +8697,44 @@ local function executeReactions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
                                 -- message feedback
                                 if AIEN.config.message_feed == true then
 
-                                    local lat, lon = coord.LOtoLL(ownPos)
-                                    local MGRS = coord.LLtoMGRS(coord.LOtoLL(ownPos))
-                                    if lat and lon then
-
-                                        local LL_string = tostringLL(lat, lon, 0, true)
-                                        local MGRS_string = tostringMGRS(MGRS ,4)
-
-
+                                    local z = bc:getZoneOfPoint(ownPos)
+                                    if z and z.zone then
+                                        local zoneName = z.zone
+                                        local threatTxt = nil
+                                        for _, s in pairs(saTbl or {}) do
+                                            local u = (s and (s.unit or s.attacker or s.target)) or s
+                                            if u and u.getDesc then
+                                                local d = u:getDesc()
+                                                local c = d and d.category
+                                                if c == 0 then threatTxt = "enemy plane!" break end
+                                                if c == 1 then threatTxt = "enemy helicopter!" break end
+                                                if c == 2 then threatTxt = "enemy ground units!" break end
+                                            end
+                                        end
                                         local txt = ""
-                                        local txt = txt .. "C2, " .. tostring(gr:getName()) .. ", report under attack. Coordinates: " .. tostring(LL_string) .. ", " .. tostring(MGRS_string) .. "." .. dbActData.message
+                                        if threatTxt then
+                                            txt = txt .. "C2, " .. tostring(zoneName) .. " is under attack by " .. tostring(threatTxt) .. " " .. dbActData.message
+                                        else
+                                            txt = txt .. "C2, " .. tostring(zoneName) .. " is under attack! " .. dbActData.message
+                                        end
                                         local vars = {"text", txt, 30, nil, nil, nil, gr:getCoalition()}
-
                                         multyTypeMessage(vars)
+                                    else
+                                        local lat, lon = coord.LOtoLL(ownPos)
+                                        local MGRS = coord.LLtoMGRS(coord.LOtoLL(ownPos))
+                                        if lat and lon then
 
+                                            local LL_string = tostringLL(lat, lon, 0, true)
+                                            local MGRS_string = tostringMGRS(MGRS ,4)
+
+
+                                            local txt = ""
+                                            local txt = txt .. "C2, " .. tostring(gr:getName()) .. ", report under attack. Coordinates: " .. tostring(LL_string) .. ", " .. tostring(MGRS_string) .. "." .. dbActData.message
+                                            local vars = {"text", txt, 30, nil, nil, nil, gr:getCoalition()}
+
+                                            multyTypeMessage(vars)
+
+                                        end
                                     end
                                 end
 

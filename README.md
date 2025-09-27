@@ -29,8 +29,9 @@ assert(loadfile(MA_DYNAMIC_PATH .. "VEAF_MA_loader.lua")) ()
 ## Things to do
 
 - [x] silence all ATC
-- [ ] add VEAF radio presets
+- [x] add VEAF radio presets
 - [ ] check why the wind is sometimes wrong (0 kn instead of 10-15 kn)
 - [x] disable the no fly zone (or make it less punitive)
 - [ ] no waypoints for an f18 spawned on cvn74
 - [ ] limited spawn spots on Batumi
+- [ ] stats de la session (vs stats globales)

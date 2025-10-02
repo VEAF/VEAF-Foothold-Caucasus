@@ -12,31 +12,34 @@ presets_definition: # Lists all the presets collections
             mod: 0 # the modulation of this channel; defaults to 0 (["modulations"] collection in the DCS "mission" file)
           channel_02:
             freq: 260.000
-            name: Batumi / 16X
+            name: Batumi(2)-16X
           channel_03:
             name: Tactical
             freq: 265         
           channel_04:
             freq: 259.000
-            name: Gudauta
+            name: Gudauta(8)
           channel_05:
             freq: 263.000
-            name: Kutaisi / 44X
+            name: Kutaisi(5)-44X
           channel_06:
             freq: 256.000
-            name: Sochi-Adler
+            name: Sochi-Adler(9)
           channel_07:
             freq: 258.000
-            name: Sukhumi
+            name: Sukhumi(7)
           channel_08:
             freq: 267.000
-            name: Tbilisi / 25X
+            name: Tbilisi(33)-25X
           channel_09:
             freq: 269.000
-            name: Vaziani / 22X
+            name: Vaziani(34)-22X
           channel_10:
-            name: Beslan
+            name: Beslan(28)
             freq: 270.000
+          channel_11:
+            name: Senaki(4)
+            freq: 261.000
           channel_14:
             name: Carrier RED
             freq: 256.000

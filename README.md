@@ -35,3 +35,5 @@ assert(loadfile(MA_DYNAMIC_PATH .. "VEAF_MA_loader.lua")) ()
 - [ ] no waypoints for an f18 spawned on cvn74
 - [ ] limited spawn spots on Batumi
 - [ ] stats de la session (vs stats globales)
+- [x] ajouter Senaki aux presets
+- [x] ajouter les waypoint# aux presets

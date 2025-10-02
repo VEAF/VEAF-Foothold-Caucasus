@@ -8683,7 +8683,7 @@ local function executeReactions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
     if gr and gr:isExist() and ownPos and tgtPos and actTbl and saTbl and skill then
         if actTbl and #actTbl>0 then
             for _, aData in pairs(actTbl) do 
-                for _, dbActData in pairs(reactionsDb) do
+                for _, dbActData in pairs(reactionsDb or {}) do
                     if aData.name == dbActData.name then
                         local f = dbActData.ac_function
                         if f then
@@ -8701,10 +8701,12 @@ local function executeReactions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
                                     if z and z.zone then
                                         local zoneName = z.zone
                                         local threatTxt = nil
-                                        for _, s in pairs(saTbl or {}) do
-                                            local u = (s and (s.unit or s.attacker or s.target)) or s
+                                        for _, s in pairs((saTbl and saTbl.targets) or {}) do
+                                            local u = s.object or s.unit or s.attacker or s.target
                                             if u and u.getDesc then
                                                 local d = u:getDesc()
+                                                if d == nil then break end
+                                                if d.category == nil then break end
                                                 local c = d and d.category
                                                 if c == 0 then threatTxt = "enemy plane!" break end
                                                 if c == 1 then threatTxt = "enemy helicopter!" break end
@@ -8713,9 +8715,9 @@ local function executeReactions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
                                         end
                                         local txt = ""
                                         if threatTxt then
-                                            txt = txt .. "C2, " .. tostring(zoneName) .. " is under attack by " .. tostring(threatTxt) .. " " .. dbActData.message
+                                            txt = txt .. "C2, " .. tostring(zoneName) .. " is under attack by " .. tostring(threatTxt) .. " " .. tostring(dbActData.message or "")
                                         else
-                                            txt = txt .. "C2, " .. tostring(zoneName) .. " is under attack! " .. dbActData.message
+                                            txt = txt .. "C2, " .. tostring(zoneName) .. " is under attack! " .. tostring(dbActData.message or "")
                                         end
                                         local vars = {"text", txt, 30, nil, nil, nil, gr:getCoalition()}
                                         multyTypeMessage(vars)
@@ -8729,7 +8731,7 @@ local function executeReactions(gr, ownPos, tgtPos, actTbl, saTbl, skill)
 
 
                                             local txt = ""
-                                            local txt = txt .. "C2, " .. tostring(gr:getName()) .. ", report under attack. Coordinates: " .. tostring(LL_string) .. ", " .. tostring(MGRS_string) .. "." .. dbActData.message
+                                            local txt = txt .. "C2, " .. tostring(gr:getName()) .. ", report under attack. Coordinates: " .. tostring(LL_string) .. ", " .. tostring(MGRS_string) .. "." .. tostring(dbActData.message or "")
                                             local vars = {"text", txt, 30, nil, nil, nil, gr:getCoalition()}
 
                                             multyTypeMessage(vars)

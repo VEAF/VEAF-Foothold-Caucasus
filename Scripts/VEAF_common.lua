@@ -10,7 +10,7 @@ StoreLimit = false
 CTLDCost=true -- if the above is false, then ctld stuff wil not cost anything. default is true
 
 -- load first batch of scripts
-assert(loadfile(MA_DYNAMIC_SCRIPTS_PATH .. "Moose_2025-08-14.lua")) ()
+assert(loadfile(MA_DYNAMIC_SCRIPTS_PATH .. "Moose_2025-09-27.lua")) ()
 assert(loadfile(MA_DYNAMIC_SCRIPTS_PATH .. "Hercules_Cargo.lua")) ()
 assert(loadfile(MA_DYNAMIC_SCRIPTS_PATH .. "zoneCommander_moose.lua")) ()
 

@@ -1,4 +1,4 @@
-env.info('*** MOOSE GITHUB Commit Hash ID: 2025-08-14T09:13:32+02:00-5ef6383c63f3a0a9b7a0cf583aea0e54a7d4f855 ***')
+env.info('*** MOOSE GITHUB Commit Hash ID: 2025-09-26T15:53:13+02:00-4a870d01835d615b14ab5fe7e0d8e8d4553d9b6b ***')
 if not MOOSE_DEVELOPMENT_FOLDER then
 MOOSE_DEVELOPMENT_FOLDER='Scripts'
 end
@@ -2189,7 +2189,7 @@ local delta=UTILS.VecAngle(v1,v2)
 return math.abs(delta)
 end
 function UTILS.HdgTo(a,b)
-local dz=b.z-a.z
+local dz=(b.z or b.y)-(a.z or a.y)
 local dx=b.x-a.x
 local heading=math.deg(math.atan2(dz,dx))
 if heading<0 then
@@ -2656,14 +2656,6 @@ BASE:T(unit_name.." cargo door is open")
 return true
 end
 if type_name=="UH-60L"and(unit:getDrawArgumentValue(38)>0 or unit:getDrawArgumentValue(400)==1)then
-BASE:T(unit_name.." front door(s) are open")
-return true
-end
-if type_name=="UH-60L_DAP"and(unit:getDrawArgumentValue(401)==1 or unit:getDrawArgumentValue(402)==1)then
-BASE:T(unit_name.." cargo door is open")
-return true
-end
-if type_name=="UH-60L_DAP"and(unit:getDrawArgumentValue(38)>0 or unit:getDrawArgumentValue(400)==1)then
 BASE:T(unit_name.." front door(s) are open")
 return true
 end
@@ -4295,6 +4287,135 @@ local shift_factor=1
 qx=qx+shift_factor*norm_dx
 qy=qy+shift_factor*norm_dy
 return{x=qx,y=qy}
+end
+function UTILS.ValidateAndRepositionGroundUnits(Positions,Anchor,MaxRadius,Spacing)
+local units=Positions
+Anchor=Anchor or UTILS.GetCenterPoint(units)
+local gPos={x=Anchor.x,y=Anchor.z or Anchor.y}
+local maxRadius=0
+local unitCount=0
+for _,unit in pairs(units)do
+local pos={x=unit.x,y=unit.z or unit.y}
+local dist=UTILS.VecDist2D(pos,gPos)
+if dist>maxRadius then
+maxRadius=dist
+end
+unitCount=unitCount+1
+end
+maxRadius=MaxRadius or math.max(maxRadius*2,10)
+local spacing=Spacing or math.max(maxRadius*0.05,5)
+if unitCount>0 and maxRadius>5 then
+local spots=UTILS.GetSimpleZones(UTILS.Vec2toVec3(gPos),maxRadius,spacing,1000)
+if spots and#spots>0 then
+local validSpots={}
+for _,spot in pairs(spots)do
+if land.getSurfaceType(spot)==land.SurfaceType.LAND then
+table.insert(validSpots,spot)
+end
+end
+spots=validSpots
+end
+local step=spacing
+for _,unit in pairs(units)do
+local pos={x=unit.x,y=unit.z or unit.y}
+local isOnLand=land.getSurfaceType(pos)==land.SurfaceType.LAND
+local isValid=false
+if spots and#spots>0 then
+local si=1
+local sid=0
+local closestDist=100000000
+local closestSpot
+for _,spot in pairs(spots)do
+local dist=UTILS.VecDist2D(pos,spot)
+if dist<closestDist then
+closestDist=dist
+closestSpot=spot
+sid=si
+end
+si=si+1
+end
+if closestSpot then
+if closestDist>=spacing then
+pos=closestSpot
+end
+isValid=true
+table.remove(spots,sid)
+end
+end
+if not isValid and not isOnLand then
+local h=UTILS.HdgTo(pos,gPos)
+local retries=0
+while not isValid and retries<500 do
+local dist=UTILS.VecDist2D(pos,gPos)
+pos=UTILS.Vec2Translate(pos,step,h)
+local skip=false
+for _,unit2 in pairs(units)do
+if unit~=unit2 then
+local pos2={x=unit2.x,y=unit2.z or unit2.y}
+local dist2=UTILS.VecDist2D(pos,pos2)
+if dist2<12 then
+isValid=false
+skip=true
+break
+end
+end
+end
+if not skip and dist>step and land.getSurfaceType(pos)==land.SurfaceType.LAND then
+isValid=true
+break
+elseif dist<=step then
+break
+end
+retries=retries+1
+end
+end
+if isValid then
+unit.x=pos.x
+if unit.z then
+unit.z=pos.y
+else
+unit.y=pos.y
+end
+end
+end
+end
+end
+function UTILS.ValidateAndRepositionStatic(Country,Category,Type,Position,ShapeName,MaxRadius)
+local coord=COORDINATE:NewFromVec2(Position)
+local st=SPAWNSTATIC:NewFromType(Type,Category,Country)
+if ShapeName then
+st:InitShape(ShapeName)
+end
+local sName="s-"..timer.getTime().."-"..math.random(1,10000)
+local tempStatic=st:SpawnFromCoordinate(coord,0,sName)
+if tempStatic then
+local sRadius=tempStatic:GetBoundingRadius(2)or 3
+tempStatic:Destroy()
+sRadius=sRadius*0.5
+MaxRadius=MaxRadius or math.max(sRadius*10,100)
+local positions=UTILS.GetSimpleZones(coord:GetVec3(),MaxRadius,sRadius,20)
+if positions and#positions>0 then
+local closestSpot
+local closestDist=math.huge
+for _,spot in pairs(positions)do
+if land.getSurfaceType(spot)==land.SurfaceType.LAND then
+local dist=UTILS.VecDist2D(Position,spot)
+if dist<closestDist then
+closestDist=dist
+closestSpot=spot
+end
+end
+end
+if closestSpot then
+if closestDist>=sRadius then
+return closestSpot
+else
+return Position
+end
+end
+end
+end
+return nil
 end
 PROFILER={
 ClassName="PROFILER",
@@ -7605,7 +7726,9 @@ if Event.id==EVENTS.LandingAfterEjection then
 else
 if Event.place:isExist()and Object.getCategory(Event.place)~=Object.Category.SCENERY then
 Event.Place=AIRBASE:Find(Event.place)
+if Event.Place then
 Event.PlaceName=Event.Place:GetName()
+end
 end
 end
 end
@@ -9432,10 +9555,10 @@ radius=ZoneRadius,
 }
 }
 local function EvaluateZone(ZoneObject)
-if ZoneObject then
+if ZoneObject and self:IsVec3InZone(ZoneObject:getPoint())then
 local ObjectCategory=Object.getCategory(ZoneObject)
 if(ObjectCategory==Object.Category.UNIT and ZoneObject:isExist()and ZoneObject:isActive())or(ObjectCategory==Object.Category.STATIC and ZoneObject:isExist())then
-local CoalitionDCSUnit=ZoneObject:getCoalition()
+
 local Include=false
 if not UnitCategories then
 Include=true
@@ -10486,10 +10609,10 @@ radius=ZoneRadius,
 }
 }
 local function EvaluateZone(ZoneObject)
-if ZoneObject then
+if ZoneObject and self:IsVec3InZone(ZoneObject:getPoint())then
 local ObjectCategory=Object.getCategory(ZoneObject)
 if(ObjectCategory==Object.Category.UNIT and ZoneObject:isExist()and ZoneObject:isActive())or(ObjectCategory==Object.Category.STATIC and ZoneObject:isExist())then
-local CoalitionDCSUnit=ZoneObject:getCoalition()
+
 local Include=false
 if not UnitCategories then
 Include=true
@@ -10508,7 +10631,7 @@ self.ScanData.Coalitions[CoalitionDCSUnit]=true
 self.ScanData.Units[ZoneObject]=ZoneObject
 end
 end
-if ObjectCategory==Object.Category.SCENERY and self:IsVec3InZone(ZoneObject:getPoint())then
+if ObjectCategory==Object.Category.SCENERY then
 local SceneryType=ZoneObject:getTypeName()
 local SceneryName=ZoneObject:getName()
 self.ScanData.Scenery[SceneryType]=self.ScanData.Scenery[SceneryType]or{}
@@ -19745,6 +19868,12 @@ self.SpawnUnitsWithAbsolutePositions=true
 self.UnitsAbsolutePositions=Positions
 return self
 end
+function SPAWN:InitValidateAndRepositionGroundUnits(OnOff,MaxRadius,Spacing)
+self.SpawnValidateAndRepositionGroundUnits=OnOff
+self.SpawnValidateAndRepositionGroundUnitsRadius=MaxRadius
+self.SpawnValidateAndRepositionGroundUnitsSpacing=Spacing
+return self
+end
 function SPAWN:InitRandomizeTemplate(SpawnTemplatePrefixTable)
 local temptable={}
 for _,_temp in pairs(SpawnTemplatePrefixTable)do
@@ -20113,6 +20242,11 @@ SpawnTemplate.hiddenOnMFD=true
 end
 if self.SpawnHiddenOnMap then
 SpawnTemplate.hidden=self.SpawnHiddenOnMap
+end
+if self.SpawnValidateAndRepositionGroundUnits then
+local units=SpawnTemplate.units
+local gPos={x=SpawnTemplate.x,y=SpawnTemplate.y}
+UTILS.ValidateAndRepositionGroundUnits(units,gPos,self.SpawnValidateAndRepositionGroundUnitsRadius,self.SpawnValidateAndRepositionGroundUnitsSpacing)
 end
 SpawnTemplate.CategoryID=self.SpawnInitCategory or SpawnTemplate.CategoryID
 SpawnTemplate.CountryID=self.SpawnInitCountry or SpawnTemplate.CountryID
@@ -21434,6 +21568,11 @@ self.InitOffsetY=OffsetY or 0
 self.InitOffsetAngle=OffsetAngle or 0
 return self
 end
+function SPAWNSTATIC:InitValidateAndRepositionStatic(OnOff,MaxRadius)
+self.ValidateAndRepositionStatic=OnOff
+self.ValidateAndRepositionStaticMaxRadius=MaxRadius
+return self
+end
 function SPAWNSTATIC:OnSpawnStatic(SpawnCallBackFunction,...)
 self:F("OnSpawnStatic")
 self.SpawnFunctionHook=SpawnCallBackFunction
@@ -21520,6 +21659,13 @@ end
 self.SpawnIndex=self.SpawnIndex+1
 Template.name=self.InitStaticName or string.format("%s#%05d",self.SpawnTemplatePrefix,self.SpawnIndex)
 local Static=nil
+if self.ValidateAndRepositionStatic then
+local validPos=UTILS.ValidateAndRepositionStatic(CountryID,Template.category,Template.type,Template,Template.shape_name,self.ValidateAndRepositionStaticMaxRadius)
+if validPos then
+Template.x=validPos.x
+Template.y=validPos.y
+end
+end
 if self.InitFarp then
 local TemplateGroup={}
 TemplateGroup.units={}
@@ -22334,7 +22480,7 @@ end
 CLIENTMENUMANAGER={
 ClassName="CLIENTMENUMANAGER",
 lid="",
-version="0.1.6",
+version="0.1.7",
 name=nil,
 clientset=nil,
 menutree={},
@@ -22607,6 +22753,10 @@ self.rootentries={}
 self.menutree=nil
 self.menutree={}
 return self
+end
+function CLIENTMENUMANAGER:DeleteEntry(Entry,Client)
+self:T(self.lid.."DeleteEntry")
+return self:DeleteF10Entry(Entry,Client)
 end
 function CLIENTMENUMANAGER:DeleteF10Entry(Entry,Client)
 self:T(self.lid.."DeleteF10Entry")
@@ -27271,6 +27421,7 @@ GROUND_EWR="Ground_EWR",
 GROUND_AAA="Ground_AAA",
 GROUND_SAM="Ground_SAM",
 GROUND_SHORAD="Ground_SHORAD",
+GROUND_BALLISTICMISSILE="Ground_BallisticMissile",
 GROUND_OTHER="Ground_OtherGround",
 NAVAL_AIRCRAFTCARRIER="Naval_AircraftCarrier",
 NAVAL_WARSHIP="Naval_WarShip",
@@ -28321,6 +28472,9 @@ if self.InitRespawnModu then
 Template.modulation=self.InitRespawnModu
 end
 self:Destroy(false)
+if self.ValidateAndRepositionGroundUnits then
+UTILS.ValidateAndRepositionGroundUnits(Template.units)
+end
 self:ScheduleOnce(0.1,_DATABASE.Spawn,_DATABASE,Template)
 self:ResetEvents()
 return self
@@ -28525,6 +28679,8 @@ local infantry=self:HasAttribute("Infantry")
 local artillery=self:HasAttribute("Artillery")
 local tank=self:HasAttribute("Old Tanks")or self:HasAttribute("Modern Tanks")or self:HasAttribute("Tanks")
 local aaa=self:HasAttribute("AAA")and(not self:HasAttribute("SAM elements"))
+local ballisticMissile=artillery and self:HasAttribute("SS_missile")
+local shorad=self:HasAttribute("SR SAM")
 local ewr=self:HasAttribute("EWR")
 local ifv=self:HasAttribute("IFV")
 local sam=self:HasAttribute("SAM elements")or self:HasAttribute("Optical Tracker")
@@ -28555,6 +28711,8 @@ elseif sam then
 attribute=GROUP.Attribute.GROUND_SAM
 elseif aaa then
 attribute=GROUP.Attribute.GROUND_AAA
+elseif artillery and ballisticMissile then
+attribute=GROUP.Attribute.GROUND_BALLISTICMISSILE
 elseif artillery then
 attribute=GROUP.Attribute.GROUND_ARTILLERY
 elseif tank then
@@ -28834,6 +28992,44 @@ end
 end
 return isAAA
 end
+function GROUP:SetValidateAndRepositionGroundUnits(Enabled)
+self.ValidateAndRepositionGroundUnits=Enabled
+end
+function GROUP:GetBoundingBox()
+local bbox={min={x=math.huge,y=math.huge,z=math.huge},
+max={x=-math.huge,y=-math.huge,z=-math.huge}
+}
+local Units=self:GetUnits()or{}
+if#Units==0 then
+return nil
+end
+for _,unit in pairs(Units)do
+if unit and unit:IsAlive()then
+local ubox=unit:GetBoundingBox()
+if ubox then
+if ubox.min.x<bbox.min.x then
+bbox.min.x=ubox.min.x
+end
+if ubox.min.y<bbox.min.y then
+bbox.min.y=ubox.min.y
+end
+if ubox.min.z<bbox.min.z then
+bbox.min.z=ubox.min.z
+end
+if ubox.max.x>bbox.max.x then
+bbox.max.x=ubox.max.x
+end
+if ubox.max.y>bbox.max.y then
+bbox.max.y=ubox.max.y
+end
+if ubox.max.z>bbox.max.z then
+bbox.max.z=ubox.max.z
+end
+end
+end
+end
+return bbox
+end
 UNIT={
 ClassName="UNIT",
 UnitName=nil,
@@ -28971,6 +29167,9 @@ i=i+1
 end
 end
 SpawnGroupTemplate.groupId=nil
+if self.ValidateAndRepositionGroundUnits then
+UTILS.ValidateAndRepositionGroundUnits(SpawnGroupTemplate.units)
+end
 _DATABASE:Spawn(SpawnGroupTemplate)
 end
 function UNIT:IsActive()
@@ -29754,6 +29953,9 @@ end
 function UNIT:SetCarrierIlluminationMode(Mode)
 UTILS.SetCarrierIlluminationMode(self:GetID(),Mode)
 end
+function UNIT:SetValidateAndRepositionGroundUnits(Enabled)
+self.ValidateAndRepositionGroundUnits=Enabled
+end
 CLIENT={
 ClassName="CLIENT",
 ClientName=nil,
@@ -30518,6 +30720,7 @@ AIRBASE.Sinai={
 ["Borg_El_Arab_International_Airport"]="Borg El Arab International Airport",
 ["Cairo_International_Airport"]="Cairo International Airport",
 ["Cairo_West"]="Cairo West",
+["Damascus_Intl"]="Damascus Intl",
 ["Difarsuwar_Airfield"]="Difarsuwar Airfield",
 ["El_Arish"]="El Arish",
 ["El_Gora"]="El Gora",
@@ -30613,19 +30816,31 @@ AIRBASE.Afghanistan={
 ["Urgoon_Heliport"]="Urgoon Heliport",
 }
 AIRBASE.Iraq={
-["Baghdad_International_Airport"]="Baghdad International Airport",
-["Sulaimaniyah_International_Airport"]="Sulaimaniyah International Airport",
-["Al_Sahra_Airport"]="Al-Sahra Airport",
-["Erbil_International_Airport"]="Erbil International Airport",
-["Al_Taji_Airport"]="Al-Taji Airport",
+																  
+																			
+										
+															  
+									  
 ["Al_Asad_Airbase"]="Al-Asad Airbase",
+["Al_Kut_Airport"]="Al-Kut Airport",
+["Al_Sahra_Airport"]="Al-Sahra Airport",
 ["Al_Salam_Airbase"]="Al-Salam Airbase",
-["Balad_Airbase"]="Balad Airbase",
-["Kirkuk_International_Airport"]="Kirkuk International Airport",
-["Bashur_Airport"]="Bashur Airport",
+["Al_Taji_Airport"]="Al-Taji Airport",
 ["Al_Taquddum_Airport"]="Al-Taquddum Airport",
-["Qayyarah_Airfield_West"]="Qayyarah Airfield West",
+["Baghdad_International_Airport"]="Baghdad International Airport",
+["Balad_Airbase"]="Balad Airbase",
+																
+["Bashur_Airport"]="Bashur Airport",
+["Erbil_International_Airport"]="Erbil International Airport",
+["H2_Airbase"]="H-2 Airbase",
+["H3_Main_Airbase"]="H-3 Main Airbase",
+["H3_Northwest_Airbase"]="H-3 Northwest Airbase",
+["H3_Southwest_Airbase"]="H-3 Southwest Airbase",
 ["K1_Base"]="K1 Base",
+["Kirkuk_International_Airport"]="Kirkuk International Airport",
+["Mosul_International_Airport"]="Mosul International Airport",
+["Qayyarah_Airfield_West"]="Qayyarah Airfield West",
+["Sulaimaniyah_International_Airport"]="Sulaimaniyah International Airport",
 }
 AIRBASE.GermanyCW={
 ["Airracing_Frankfurt"]="Airracing Frankfurt",
@@ -33307,7 +33522,7 @@ self:SetLiquid(lqno,lqam)
 end
 end
 else
-self:E("File for Liquids could not be found: "..tostring(Path).."\\"..tostring(Filename"_Liquids.csv"))
+self:E("File for Liquids could not be found: "..tostring(Path).."\\"..tostring(Filename).."_Liquids.csv")
 end
 end
 if self:IsLimitedAircraft()then
@@ -33325,7 +33540,7 @@ self:SetAmount(acname,acnumber)
 end
 end
 else
-self:E("File for Aircraft could not be found: "..tostring(Path).."\\"..tostring(Filename"_Aircraft.csv"))
+self:E("File for Aircraft could not be found: "..tostring(Path).."\\"..tostring(Filename).."_Aircraft.csv")
 end
 end
 if self:IsLimitedWeapons()then
@@ -33354,7 +33569,7 @@ end
 end
 end
 else
-self:E("File for Weapons could not be found: "..tostring(Path).."\\"..tostring(Filename"_Weapons.csv"))
+self:E("File for Weapons could not be found: "..tostring(Path).."\\"..tostring(Filename).."_Weapons.csv")
 end
 end
 return self
@@ -51323,6 +51538,9 @@ self:I(self.lid..text)
 self:T({DCSdesc=asset.DCSdesc})
 self:T3({Template=asset.template})
 end
+function WAREHOUSE:SetValidateAndRepositionGroundUnits(Enabled)
+self.ValidateAndRepositionGroundUnits=Enabled
+end
 function WAREHOUSE:onafterNewAsset(From,Event,To,asset,assignment)
 self:T(self.lid..string.format("New asset %s id=%d with assignment %s.",tostring(asset.templatename),asset.uid,tostring(assignment)))
 end
@@ -52138,6 +52356,9 @@ template.route.points[1].y=coord.z
 template.x=coord.x
 template.y=coord.z
 template.alt=coord.y
+if self.ValidateAndRepositionGroundUnits then
+UTILS.ValidateAndRepositionGroundUnits(template.units)
+end
 local group=_DATABASE:Spawn(template)
 return group
 end
@@ -54825,8 +55046,8 @@ MANTIS.SamData={
 ["STUNNER IDFA"]={Range=250,Blindspot=1,Height=45,Type="Long",Radar="DAVID_SLING_LN"},
 ["NIKE"]={Range=155,Blindspot=6,Height=30,Type="Long",Radar="HIPAR"},
 ["Dog Ear"]={Range=11,Blindspot=0,Height=9,Type="Point",Radar="Dog Ear",Point="true"},
-["Pantsir S1"]={Range=20,Blindspot=1.2,Height=15,Type="Short",Radar="PantsirS1",Point="true"},
-["Tor M2"]={Range=12,Blindspot=1,Height=10,Type="Short",Radar="TorM2",Point="true"},
+["Pantsir S1"]={Range=20,Blindspot=1.2,Height=15,Type="Point",Radar="PantsirS1",Point="true"},
+["Tor M2"]={Range=12,Blindspot=1,Height=10,Type="Point",Radar="TorM2",Point="true"},
 ["IRIS-T SLM"]={Range=40,Blindspot=0.5,Height=20,Type="Medium",Radar="CH_IRIST_SLM"},
 }
 MANTIS.SamDataHDS={
@@ -54858,15 +55079,15 @@ MANTIS.SamDataSMA={
 }
 MANTIS.SamDataCH={
 ["2S38 CHM"]={Range=6,Blindspot=0.1,Height=4.5,Type="Short",Radar="2S38"},
-["PantsirS1 CHM"]={Range=20,Blindspot=1.2,Height=15,Type="Short",Radar="PantsirS1"},
+["PantsirS1 CHM"]={Range=20,Blindspot=1.2,Height=15,Type="Point",Radar="PantsirS1",Point="true"},
 ["PantsirS2 CHM"]={Range=30,Blindspot=1.2,Height=18,Type="Medium",Radar="PantsirS2"},
 ["PGL-625 CHM"]={Range=10,Blindspot=1,Height=5,Type="Short",Radar="PGL_625"},
 ["HQ-17A CHM"]={Range=15,Blindspot=1.5,Height=10,Type="Short",Radar="HQ17A"},
 ["M903PAC2 CHM"]={Range=120,Blindspot=3,Height=24.5,Type="Long",Radar="MIM104_M903_PAC2"},
 ["M903PAC3 CHM"]={Range=160,Blindspot=1,Height=40,Type="Long",Radar="MIM104_M903_PAC3"},
-["TorM2 CHM"]={Range=12,Blindspot=1,Height=10,Type="Short",Radar="TorM2"},
-["TorM2K CHM"]={Range=12,Blindspot=1,Height=10,Type="Short",Radar="TorM2K"},
-["TorM2M CHM"]={Range=16,Blindspot=1,Height=10,Type="Short",Radar="TorM2M"},
+["TorM2 CHM"]={Range=12,Blindspot=1,Height=10,Type="Point",Radar="TorM2",Point="true"},
+["TorM2K CHM"]={Range=12,Blindspot=1,Height=10,Type="Point",Radar="TorM2K",Point="true"},
+["TorM2M CHM"]={Range=16,Blindspot=1,Height=10,Type="Point",Radar="TorM2M",Point="true"},
 ["NASAMS3-AMRAAMER CHM"]={Range=50,Blindspot=2,Height=35.7,Type="Medium",Radar="CH_NASAMS3_LN_AMRAAM_ER"},
 ["NASAMS3-AIM9X2 CHM"]={Range=20,Blindspot=0.2,Height=18,Type="Short",Radar="CH_NASAMS3_LN_AIM9X2"},
 ["C-RAM CHM"]={Range=2,Blindspot=0,Height=2,Type="Point",Radar="CH_Centurion_C_RAM",Point="true"},
@@ -55052,7 +55273,11 @@ self:T(self.lid.."AddZones")
 self.AcceptZones=AcceptZones or{}
 self.RejectZones=RejectZones or{}
 self.ConflictZones=ConflictZones or{}
-if#self.AcceptZones>0 or#self.RejectZones>0 or#self.ConflictZones>0 then
+self.AcceptZonesNo=UTILS.TableLength(self.AcceptZones)
+self.RejectZonesNo=UTILS.TableLength(self.RejectZones)
+self.ConflictZonesNo=UTILS.TableLength(self.ConflictZones)
+self:T(string.format("AcceptZonesNo = %d | RejectZonesNo = %d | ConflictZonesNo = %d",self.AcceptZonesNo,self.RejectZonesNo,self.ConflictZonesNo))
+if self.AcceptZonesNo>0 or self.RejectZonesNo>0 or self.ConflictZonesNo>0 then
 self.usezones=true
 end
 return self
@@ -55313,7 +55538,8 @@ end
 function MANTIS:_CheckCoordinateInZones(coord)
 self:T(self.lid.."_CheckCoordinateInZones")
 local inzone=false
-if#self.AcceptZones>0 then
+self:T(string.format("AcceptZonesNo = %d | RejectZonesNo = %d | ConflictZonesNo = %d",self.AcceptZonesNo,self.RejectZonesNo,self.ConflictZonesNo))
+if self.AcceptZonesNo>0 then
 for _,_zone in pairs(self.AcceptZones)do
 local zone=_zone
 if zone:IsCoordinateInZone(coord)then
@@ -55323,7 +55549,7 @@ break
 end
 end
 end
-if#self.RejectZones>0 then
+if self.RejectZonesNo>0 then
 for _,_zone in pairs(self.RejectZones)do
 local zone=_zone
 if zone:IsCoordinateInZone(coord)then
@@ -55333,7 +55559,7 @@ break
 end
 end
 end
-if#self.ConflictZones>0 then
+if self.ConflictZonesNo>0 then
 for _,_zone in pairs(self.ConflictZones)do
 local zone=_zone
 if zone:IsCoordinateInZone(coord)then
@@ -55379,6 +55605,7 @@ if not targetdistance then
 targetdistance=samcoordinate:Get2DDistance(coord)
 end
 local zonecheck=true
+self:T("self.usezones = "..tostring(self.usezones))
 if self.usezones then
 zonecheck=self:_CheckCoordinateInZones(coord)
 end
@@ -60606,8 +60833,12 @@ WASHINGTON="CVN_73",
 TRUMAN="CVN_75",
 STENNIS="Stennis",
 FORRESTAL="Forrestal",
+ENTERPRISE66="USS Enterprise 1966",
+ENTERPRISEMODERN="cvn-65",
 VINSON="VINSON",
 ESSEX="Essex",
+BONHOMMERICHARD="USS Bon Homme Richard",
+ESSEXSCB125="essex_scb125",
 HERMES="HERMES81",
 INVINCIBLE="hms_invincible",
 TARAWA="LHA_Tarawa",
@@ -60665,7 +60896,7 @@ HARD="TOPGUN Graduate",
 }
 AIRBOSS.MenuF10={}
 AIRBOSS.MenuF10Root=nil
-AIRBOSS.version="1.4.1"
+AIRBOSS.version="1.4.2"
 function AIRBOSS:New(carriername,alias)
 local self=BASE:Inherit(self,FSM:New())
 self:F2({carriername=carriername,alias=alias})
@@ -60744,10 +60975,18 @@ elseif self.carriertype==AIRBOSS.CarrierType.TRUMAN then
 self:_InitNimitz()
 elseif self.carriertype==AIRBOSS.CarrierType.FORRESTAL then
 self:_InitForrestal()
+elseif self.carriertype==AIRBOSS.CarrierType.ENTERPRISE66 then
+self:_InitEnterprise()
+elseif self.carriertype==AIRBOSS.CarrierType.ENTERPRISEMODERN then
+self:_InitEnterprise()
 elseif self.carriertype==AIRBOSS.CarrierType.VINSON then
 self:_InitStennis()
 elseif self.carriertype==AIRBOSS.CarrierType.ESSEX then
 self:_InitEssex()
+elseif self.carriertype==AIRBOSS.CarrierType.BONHOMMERICHARD then
+self:_InitBonHommeRichard()
+elseif self.carriertype==AIRBOSS.CarrierType.ESSEXSCB125 then
+self:_InitEssexSCB125()
 elseif self.carriertype==AIRBOSS.CarrierType.HERMES then
 self:_InitHermes()
 elseif self.carriertype==AIRBOSS.CarrierType.INVINCIBLE then
@@ -61200,8 +61439,8 @@ self.SRS:SetCoalition(self:GetCoalition())
 self.SRS:SetCoordinate(self:GetCoordinate())
 self.SRS:SetCulture(Culture or"en-US")
 self.SRS:SetGender(Gender or"male")
-self.SRS:SetPath(PathToSRS)
-self.SRS:SetPort(Port or 5002)
+						   
+self.SRS:SetPort(Port or MSRS.port or 5002)
 self.SRS:SetLabel(self.AirbossRadio.alias or"AIRBOSS")
 self.SRS:SetCoordinate(self.carrier:GetCoordinate())
 self.SRS:SetVolume(Volume or 1)
@@ -61211,7 +61450,9 @@ end
 if Voice then
 self.SRS:SetVoice(Voice)
 end
-self.SRS:SetVolume(Volume or 1.0)
+if(not Voice)and self.SRS and self.SRS:GetProvider()==MSRS.Provider.GOOGLE then
+self.SRS.voice=MSRS.poptions["gcloud"].voice or MSRS.Voices.Google.Standard.en_US_Standard_B
+end
 self.SRSQ=MSRSQUEUE:New("AIRBOSS")
 self.SRSQ:SetTransmitOnlyWithPlayers(true)
 if not self.PilotRadio then
@@ -61980,6 +62221,17 @@ self.carrierparam.wire3=64
 self.carrierparam.wire4=74
 self.carrierparam.landingdist=self.carrierparam.sterndist+self.carrierparam.wire3
 end
+function AIRBOSS:_InitEnterprise()
+self:_InitForrestal()
+self.carrierparam.sterndist=-164.30
+self.carrierparam.deckheight=19.52
+self.carrierparam.totlength=335
+self.carrierparam.rwylength=223
+self.carrierparam.wire1=57.7
+self.carrierparam.wire2=69.6
+self.carrierparam.wire3=79.5
+self.carrierparam.wire4=90.0
+end
 function AIRBOSS:_InitEssex()
 self:_InitNimitz()
 self.carrierparam.sterndist=-126
@@ -62006,6 +62258,20 @@ self.carrierparam.wire13=113.3
 self.carrierparam.wire14=121.0
 self.carrierparam.wire15=128.5
 self.carrierparam.landingdist=self.carrierparam.sterndist+self.carrierparam.wire3
+end
+function AIRBOSS:_InitBonHommeRichard()
+self:_InitEssex()
+self.carrierparam.deckheight=16.95
+self.carrierparam.rwyangle=-11.4
+self.carrierparam.rwylength=97
+self.carrierparam.rwywidth=20
+self.carrierparam.wire1=40.4
+self.carrierparam.wire2=45
+self.carrierparam.wire3=51
+self.carrierparam.wire4=58.1
+end
+function AIRBOSS:_InitEssexSCB125()
+self:_InitBonHommeRichard()
 end
 function AIRBOSS:_InitHermes()
 self:_InitStennis()
@@ -72931,6 +73197,7 @@ CTLD.UnitTypeCapabilities={
 ["Mi-24V"]={type="Mi-24V",crates=true,troops=true,cratelimit=2,trooplimit=8,length=18,cargoweightlimit=700},
 ["Hercules"]={type="Hercules",crates=true,troops=true,cratelimit=7,trooplimit=64,length=25,cargoweightlimit=19000},
 ["UH-60L"]={type="UH-60L",crates=true,troops=true,cratelimit=2,trooplimit=20,length=16,cargoweightlimit=3500},
+["UH-60L_DAP"]={type="UH-60L_DAP",crates=false,troops=true,cratelimit=0,trooplimit=2,length=16,cargoweightlimit=500},
 ["MH-60R"]={type="MH-60R",crates=true,troops=true,cratelimit=2,trooplimit=20,length=16,cargoweightlimit=3500},
 ["SH-60B"]={type="SH-60B",crates=true,troops=true,cratelimit=2,trooplimit=20,length=16,cargoweightlimit=3500},
 ["AH-64D_BLK_II"]={type="AH-64D_BLK_II",crates=false,troops=true,cratelimit=0,trooplimit=2,length=17,cargoweightlimit=200},
@@ -72946,7 +73213,7 @@ CTLD.FixedWingTypes={
 ["Bronco"]="Bronco",
 ["Mosquito"]="Mosquito",
 }
-CTLD.version="1.3.37"
+CTLD.version="1.3.38"
 function CTLD:New(Coalition,Prefixes,Alias)
 local self=BASE:Inherit(self,FSM:New())
 BASE:T({Coalition,Prefixes,Alias})
@@ -73055,6 +73322,7 @@ self.enableFixedWing=false
 self.FixedMinAngels=165
 self.FixedMaxAngels=2000
 self.FixedMaxSpeed=77
+self.validateAndRepositionUnits=false
 self.suppressmessages=false
 self.repairtime=300
 self.buildtime=300
@@ -73098,6 +73366,17 @@ self:_GenerateUHFrequencies()
 self:_GenerateFMFrequencies()
 return self
 end
+function CTLD:_NormalizeCargoName(text)
+if type(text)=="string" then
+text=string.gsub(text,"%s*%([^%)]*cr[^%)]*%)","")
+text=string.gsub(text,"%s*%[[^%]]+%]%s*$","")
+text=string.gsub(text,"%s+"," ")
+text=string.gsub(text,"^%s+","")
+text=string.gsub(text,"%s+$","")
+end
+return text
+end
+
 function CTLD:_GetUnitCapabilities(Unit)
 self:T(self.lid.." _GetUnitCapabilities")
 local _unit=Unit
@@ -73712,7 +73991,7 @@ bc.accounts[coal] = (bc.accounts[coal] or 0) - price
 end
 end
 end
---end of custom
+--end of custom 
 end
 local inzone=false
 local drop=drop or false
@@ -73890,7 +74169,7 @@ if drop then
 text=string.format("Crates for %s have been dropped!",cratename)
 self:__CratesDropped(1,Group,Unit,droppedcargo)
 else
-if not quiet then
+if not quiet then 
 self:_SendMessage(text,10,false,Group)
 end
 end
@@ -74188,6 +74467,7 @@ self:_UpdateUnitCargoMass(Unit)
 self:_RefreshDropCratesMenu(Group,Unit)
 self:_RefreshLoadCratesMenu(Group,Unit)
 self:_CleanupTrackedCrates(crateidsloaded)
+self:__CratesPickedUp(1,Group,Unit,loaded.Cargo)
 end
 end
 return self
@@ -74474,7 +74754,7 @@ local cargo=_cargo
 local type=cargo:GetType()
 if(type==CTLD_CARGO.Enum.TROOPS or type==CTLD_CARGO.Enum.ENGINEERS)and not cargo:WasDropped()then
 local name=cargo:GetName()or"none"
-local clean = name:gsub("%s*%([^%)]*cr[^%)]*%)",""):gsub("%s*%[[^%]]+%]$","")
+local clean = name:gsub("%s*%([^%)]*cr[^%)]*%)",""):gsub("%s*%[[^%]]+%]$","")									 
 local temptable=cargo:GetTemplates()or{}
 local position=Group:GetCoordinate()
 local zoneradius=self.troopdropzoneradius or 100
@@ -74512,6 +74792,7 @@ local Positions=self:_GetUnitPositions(randomcoord,rad,heading,_template)
 self.DroppedTroops[self.TroopCounter]=SPAWN:NewWithAlias(_template,alias)
 :InitDelayOff()
 :InitSetUnitAbsolutePositions(Positions)
+:InitValidateAndRepositionGroundUnits(self.validateAndRepositionUnits)
 :OnSpawnGroup(function(grp)grp.spawntime=timer.getTime()end)
 :SpawnFromVec2(randomcoord:GetVec2())
 self:__TroopsDeployed(1,Group,Unit,self.DroppedTroops[self.TroopCounter],type)
@@ -74903,11 +75184,13 @@ local alias=string.format("%s-%d",_template,math.random(1,100000))
 if canmove then
 self.DroppedTroops[self.TroopCounter]=SPAWN:NewWithAlias(_template,alias)
 :InitDelayOff()
+:InitValidateAndRepositionGroundUnits(self.validateAndRepositionUnits)
 :OnSpawnGroup(function(grp)grp.spawntime=timer.getTime()end)
 :SpawnFromVec2(randomcoord)
 else
 self.DroppedTroops[self.TroopCounter]=SPAWN:NewWithAlias(_template,alias)
 :InitDelayOff()
+:InitValidateAndRepositionGroundUnits(self.validateAndRepositionUnits)
 :OnSpawnGroup(function(grp)grp.spawntime=timer.getTime()end)
 :SpawnFromVec2(randomcoord)
 end
@@ -75512,17 +75795,20 @@ for _,cObj in ipairs(chunk)do
 cObj:SetWasDropped(true)
 cObj:SetHasMoved(true)
 end
-local cname = crateObj:GetName() or "Unknown"
-local clean = cname:gsub("%s*%([^%)]*cr[^%)]*%)",""):gsub("%s*%[[^%]]+%]$","")
-local count = #chunk
-if needed > 1 then
-    if count == needed then
-        self:_SendMessage(string.format("Dropped %d %s.", 1, clean), 10, false, Group)
-    else
-        self:_SendMessage(string.format("Dropped %d/%d crate(s) of %s.", count, needed, clean), 15, false, Group)
-    end
+local cname=crateObj:GetName()or"Unknown"
+local clean = cname:gsub("%s*%([^%)]*cr[^%)]*%)",""):gsub("%s*%[[^%]]+%]$","")								  
+local count=#chunk
+if needed>1 then
+if count==needed then
+self:_SendMessage(string.format("Dropped %d %s.", 1, clean), 10, false, Group)
+		
+																												 
+	   
 else
-    self:_SendMessage(string.format("Dropped %d %s(s).", count, clean), 10, false, Group)
+self:_SendMessage(string.format("Dropped %d %s(s).", count, clean), 10, false, Group)
+end
+else
+self:_SendMessage(string.format("Dropped %d %s(s).",count,cname),10,false,Group)
 end
 local loadedData=self.Loaded_Cargo[unitName]
 if loadedData and loadedData.Cargo then
@@ -75743,6 +76029,7 @@ local Positions=self:_GetUnitPositions(randomcoord,rad,heading,_template)
 self.DroppedTroops[self.TroopCounter]=SPAWN:NewWithAlias(_template,alias)
 :InitDelayOff()
 :InitSetUnitAbsolutePositions(Positions)
+:InitValidateAndRepositionGroundUnits(self.validateAndRepositionUnits)
 :OnSpawnGroup(function(grp)grp.spawntime=timer.getTime()end)
 :SpawnFromVec2(randomcoord:GetVec2())
 self:__TroopsDeployed(1,Group,Unit,self.DroppedTroops[self.TroopCounter],cType)
@@ -76248,6 +76535,7 @@ end
 function CTLD:IsUnitInZone(Unit,Zonetype)
 self:T(self.lid.." IsUnitInZone")
 self:T(Zonetype)
+local unitname=Unit:GetName()
 local zonetable={}
 local outcome=false
 if Zonetype==CTLD.CargoZoneType.LOAD then
@@ -76260,25 +76548,27 @@ else
 zonetable=self.wpZones
 end
 local zonecoord=nil
+local colorret=nil
 local maxdist=1000000
 local zoneret=nil
 local zonewret=nil
 local zonenameret=nil
-local unitcoord=(Unit and Unit:IsAlive())and Unit:GetCoordinate() or nil
-if not unitcoord then if Zonetype==CTLD.CargoZoneType.SHIP then return false,nil,nil,maxdist,zonewret else return false,nil,nil,maxdist end end
+local unitcoord=Unit:GetCoordinate()
+																																			   
 local unitVec2=unitcoord:GetVec2()
 for _,_cargozone in pairs(zonetable)do
 local czone=_cargozone
 local zonename=czone.name
 local active=czone.active
+local color=czone.color
 local zone=nil
-zonecoord=nil
+			 
 local zoneradius=100
 local zonewidth=20
 if Zonetype==CTLD.CargoZoneType.SHIP then
 self:T("Checking Type Ship: "..zonename)
 local ZoneUNIT=UNIT:FindByName(zonename)
-if not ZoneUNIT then return false,nil,nil,maxdist,zonewret end
+if not ZoneUNIT then return false end
 zonecoord=ZoneUNIT:GetCoordinate()
 zoneradius=czone.shiplength
 zonewidth=czone.shipwidth
@@ -76295,19 +76585,19 @@ zonecoord=zone:GetCoordinate()
 zoneradius=2000
 zonewidth=zoneradius
 end
-if zone and zonecoord and active==true then
-if(zone:IsVec2InZone(unitVec2)or Zonetype==CTLD.CargoZoneType.MOVE)then
+										   
+																	   
 local distance=self:_GetDistance(zonecoord,unitcoord)
 self:T("Distance Zone: "..distance)
 self:T("Zone Active: "..tostring(active))
-if distance<maxdist then
+if(zone:IsVec2InZone(unitVec2)or Zonetype==CTLD.CargoZoneType.MOVE)and active==true and distance<maxdist then
 outcome=true
 maxdist=distance
 zoneret=zone
 zonenameret=zonename
 zonewret=zonewidth
-end
-end
+colorret=color
+   
 end
 end
 if Zonetype==CTLD.CargoZoneType.SHIP then
@@ -76643,13 +76933,13 @@ local unitname=_unit:GetName()
 local loadedcargo=self.Loaded_Cargo[unitname].Cargo or{}
 for _,_cgo in pairs(loadedcargo)do
 local cargo=_cgo
-local type=cargo.CargoType or cargo.Type
+local type=cargo.CargoType
 local gname=cargo.Name
 local gcargo=self:_FindCratesCargoObject(gname)or self:_FindTroopsCargoObject(gname)
-self:T("Looking at "..gname.." in the helo - type = "..tostring(type))
-if type and (type==CTLD_CARGO.Enum.TROOPS or type==CTLD_CARGO.Enum.ENGINEERS or type==CTLD_CARGO.Enum.VEHICLE or type==CTLD_CARGO.Enum.FOB)then
+self:T("Looking at "..gname.." in the helo - type = "..type)
+if(type==CTLD_CARGO.Enum.TROOPS or type==CTLD_CARGO.Enum.ENGINEERS or type==CTLD_CARGO.Enum.VEHICLE or type==CTLD_CARGO.Enum.FOB)then
 if gcargo and gcargo:GetStock0()>0 then
-self:T("Adding "..gname.." in the helo - type = "..tostring(type))
+self:T("Adding "..gname.." in the helo - type = "..type)
 if(type==CTLD_CARGO.Enum.TROOPS or type==CTLD_CARGO.Enum.ENGINEERS)then
 Troopstable[gname].Inhelo=Troopstable[gname].Inhelo+1
 end
@@ -76917,21 +77207,22 @@ function CTLD:InjectTroops(Zone,Cargo,Surfacetypes,PreciseLocation,Structure,Tim
 self:T(self.lid.." InjectTroops")
 local cargo=Cargo
 local function IsTroopsMatch(cargo)
-local match=false
-local cgotbl=self.Cargo_Troops
-local name=cargo:GetName()
+local match = false
+local cgotbl = self.Cargo_Troops
+local name = cargo:GetName()
+local clean = self:_NormalizeCargoName(name)
 local CargoObject
 local CargoName
-for _,_cgo in pairs(cgotbl)do
-local cname=_cgo:GetName()
-if name==cname then
-match=true
-CargoObject=_cgo
-CargoName=cname
+for _, _cgo in pairs(cgotbl) do
+local cname = _cgo:GetName()
+if name == cname or self:_NormalizeCargoName(cname) == clean then
+match = true
+CargoObject = _cgo
+CargoName = cname
 break
 end
 end
-return match,CargoObject,CargoName
+return match, CargoObject, CargoName
 end
 local function Cruncher(group,typename,anzahl)
 local units=group:GetUnits()
@@ -77000,6 +77291,7 @@ self.TroopCounter=self.TroopCounter+1
 local alias=string.format("%s-%d",_template,math.random(1,100000))
 self.DroppedTroops[self.TroopCounter]=SPAWN:NewWithAlias(_template,alias)
 :InitRandomizeUnits(randompositions,20,2)
+:InitValidateAndRepositionGroundUnits(self.validateAndRepositionUnits)
 :InitDelayOff()
 :OnSpawnGroup(function(grp,TimeStamp)grp.spawntime=TimeStamp or timer.getTime()end,TimeStamp)
 :SpawnFromVec2(randomcoord)
@@ -77031,21 +77323,22 @@ function CTLD:InjectVehicles(Zone,Cargo,Surfacetypes,PreciseLocation,Structure,T
 self:T(self.lid.." InjectVehicles")
 local cargo=Cargo
 local function IsVehicMatch(cargo)
-local match=false
-local cgotbl=self.Cargo_Crates
-local name=cargo:GetName()
+local match = false
+local cgotbl = self.Cargo_Crates
+local name = cargo:GetName()
+local clean = self:_NormalizeCargoName(name)
 local CargoObject
 local CargoName
-for _,_cgo in pairs(cgotbl)do
-local cname=_cgo:GetName()
-if name==cname then
-match=true
-CargoObject=_cgo
-CargoName=cname
+for _, _cgo in pairs(cgotbl) do
+local cname = _cgo:GetName()
+if name == cname or self:_NormalizeCargoName(cname) == clean then
+match = true
+CargoObject = _cgo
+CargoName = cname
 break
 end
 end
-return match,CargoObject,CargoName
+return match, CargoObject, CargoName
 end
 local function Cruncher(group,typename,anzahl)
 local units=group:GetUnits()
@@ -77117,12 +77410,14 @@ local alias=string.format("%s-%d",_template,math.random(1,100000))
 if canmove then
 self.DroppedTroops[self.TroopCounter]=SPAWN:NewWithAlias(_template,alias)
 :InitRandomizeUnits(true,20,2)
+:InitValidateAndRepositionGroundUnits(self.validateAndRepositionUnits)
 :InitDelayOff()
 :OnSpawnGroup(function(grp,TimeStamp)grp.spawntime=TimeStamp or timer.getTime()end,TimeStamp)
 :SpawnFromVec2(randomcoord)
 else
 self.DroppedTroops[self.TroopCounter]=SPAWN:NewWithAlias(_template,alias)
 :InitDelayOff()
+:InitValidateAndRepositionGroundUnits(self.validateAndRepositionUnits)
 :OnSpawnGroup(function(grp,TimeStamp)grp.spawntime=TimeStamp or timer.getTime()end,TimeStamp)
 :SpawnFromVec2(randomcoord)
 end
@@ -77389,25 +77684,26 @@ statics[#statics+1]=cargo
 end
 end
 local function FindCargoType(name,table)
-local match=false
-local cargo=nil
-name=string.gsub(name,"-"," ")
-for _ind,_cargo in pairs(table)do
-local thiscargo=_cargo
-local template=thiscargo:GetTemplates()
-if type(template)=="string"then
-template={template}
+local match = false
+local cargo = nil
+name = self:_NormalizeCargoName(name)
+for _ind, _cargo in pairs(table) do
+local thiscargo = _cargo
+local template = thiscargo:GetTemplates()
+if type(template) == "string" then
+template = { template }
 end
-for _,_name in pairs(template)do
-_name=string.gsub(_name,"-"," ")
-if string.find(name,_name)and _cargo:GetType()~=CTLD_CARGO.Enum.REPAIR then
-match=true
-cargo=thiscargo
+for _, _name in pairs(template) do
+_name = self:_NormalizeCargoName(_name)
+if string.find(name, _name, 1, true) and _cargo:GetType() ~= CTLD_CARGO.Enum.REPAIR then
+match = true
+cargo = thiscargo
+break
 end
 end
 if match then break end
 end
-return match,cargo
+return match, cargo
 end
 local data="Group,x,y,z,CargoName,CargoTemplates,CargoType,CratesNeeded,CrateMass,Structure,StaticCategory,StaticType,StaticShape,SpawnTime\n"
 local n=0
@@ -77417,9 +77713,10 @@ if group and group:IsAlive()then
 local name=group:GetName()
 local template=name
 if string.find(template,"#")then
-template=string.gsub(name,"#(%d+)$","")
+template=string.gsub(template,"#(%d+)$","")
 end
-local template=string.gsub(name,"-(%d+)$","")
+template=string.gsub(template,"-(%d+)$","")
+template=template:gsub("%s*%([^%)]*cr[^%)]*%)",""):gsub("%s*%[[^%]]+%]$","")
 local match,cargo=FindCargoType(template,cgotable)
 if not match then
 match,cargo=FindCargoType(template,cgovehic)
@@ -77750,7 +78047,7 @@ self.Types[_index].available=false
 missing[_tab.name]=true
 end
 if self.verbose then
-self:I(string.format(self.lid.."Checking template for %s (%s) ... %s",_index,_tab.name,outcometxt))
+--self:I(string.format(self.lid.."Checking template for %s (%s) ... %s",_index,_tab.name,outcometxt))
 end
 end
 for _,_name in pairs(found)do
@@ -77759,7 +78056,7 @@ end
 for _,_name in pairs(missing)do
 nomissing=nomissing+1
 end
-self:I(string.format(self.lid.."Template Check Summary: Found %d, Missing %d, Total %d",nofound,nomissing,nofound+nomissing))
+--self:I(string.format(self.lid.."Template Check Summary: Found %d, Missing %d, Total %d",nofound,nomissing,nofound+nomissing))
 return self
 end
 function CTLD_HERCULES:Soldier_SpawnGroup(Cargo_Drop_initiator,Cargo_Drop_Position,Cargo_Type_name,CargoHeading,Cargo_Country,GroupSpacing)
@@ -78082,6 +78379,7 @@ CSAR.AircraftType["Mi-24P"]=8
 CSAR.AircraftType["Mi-24V"]=8
 CSAR.AircraftType["Bell-47"]=2
 CSAR.AircraftType["UH-60L"]=10
+CSAR.AircraftType["UH-60L_DAP"]=2
 CSAR.AircraftType["AH-64D_BLK_II"]=2
 CSAR.AircraftType["Bronco-OV-10A"]=2
 CSAR.AircraftType["MH-60R"]=10
@@ -80181,7 +80479,7 @@ function AIRWING:NewPatrolPoint(Type,Coordinate,Altitude,Speed,Heading,LegLength
 local patrolpoint={}
 patrolpoint.type=Type or"Unknown"
 patrolpoint.coord=Coordinate or self:GetCoordinate():Translate(UTILS.NMToMeters(math.random(10,15)),math.random(360))
-if Coordinate:IsInstanceOf("ZONE_BASE")then
+if Coordinate and Coordinate:IsInstanceOf("ZONE_BASE")then
 patrolpoint.IsZonePoint=true
 patrolpoint.patrolzone=Coordinate
 patrolpoint.coord=patrolpoint.patrolzone:GetCoordinate()
@@ -81825,7 +82123,7 @@ return mission
 end
 function AUFTRAG:NewTANKER(Coordinate,Altitude,Speed,Heading,Leg,RefuelSystem)
 local mission
-if Leg == 0 then
+if Leg==0 then
 mission=AUFTRAG:NewORBIT_CIRCLE(Coordinate,Altitude,Speed)
 else
 mission=AUFTRAG:NewORBIT_RACETRACK(Coordinate,Altitude,Speed,Heading,Leg)
@@ -85491,7 +85789,9 @@ self:T(self.lid.."SetAdditionalZone")
 self.BorderZone=Zone
 if self.debug then
 Zone:DrawZone(self.coalition,{1,0.64,0},1,{1,0.64,0},0.2,1,true)
+if self.AllowMarkers then
 MARKER:New(Zone:GetCoordinate(),"Defensive Zone"):ToCoalition(self.coalition)
+end
 elseif Draw then
 Zone:DrawZone(self.coalition,{1,0.64,0},1,{1,0.64,0},0.2,1,true)
 end
@@ -85504,7 +85804,9 @@ if Draw then
 Zone:DrawZone(self.coalition,{1,0.64,0},1,{1,0.64,0},0.2,1,true)
 elseif self.debug then
 Zone:DrawZone(self.coalition,{1,0.64,0},1,{1,0.64,0},0.2,1,true)
+if self.AllowMarkers then
 MARKER:New(Zone:GetCoordinate(),"Rejection Zone"):ToCoalition(self.coalition)
+end
 end
 return self
 end
@@ -86982,10 +87284,14 @@ AnchorStackOne.StationName=newname
 if self.debug then
 AnchorStackOne.StationZone:DrawZone(self.coalition,{0,0,1},1,{0,0,1},0.2,5,true)
 local stationtag=string.format("Station: %s\nCoordinate: %s",newname,self.StationZone:GetCoordinate():ToStringLLDDM())
+if self.AllowMarkers then
 AnchorStackOne.AnchorMarker=MARKER:New(AnchorStackOne.StationZone:GetCoordinate(),stationtag):ToCoalition(self.coalition)
+end
 else
 local stationtag=string.format("Station: %s\nCoordinate: %s",newname,self.StationZone:GetCoordinate():ToStringLLDDM())
+if self.AllowMarkers then
 AnchorStackOne.AnchorMarker=MARKER:New(AnchorStackOne.StationZone:GetCoordinate(),stationtag):ToCoalition(self.coalition)
+end
 end
 self.AnchorStacks:Push(AnchorStackOne,newname)
 self.PlayerStationName=newname
@@ -87015,10 +87321,14 @@ AnchorStackOne.StationName=newname
 if self.debug then
 AnchorStackOne.StationZone:DrawZone(self.coalition,{0,0,1},1,{0,0,1},0.2,5,true)
 local stationtag=string.format("Station: %s\nCoordinate: %s",newname,self.StationZone:GetCoordinate():ToStringLLDDM())
+if self.AllowMarkers then
 AnchorStackOne.AnchorMarker=MARKER:New(AnchorStackOne.StationZone:GetCoordinate(),stationtag):ToCoalition(self.coalition)
+end
 else
 local stationtag=string.format("Station: %s\nCoordinate: %s",newname,self.StationZone:GetCoordinate():ToStringLLDDM())
+if self.AllowMarkers then
 AnchorStackOne.AnchorMarker=MARKER:New(AnchorStackOne.StationZone:GetCoordinate(),stationtag):ToCoalition(self.coalition)
+end
 end
 self.AnchorStacks:Push(AnchorStackOne,newname)
 else
@@ -87040,10 +87350,14 @@ AnchorStackOne.StationName=newname
 if self.debug then
 AnchorStackOne.StationZone:DrawZone(self.coalition,{0,0,1},1,{0,0,1},0.2,5,true)
 local stationtag=string.format("Station: %s\nCoordinate: %s",newname,self.StationZone:GetCoordinate():ToStringLLDDM())
+if self.AllowMarkers then
 AnchorStackOne.AnchorMarker=MARKER:New(AnchorStackOne.StationZone:GetCoordinate(),stationtag):ToCoalition(self.coalition)
+end
 else
 local stationtag=string.format("Station: %s\nCoordinate: %s",newname,self.StationZone:GetCoordinate():ToStringLLDDM())
+if self.AllowMarkers then
 AnchorStackOne.AnchorMarker=MARKER:New(AnchorStackOne.StationZone:GetCoordinate(),stationtag):ToCoalition(self.coalition)
+end
 end
 self.AnchorStacks:Push(AnchorStackOne,newname)
 end
@@ -87675,10 +87989,14 @@ AnchorStackOne.StationName=newname
 if self.debug then
 AnchorStackOne.StationZone:DrawZone(self.coalition,{0,0,1},1,{0,0,1},0.2,5,true)
 local stationtag=string.format("Station: %s\nCoordinate: %s",newname,self.StationZone:GetCoordinate():ToStringLLDDM())
+if self.AllowMarkers then
 AnchorStackOne.AnchorMarker=MARKER:New(AnchorStackOne.StationZone:GetCoordinate(),stationtag):ToCoalition(self.coalition)
+end
 else
 local stationtag=string.format("Station: %s\nCoordinate: %s",newname,self.StationZone:GetCoordinate():ToStringLLDDM())
+if self.AllowMarkers then
 AnchorStackOne.AnchorMarker=MARKER:New(AnchorStackOne.StationZone:GetCoordinate(),stationtag):ToCoalition(self.coalition)
+end
 end
 self.AnchorStacks:Push(AnchorStackOne,newname)
 AirWing.HasOwnStation=true
@@ -88318,23 +88636,35 @@ self.ControlZone:DrawZone(self.coalition,{0,1,0},1,{1,0,0},0.05,3,true)
 self.OpsZone:DrawZone(self.coalition,{1,0,0},1,{1,0,0},0.2,5,true)
 local AOCoordString=self.AOCoordinate:ToStringLLDDM()
 local Rocktag=string.format("FEZ: %s\nBulls Coordinate: %s",self.AOName,AOCoordString)
+if self.AllowMarkers then
 MARKER:New(self.AOCoordinate,Rocktag):ToCoalition(self.coalition)
+end
 self.StationZone:DrawZone(self.coalition,{0,0,1},1,{0,0,1},0.2,5,true)
 local stationtag=string.format("Station: %s\nCoordinate: %s",self.StationZoneName,self.StationZone:GetCoordinate():ToStringLLDDM())
 if not self.GCI then
+if self.AllowMarkers then
 MARKER:New(self.StationZone:GetCoordinate(),stationtag):ToCoalition(self.coalition)
+end
 self.OrbitZone:DrawZone(self.coalition,{0,1,0},1,{0,1,0},0.2,5,true)
+if self.AllowMarkers then
 MARKER:New(self.OrbitZone:GetCoordinate(),"AIC Orbit Zone"):ToCoalition(self.coalition)
+end
 end
 else
 local AOCoordString=self.AOCoordinate:ToStringLLDDM()
 local Rocktag=string.format("FEZ: %s\nBulls Coordinate: %s",self.AOName,AOCoordString)
+if self.AllowMarkers then
 MARKER:New(self.AOCoordinate,Rocktag):ToCoalition(self.coalition)
+end
 if not self.GCI then
+if self.AllowMarkers then
 MARKER:New(self.OrbitZone:GetCoordinate(),"AIC Orbit Zone"):ToCoalition(self.coalition)
 end
+end
 local stationtag=string.format("Station: %s\nCoordinate: %s",self.StationZoneName,self.StationZone:GetCoordinate():ToStringLLDDM())
+if self.AllowMarkers then
 MARKER:New(self.StationZone:GetCoordinate(),stationtag):ToCoalition(self.coalition)
+end
 end
 if not self.GCI then
 local AwacsAW=self.AirWing
@@ -90633,7 +90963,7 @@ descriptors={},
 properties={},
 operations={},
 }
-COHORT.version="0.3.6"
+COHORT.version="0.3.7"
 _COHORTNAMES={}
 function COHORT:New(TemplateGroupName,Ngroups,CohortName)
 local name=tostring(CohortName or TemplateGroupName)
@@ -90784,9 +91114,10 @@ function COHORT:SetMissionRange(Range)
 self.engageRange=UTILS.NMToMeters(Range or 150)
 return self
 end
-function COHORT:SetCallsign(Callsign,Index)
+function COHORT:SetCallsign(Callsign,Index,CallsignString)
 self.callsignName=Callsign
 self.callsignIndex=Index
+self.callsignClearName=CallsignString
 self.callsign={}
 self.callsign.NumberSquad=Callsign
 self.callsign.NumberGroup=Index
@@ -90886,6 +91217,9 @@ self.callsigncounter=self.callsigncounter+2
 else
 self.callsigncounter=self.callsigncounter+1
 end
+callsign["name"]=self.callsignClearName or UTILS.GetCallsignName(self.callsignName)or"None"
+callsign["name"]=string.format("%s%d%d",callsign["name"],callsign[2],callsign[3])
+callsign[4]=callsign["name"]
 Asset.callsign[i]=callsign
 self:T3({callsign=callsign})
 end
@@ -98897,6 +99231,7 @@ if self:IsAirwing()then
 opsgroup=FLIGHTGROUP:New(asset.spawngroupname)
 elseif self:IsBrigade()then
 opsgroup=ARMYGROUP:New(asset.spawngroupname)
+opsgroup:SetValidateAndRepositionGroundUnits(self.ValidateAndRepositionGroundUnits)
 elseif self:IsFleet()then
 opsgroup=NAVYGROUP:New(asset.spawngroupname)
 else
@@ -104749,7 +105084,7 @@ self.Ndestroyed=self.Ndestroyed+1
 self:ElementDead(Element)
 end
 function OPSGROUP:onafterElementDead(From,Event,To,Element)
---self:I(self.lid..string.format("Element dead %s at t=%.3f",Element.name,timer.getTime()))
+self:I(self.lid..string.format("Element dead %s at t=%.3f",Element.name,timer.getTime()))
 self:_UpdateStatus(Element,OPSGROUP.ElementStatus.DEAD)
 if self.spot.On and self.spot.element.name==Element.name then
 self:LaserOff()
@@ -104897,7 +105232,11 @@ if Delay and Delay>0 then
 self:ScheduleOnce(Delay,OPSGROUP._Spawn,self,0,Template)
 else
 self:T2({Template=Template})
+if self:IsArmygroup()and self.ValidateAndRepositionGroundUnits then
+UTILS.ValidateAndRepositionGroundUnits(Template.units)
+end
 self.group=_DATABASE:Spawn(Template)
+self.group:SetValidateAndRepositionGroundUnits(self.ValidateAndRepositionGroundUnits)
 self.dcsgroup=self:GetDCSGroup()
 self.controller=self.dcsgroup:getController()
 self.isLateActivated=Template.lateActivation
@@ -108023,6 +108362,9 @@ end
 end
 return targetgroup,targetdist
 end
+function OPSGROUP:SetValidateAndRepositionGroundUnits(Enabled)
+self.ValidateAndRepositionGroundUnits=Enabled
+end
 OPSTRANSPORT={
 ClassName="OPSTRANSPORT",
 verbose=0,
@@ -109823,7 +110165,7 @@ NextTaskFailure={},
 FinalState="none",
 PreviousCount=0,
 }
-PLAYERTASK.version="0.1.27"
+PLAYERTASK.version="0.1.28"
 function PLAYERTASK:New(Type,Target,Repeat,Times,TTSType)
 local self=BASE:Inherit(self,FSM:New())
 self.Type=Type
@@ -109948,6 +110290,9 @@ isCaptureGroupInZone=true
 end
 end)
 return OpsZone:GetOwner()==Coalition and isClientInZone and isCaptureGroupInZone
+end
+function PLAYERTASK:CanJoinTask(Group,Client)
+return true
 end
 function PLAYERTASK:_SetController(Controller)
 self:T(self.lid.."_SetController")
@@ -110428,7 +110773,10 @@ if self.TargetMarker then
 self.TargetMarker:Remove()
 end
 self.FinalState="Failed"
-self:__Done(-1)
+if self.TaskController then
+self.TaskController:__TaskFailed(-1,self)
+end
+self:__Done(-1.5)
 end
 if self.TaskController.Scoring then
 local clients,count=self:GetClientObjects()
@@ -111677,9 +112025,18 @@ self:E(self.lid.."***** NO valid PAYERTASK object sent!")
 end
 return self
 end
+function PLAYERTASKCONTROLLER:CanJoinTask(Task,Group,Client)
+return true
+end
 function PLAYERTASKCONTROLLER:_JoinTask(Task,Force,Group,Client)
 self:T({Force,Group,Client})
 self:T(self.lid.."_JoinTask")
+if not self:CanJoinTask(Task,Group,Client)then
+return self
+end
+if not Task:CanJoinTask(Group,Client)then
+return self
+end
 local force=false
 if type(Force)=="boolean"then
 force=Force
@@ -115384,8 +115741,9 @@ defaulttakeofftype="hot",
 FuelLowThreshold=25,
 FuelCriticalThreshold=10,
 showpatrolpointmarks=false,
+EngageTargetTypes={"Air"},
 }
-EASYGCICAP.version="0.1.27"
+EASYGCICAP.version="0.1.30"
 function EASYGCICAP:New(Alias,AirbaseName,Coalition,EWRName)
 local self=BASE:Inherit(self,FSM:New())
 self.alias=Alias or AirbaseName.." CAP Wing"
@@ -115420,6 +115778,7 @@ self.defaulttakeofftype="hot"
 self.FuelLowThreshold=25
 self.FuelCriticalThreshold=10
 self.showpatrolpointmarks=false
+self.EngageTargetTypes={"Air"}
 self.lid=string.format("EASYGCICAP %s | ",self.alias)
 self:SetStartState("Stopped")
 self:AddTransition("Stopped","Start","Running")
@@ -115565,6 +115924,10 @@ self.capOptionVaryStartTime=Start or 5
 self.capOptionVaryEndTime=End or 60
 return self
 end
+function EASYGCICAP:SetCAPEngageTargetTypes(types)
+self.EngageTargetTypes=types or{"Air"}
+return self
+end
 function EASYGCICAP:AddAirwing(Airbasename,Alias)
 self:T(self.lid.."AddAirwing "..Airbasename)
 local AWEntry={}
@@ -115631,6 +115994,7 @@ local GoZoneSet=self.GoZoneSet
 local NoGoZoneSet=self.NoGoZoneSet
 local FuelLow=self.FuelLowThreshold or 25
 local FuelCritical=self.FuelCriticalThreshold or 10
+local EngageTypes=self.EngageTargetTypes or{"Air"}
 function CAP_Wing:onbeforeFlightOnMission(From,Event,To,Flightgroup,Mission)
 local flightgroup=Flightgroup
 if DespawnAfterLanding then
@@ -115644,7 +116008,7 @@ flightgroup:GetGroup():SetOptionRadarUsingForContinousSearch()
 flightgroup:GetGroup():SetOptionLandingOverheadBreak()
 if Mission.type~=AUFTRAG.Type.TANKER and Mission.type~=AUFTRAG.Type.AWACS and Mission.type~=AUFTRAG.Type.RECON then
 flightgroup:SetDetection(true)
-flightgroup:SetEngageDetectedOn(engagerange,{"Air"},GoZoneSet,NoGoZoneSet)
+flightgroup:SetEngageDetectedOn(engagerange,EngageTypes,GoZoneSet,NoGoZoneSet)
 flightgroup:SetOutOfAAMRTB()
 flightgroup:SetFuelLowRTB(true)
 flightgroup:SetFuelLowThreshold(FuelLow)
@@ -115954,7 +116318,9 @@ Squadron_One:SetLivery(Livery)
 Squadron_One:SetSkill(Skill or AI.Skill.AVERAGE)
 Squadron_One:SetMissionRange(self.missionrange)
 Squadron_One:SetRadio(Frequency,Modulation)
+if TACAN then
 Squadron_One:AddTacanChannel(TACAN,TACAN)
+end
 local wing=self.wings[AirbaseName][1]
 wing:AddSquadron(Squadron_One)
 wing:NewPayload(TemplateName,-1,{AUFTRAG.Type.TANKER},75)

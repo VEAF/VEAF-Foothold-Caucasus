@@ -700,8 +700,8 @@ zones.bravo.airbaseName = 'Bravo'
 zones.alpha.airbaseName = 'Alpha'
 
 zones.bluecarrier:addGroups({
-	GroupCommander:new({name='carrier1-Modern', mission='attack',template='CapCarrierGroup',MissionType='CAP', targetzone='Kutaisi', Altitude = 25000}),
-	GroupCommander:new({name='carrier-patrol-Kobuleti', mission='patrol',template='CapCarrierGroup',MissionType='CAP', targetzone='Kobuleti', Altitude = 25000}),
+	GroupCommander:new({name='carrier-attack-Senaki', mission='attack',template='CapCarrierGroup',MissionType='CAP', targetzone='Senaki', Altitude = CapAltitude()}),
+	GroupCommander:new({name='carrier-patrol-Kobuleti', mission='patrol',template='CapCarrierGroup',MissionType='CAP', targetzone='Kobuleti', Altitude = CapAltitude()}),
 	GroupCommander:new({name='Blue-carrier-capture-Red-carrier-blue', mission='supply', targetzone='Red Carrier', type='surface', urgent = function() return zones.redcarrier.side == 0 and (not zones.gudauta.side == 2) end, ForceUrgent = true})
 })
 
@@ -733,6 +733,8 @@ zones.kutaisi:addGroups({
 	GroupCommander:new({name='Kutaisi-patrol-Kobuleti-Cap', mission='patrol',template='CapPlaneTemplate', MissionType='CAP', targetzone='Kobuleti', Altitude = CapAltitude()}),
 	GroupCommander:new({name='Kutaisi-Patrol-Kutaisi-Cap', mission='patrol',template='CapPlaneTemplate',MissionType='CAP', targetzone='Kutaisi', Altitude = CapAltitude()}),
 	GroupCommander:new({name='Kutaisi-attack-Senaki', mission='attack',template='AttackConvoy', targetzone='Senaki', type='surface'}),
+	GroupCommander:new({name='Kutaisi-attack-Sukhumi', mission='attack',template='CapPlaneTemplate',MissionType='CAP', targetzone='Sukhumi', Altitude = CapAltitude()}),
+
 })
 zones.sukhumi:addGroups({
 	GroupCommander:new({name='Support-SAM-Delta', mission='supply',template='SupplyConvoy', targetzone='SAM-Delta', type='surface'}),
@@ -3314,21 +3316,22 @@ function generateSEADMission()
 		for _, zone in ipairs(bc.zones) do
 			local znB = zone.zone
 			local dist = ZONE_DISTANCES[znA] and ZONE_DISTANCES[znA][znB]
-			if isSEADZone(zone) and dist and dist <= 24000 then
+			if isSEADZone(zone) and bc:HasSeadTargets(zone.zone) and dist and dist <= 24000 then
 				table.insert(validSEADZones, zone.zone)
 			end
 		end
 	end
+
     if #validSEADZones == 0 then
         for _, connection in ipairs(bc.connections) do
 			local from, to = bc:getConnectionZones(connection)
 
             if from and to and from.side ~= to.side and from.side ~= 0 and to.side ~= 0 and
 			((not to.suspended) or from.suspended) then
-                if isSEADZone(from) then
+                if isSEADZone(from) and bc:HasSeadTargets(from.zone) then
                     table.insert(validSEADZones, from.zone)
                 end
-                if isSEADZone(to) then
+                if isSEADZone(to) and bc:HasSeadTargets(to.zone) then
                     table.insert(validSEADZones, to.zone)
                 end
             end
@@ -3340,7 +3343,6 @@ function generateSEADMission()
     seadTarget = validSEADZones[math.random(#validSEADZones)]
     return true
 end
-
 mc:trackMission({
     title = function() return "SEAD mission at " .. seadTarget end,
     description = function() return "Neutralize enemy SAM/defences at " .. seadTarget end,
@@ -3364,7 +3366,7 @@ mc:trackMission({
     isActive = function()
         if not seadTarget then return false end
         local zn = bc:getZoneByName(seadTarget)
-        return zn and zn.side == 1
+        return zn and zn.side == 1 and not zn.suspended and bc:HasSeadTargets(seadTarget)
     end
 })
 

@@ -5,8 +5,8 @@ UseStatics=true
 CreditLosewhenKilled=false -- if true, Blue coalition will lose 100 points for every player death
 NoSA10AndSA11=false
 SplashDamage=false
-ShowKills=true -- if true, a messagw will come up upon kills
-StoreLimit = false
+ShowKills=true -- if true, a message will come up upon kills
+StoreLimit = true -- if true, pilots will have to earn points before spending coalition budget
 CTLDCost=true -- if the above is false, then ctld stuff wil not cost anything. default is true
 
 -- load first batch of scripts

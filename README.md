@@ -12,15 +12,23 @@ This is a modification of the original [Foothold Caucasus](https://www.digitalco
 
 Add this triggers on MissionStart:
 
+**Modern:**
 name: `mission start - dynamic`
 do_script:
 ```lua
-MA_DYNAMIC_PATH = [[C:\Users\veaf\Saved Games\DCS.missions\foothold\MA_Foothold_Caucasus\Modern\]]
+MA_DYNAMIC_PATH = [[C:\Users\veaf\Saved Games\DCS.missions\_TEMPLATES\Missions\foothold\Caucasus\Modern\]]
 env.info("DYNAMIC MA LOADING")
 assert(loadfile(MA_DYNAMIC_PATH .. "VEAF_MA_loader.lua")) ()
 ```
 
-Change the path to xxx\Coldwar for the cold war version
+**Cold War:**
+name: `mission start - dynamic`
+do_script:
+```lua
+MA_DYNAMIC_PATH = [[C:\Users\veaf\Saved Games\DCS.missions\_TEMPLATES\Missions\foothold\Caucasus\Coldwar\]]
+env.info("DYNAMIC MA LOADING")
+assert(loadfile(MA_DYNAMIC_PATH .. "VEAF_MA_loader.lua")) ()
+```
 
 ## Things to do
 

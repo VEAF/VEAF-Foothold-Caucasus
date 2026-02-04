@@ -32,143 +32,142 @@ upgrades = {
 	},
 	airfield1 = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD1'},
-		red = {'Enemy ground forces', 'Red SAM AAA', 'Red SAM AAA group 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-8 2', 'Red SAM SHORAD SA-8', 'Red SAM AAA 3', 'Red SAM AAA 4'}
+		red = {'Enemy ground forces', 'Red SAM AAA', 'Red SAM AAA 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-8', 'Red SAM AAA 3', 'Red SAM AAA 4'}
 	},
 	Soganlug = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD1'},
-		red = {'Red SAM AAA Fixed', 'Red SAM SHORAD SA-15 Fixed Soganlug', 'Red SAM SHORAD SA-8 Fixed'}
+		red = {'Red SAM AAA', 'Red SAM SHORAD SA-15'}
 	},
 	Mineralnye = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD1'},
-		red = {'Enemy ground forces', 'Red SAM AAA', 'Red SAM AAA group 2', 'Mineralnye HQ', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-19 2', 'Red SAM SHORAD Tor M2', 'Red SAM SHORAD Pantsir S1'}
+		red = {'Enemy ground forces', 'Red SAM AAA', 'Red SAM AAA 2', 'Mineralnye HQ', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD Tor M2', 'Red SAM SHORAD Pantsir S1'}
 	},
 	Novorossiysk = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD1'},
-		red = {'Enemy ground forces', 'Red SAM AAA', 'Red SAM AAA group 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-19 2','Communication Tower', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-15'}
+		red = {'Enemy ground forces', 'Red SAM AAA', 'Red SAM AAA 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-19','Communication Tower', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-15'}
 	},
 	airfield2 = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD1'},
-		red = {'Enemy ground forces', 'Red SAM AAA', 'Red SAM AAA group 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD Pantsir S1', 'Red SAM SHORAD SA-8'}
+		red = {'Enemy ground forces', 'Red SAM AAA', 'Red SAM AAA 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD Pantsir S1', 'Red SAM SHORAD SA-8'}
 	},
 	Kobuleti = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD1'},
-		red = {'Enemy ground forces', 'Red SAM AAA', 'Red SAM AAA group 2', 'Red Armour Group 2', 'Red Armour Group 3','Kobuleti Fuel Tank 2', 'Red SAM SHORAD SA-15','Kobuleti Fuel Tank', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-15 2'}
+		red = {'Enemy ground forces', 'Red SAM AAA', 'Red SAM AAA 2', 'Red Armour Group 2', 'Red Armour Group 3','Kobuleti Fuel Tank 2', 'Red SAM SHORAD SA-15','Kobuleti Fuel Tank', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-15'}
 	},
 	airfield3 = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD2'},
-		red = {'Enemy Task forces', 'Red Armour Group', 'Red armoured group 1', 'Red SAM AAA', 'Red SAM SHORAD Tor M2', 'Red SAM AAA 3','Red SAM AAA 4'}
+		red = {'Enemy Task forces', 'Red Armour Group', 'Red Armour Group 4', 'Red SAM AAA', 'Red SAM SHORAD Tor M2', 'Red SAM AAA 3','Red SAM AAA 4'}
 	},
 	Pashkovsky = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD2'},
-		red = {'Enemy Task forces', 'Red Armour Group', 'Red armoured group 1','Pashkovsky HQ', 'Red SAM AAA','Pashkovsky HQ 2', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-19 2', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-15 2'}
+		red = {'Enemy Task forces', 'Red Armour Group', 'Red Armour Group 4','Pashkovsky HQ', 'Red SAM AAA','Pashkovsky HQ 2', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-15'}
 	},
 	Sochi = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD2'},
-		red = {'Red Armour Group', 'Red armoured group 1','Sochi Communication Tower','Sochi Fuel Tank 3','Red SAM AAA','Red SAM SHORAD SA-19 2', 'Sochi Fuel Tank 2', 'Red SAM SHORAD SA-19','Sochi Fuel Tank', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD Pantsir S1'}
+		red = {'Red Armour Group', 'Red Armour Group 4','Sochi Communication Tower','Sochi Fuel Tank 3','Red SAM AAA','Red SAM SHORAD SA-19', 'Sochi Fuel Tank 2', 'Red SAM SHORAD SA-19','Sochi Fuel Tank', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD Pantsir S1'}
 	},
 	airfield3Maykop = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD2'},
-		red = {'Enemy Task forces', 'Red Armour Group', 'Red armoured group 1','Maykop fuel storage', 'Red SAM SHORAD SA-19','Maykop HQ bulding','Red SAM AAA 4', 'Red SAM AAA 3'}
+		red = {'Enemy Task forces', 'Red Armour Group', 'Red Armour Group 4','Maykop fuel storage', 'Red SAM SHORAD SA-19','Maykop HQ bulding','Red SAM AAA 4', 'Red SAM AAA 3'}
 	},
 	
 	airfield4 = {
 		blue = {'blueInfantry','blueArmor', 'bluePD2'},
-		red = {'Enemy Task forces', 'Red SAM AAA', 'Red SAM AAA group 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD Tor M2', 'Red SAM SHORAD Pantsir S1'}
+		red = {'Enemy Task forces', 'Red SAM AAA', 'Red SAM AAA 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD Tor M2', 'Red SAM SHORAD Pantsir S1'}
 	},
 	Anapa = {
 		blue = {'blueInfantry','blueArmor', 'bluePD2'},
-		red = {'Red SAM AAA group 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Anapa Command Center','Red SAM AAA', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD Tor M2', 'Red SAM SHORAD Pantsir S1'}
+		red = {'Red SAM AAA 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Anapa Command Center','Red SAM AAA', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD Tor M2', 'Red SAM SHORAD Pantsir S1'}
 	},
 	airfield4Kutaisi = {
 		blue = {'blueInfantry','blueArmor', 'bluePD2'},
-		red = {'Red SAM AAA', 'Red SAM AAA group 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-15 Fixed','Kutaisi Fuel tank', 'Red SAM SHORAD SA-8 2', 'Kutaisi Fuel tank 2', 'Red SAM SA-6 Fixed Kutaisi', 'Kutaisi Fuel tank 3', 'Kutaisi Fuel tank 4','Red SAM SHORAD Pantsir S1'}
+		red = {'Red SAM AAA', 'Red SAM AAA 2', 'Red Armour Group 2', 'Red Armour Group 3', 'Kutaisi Fuel tank', 'Red SAM SHORAD SA-8', 'Kutaisi Fuel tank 2', 'Red SAM SA-6', 'Kutaisi Fuel tank 3', 'Kutaisi Fuel tank 4','Red SAM SHORAD Pantsir S1'}
 	},
 	
 	samalphaFixed = {
 		blue = {'blueArmor', 'bluePD1'},
-		red = {'Red SAM SHORAD SA-15 Fixed alpha', 'Red SAM SA-2 Fixed Alpha', 'Red SAM SA-3 Fixed Alpha'}
+		red = {'Red SAM SHORAD SA-15', 'Red SAM SA-2', 'Red SAM SA-3'}
 	},
 	samFoxtrotFixed = {
 		blue = {},
-		red = {'Red SAM SHORAD SA-19', 'Red SAM SHORAD Fixed', 'Red SAM Fixed SA-2 Foxtrot'}
+		red = {'Red SAM SHORAD SA-19', 'Red SAM AAA', 'Red SAM SA-2'}
 	},
 	sambravoFixed = {
 		blue = {'blueHAWK'},
-		red = {'Red SAM AAA','Red SAM SHORAD SA-15 Fixed Bravo','Red SAM SA-2 Fixed bravo'}
+		red = {'Red SAM AAA','Red SAM SHORAD SA-15','Red SAM SA-2'}
 	},
 	
 	samgolf = {
 		blue = {'blueArmor', 'bluePD1'},
-		red = {'Red SAM SA-6 Fixed Golf', 'Red SAM SHORAD SA-19 Fixed Golf-1', 'Red SAM SHORAD SA-19 Fixed Golf-2', 'Red SAM SHORAD SA-19 Fixed Golf-3', 'Red SAM SHORAD SA-19 Fixed Golf-4', 'Red SAM SHORAD SA-15 Fixed Golf-5', 
-		'Red SAM SHORAD SA-15 Fixed Golf-6', 'Red SAM SA-10 Fixed Golf'}
+		red = {'Red SAM SA-6', 'Red SAM SHORAD SA-19','Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-15'}
 	},
 	
 	sam3 = {
 		blue = {'blueArmor', 'bluePD2'},
-		red = {'Red SAM AAA','Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-15 2', 'Red SAM SA-6', 'Red SAM SHORAD SA-8'}
+		red = {'Red SAM AAA','Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-15', 'Red SAM SA-6', 'Red SAM SHORAD SA-8'}
 	},
 	samcharliefixed = {
 		blue = {'blueHAWK'},
-		red = {'Red SAM AAA', 'Red SAM AAA group 2', 'Red SAM SHORAD SA-15 Fixed Charlie', 'Red SAM SHORAD SA-19 Fixed Charlie-2', 'Red SAM SA-6 Fixed Charlie'}
+		red = {'Red SAM AAA', 'Red SAM AAA 2', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-19', 'Red SAM SA-6'}
 	},
 	sam4indiafixed = {
 		blue = {'blueArmor', 'bluePD2'},
-		red = {'Red SAM AAA','Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8','Red SAM SHORAD SA-15','Red SAM SA-10 India Fixed', 'Red SAM SHORAD SA-15 2'}
+		red = {'Red SAM AAA','Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8','Red SAM SHORAD SA-15','Red SAM SA-10', 'Red SAM SHORAD SA-15'}
 	},
 	sam4kilofixed = {
 		blue = {'blueArmor', 'bluePD2'},
-		red = {'Red SAM AAA','Red SAM SHORAD SA-15','Red SAM SA-10 kilo Fixed', 'Red SAM SHORAD SA-15 2', 'Red SAM AAA group 2'}
+		red = {'Red SAM AAA','Red SAM SHORAD SA-15','Red SAM SA-10', 'Red SAM SHORAD SA-15', 'Red SAM AAA 2'}
 	},
 	
 	samdeltaFixed = {
 		blue = {'blueHAWK'},
-		red = {'Red SAM AAA','Red SAM SHORAD SA-19 Fixed Delta','Red SAM SA-10 Fixed Delta'}
+		red = {'Red SAM AAA','Red SAM SHORAD SA-19','Red SAM SA-10'}
 	},
 	sam5 = {
 		blue = {'blueArmor', 'blueHAWK'},
-		red = {'Red SAM SHORAD SA-15','Red SAM AAA','Red SAM SHORAD SA-8', 'Red SAM AAA group 2', 'Red SAM SA-11', 'Red SAM SHORAD SA-15 2'}
+		red = {'Red SAM SHORAD SA-15','Red SAM AAA','Red SAM SHORAD SA-8', 'Red SAM AAA 2', 'Red SAM SA-11', 'Red SAM SHORAD SA-15'}
 	},
 	
 	SamLimaFixedSA11 = {
 		blue = {},
-		red = {'Red SAM SHORAD SA-15 Fixed SAM-Lima', 'Red SAM SA-6 Fixed SAM-Lima', 'Red SAM SA-11 Fixed SAM-Lima'}
+		red = {'Red SAM SHORAD SA-15', 'Red SAM SA-6', 'Red SAM SA-11'}
 	},
 	
 	sam6 = {
 		blue = {},
-		red = {'Red SAM SHORAD SA-19 Fixed SAM-Mike', 'Red SAM SHORAD SA-19 Fixed SAM-Mike 2', 'Red SAM SA-5 Fixed SAM-Mike'}
+		red = {'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-19', 'Red SAM SA-5 Fixed SAM-Mike'}
 	},
 	farp1 = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD1'},
-		red = {'Enemy ground forces','Red Armour Group', 'Red armoured group 1','Red SAM AAA','Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM AAA group 2'}
+		red = {'Enemy ground forces','Red Armour Group', 'Red Armour Group 4','Red SAM AAA','Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM AAA 2'}
 	},
 	Echo = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD1'},
-		red = {'Enemy ground forces','Echo Troops Tent 2','Red Armour Group', 'Red armoured group 1','Red SAM AAA','Echo Troops Tent','Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8'}
+		red = {'Enemy ground forces','Echo Troops Tent 2','Red Armour Group', 'Red Armour Group 4','Red SAM AAA','Echo Troops Tent','Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8'}
 	},
 	Alpha = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD1'},
-		red = {'Enemy ground forces','Red Armour Group', 'Red armoured group 1','Alpha Troops Tent','Red SAM AAA','Alpha Troops Tent 2','Red SAM AAA group 2', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-19 2'}
+		red = {'Enemy ground forces','Red Armour Group', 'Red Armour Group 4','Alpha Troops Tent','Red SAM AAA','Alpha Troops Tent 2','Red SAM AAA 2', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-19'}
 	},
 	farp2 = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD1'},
-		red = {'Enemy ground forces', 'Red Armour Group', 'Red armoured group 1', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-8 2', 'Red SAM SHORAD SA-15'}
+		red = {'Enemy ground forces', 'Red Armour Group', 'Red Armour Group 4', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-15'}
 	},
 	farp3 = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD2'},
-		red = {'Red Armour Group', 'Red armoured group 1', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-15 2'}
+		red = {'Red Armour Group', 'Red Armour Group 4', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-15'}
 	},
 	Golf = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD2'},
-		red = {'Red Armour Group 2', 'Red Armour Group 3','Golf Troops Tent 2','Red SAM SHORAD SA-15 2', 'Red SAM SHORAD SA-8','Golf Troops Tent', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-8 2'}
+		red = {'Red Armour Group 2', 'Red Armour Group 3','Golf Troops Tent 2','Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-8','Golf Troops Tent', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-8'}
 	},
 	farp4 = {
 		blue = {'blueInfantry', 'blueArmor', 'bluePD2'},
-		red = {'Enemy Task forces', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-8 2'}
+		red = {'Enemy Task forces', 'Red Armour Group 2', 'Red Armour Group 3', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-8'}
 	},
 	mission1 = {
 		blue = {'blueInfantry', 'blueArmor'},
-		red = {'Enemy ground forces', 'Red Armour Group', 'Red armoured group 1', 'Red SAM SHORAD Tor M2', 'Red SAM SHORAD Pantsir S1'}
+		red = {'Enemy ground forces', 'Red Armour Group', 'Red Armour Group 4', 'Red SAM SHORAD Tor M2', 'Red SAM SHORAD Pantsir S1'}
 	},
 	MiningFacilityFixed = {
 		blue = {},
@@ -180,11 +179,11 @@ upgrades = {
 	},
 	insurgentcamp = {
 		blue = {'blueInfantry', 'blueArmor'},
-		red = {'Enemy Task forces', 'Red Armour Group 2', 'Red Armour Group 3', 'InsurgentCamp', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-19 2', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-15 2'}
+		red = {'Enemy Task forces', 'Red Armour Group 2', 'Red Armour Group 3', 'InsurgentCamp', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-15'}
 	}, 
 	ChemSite = {
 		blue = {'blueInfantry', 'blueArmor'},
-		red = {'Enemy Task forces', 'Red SAM AAA','Chemical tank 3','Chemsite Factory','Chemical tank 2', 'Red Armour Group 2', 'Red Armour Group 3','Chemsite Factory 2','Chemical tank', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-15 2'}
+		red = {'Enemy Task forces', 'Red SAM AAA','Chemical tank 3','Chemsite Factory','Chemical tank 2', 'Red Armour Group 2', 'Red Armour Group 3','Chemsite Factory 2','Chemical tank', 'Red SAM SHORAD SA-15', 'Red SAM SHORAD SA-15'}
 	},
 	SecretTechFacility = {
 		blue = {'blueInfantry', 'blueArmor'},
@@ -196,11 +195,11 @@ upgrades = {
 	},
 	fueldepo = {
 		blue = {'blueInfantry', 'blueArmor'},
-		red = {'Enemy Task forces','FuelDepo Refinery', 'Fuel Depo tank','Red SAM SHORAD SA-8 2', 'Red SAM AAA', 'Fuel Depo tank 2', 'Red Armour Group 2', 'Red Armour Group 3','Fuel Depo tank 3', 'Red SAM SHORAD SA-8', 'Fuel Depo tank 4'}
+		red = {'Enemy Task forces','FuelDepo Refinery', 'Fuel Depo tank','Red SAM SHORAD SA-8', 'Red SAM AAA', 'Fuel Depo tank 2', 'Red Armour Group 2', 'Red Armour Group 3','Fuel Depo tank 3', 'Red SAM SHORAD SA-8', 'Fuel Depo tank 4'}
 	},
 	SAMEcho = {
 		blue = {'blueHAWK'},
-		red = {'Red SAM AAA Fixed Echo', 'Red SAM SHORAD SA-15 Fixed Echo', 'Red SAM SA-11 Fixed Echo','Red SAM SHORAD Pantsir S1 Fixed Echo'}
+		red = {'Red SAM AAA', 'Red SAM SHORAD SA-15', 'Red SAM SA-11','Red SAM SHORAD Pantsir S1'}
 	},
 	ammunitiondepounits = {
 		blue = {},
@@ -334,10 +333,12 @@ if lfs then
 end
 
 local cwSwap = {
-	['Red armoured group 1']   						= 'Red Armor Group8',
+	['Red Armour Group 4']   						= 'Red Armor Group8',
 	['Red Armour Group 2']   						= 'Red Armor Group9',
 	['Red Armour Group 3']  						= 'Red Armor Group6',
 	['Red Armour Group']  							= 'Red Armor Group7',
+	['Red SAM SHORAD Pantsir S1']  					= 'Red SAM SHORAD SA-8',
+	['Red SAM SHORAD Tor M2']  						= 'Red SAM SHORAD SA-8',
 	['Neustrashimy']  								= 'Molniya',
 	['blueArmor']  									= 'blueArmor-Coldwar',
 	['bluePD1']  									= 'bluePD1-Coldwar',
@@ -345,19 +346,8 @@ local cwSwap = {
 	['Fixed Ammunitiondepo Armor']  				= 'Fixed Ammunitiondepo Armor Coldwar',
 	['MiningFacility Fixed Group 1']  				= 'MiningFacility Fixed Group Coldwar',
 	['MiningFacility Fixed Group 2']  				= 'MiningFacility Fixed Group 2 Coldwar',
-	['Red SAM SHORAD SA-15 2']   					= 'Red SAM SHORAD SA-8 2',
-	['Red SAM SHORAD SA-15']   						= 'Red SAM SHORAD SA-8',
-	['Red SAM SHORAD SA-15 Fixed Soganlug']  		= 'Red SAM SHORAD SA-8 Fixed Soganlug',
-	['Red SAM SHORAD SA-15 Fixed SAM-Lima']     	= 'Red SAM SHORAD SA-8 Fixed SAM-Lima',
-	['Red SAM SHORAD Pantsir S1']  					= 'Red SAM SHORAD SA-8',
-	['Red SAM SHORAD Tor M2']  						= 'Red SAM SHORAD SA-8',
-	['Red SAM SHORAD SA-15 Fixed Golf-6']  			= 'Red SAM SHORAD SA-8 Fixed Golf-6',
-	['Red SAM SHORAD SA-15 Fixed Golf-5']  			= 'Red SAM SHORAD SA-8 Fixed Golf-5',
-	['Red SAM SHORAD SA-15 Fixed Charlie']  		= 'Red SAM SHORAD SA-8 Fixed Charlie',
 	['Red SAM SHORAD SA-15 Fixed ammunitiondepo']	= 'Red SAM SHORAD SA-8 Fixed ammunitiondepo',
-	['Red SAM SHORAD SA-15 Fixed alpha']  			= 'Red SAM SHORAD SA-8 Fixed alpha',
-	['Red SAM SHORAD SA-15 Fixed']  				= 'Red SAM SHORAD SA-8 Fixed 2',
-	['Red SAM SHORAD SA-15 Fixed Bravo'] 			= 'Red SAM SHORAD SA-8 Fixed Bravo',
+
 }
 
 local function deepSwap(t,s)
@@ -388,26 +378,13 @@ end
 
 local SamSwap = {
 
-	['Red SAM SA-11 Fixed SAM-Lima']  			= 'Red SAM SA-3 Fixed SAM-Lima',
-	['Red SAM SA-11']  							= 'Red SAM SA-2',
-	['Red SAM SA-10 Fixed Golf']  				= 'Red SAM SA-2 Fixed Golf',
-	['Red SAM SA-10 kilo Fixed']  				= 'Red SAM SA-2 kilo Fixed',
-	['Red SAM SA-10 India Fixed']  				= 'Red SAM SA-2 India Fixed',
-	['Red SAM SA-10 Fixed Delta']  				= 'Red SAM SA-2 Fixed Delta',
-	['Red SAM SA-11 Fixed Echo']  				= 'Red SAM SA-6 Fixed Echo',
-	['Red SAM SHORAD SA-15 2']   					= 'Red SAM SHORAD SA-8 2',
+	['Red SAM SA-11 Fixed SAM-Lima']  				= 'Red SAM SA-3 Fixed SAM-Lima',
+	['Red SAM SA-11']  								= 'Red SAM SA-2',
+	['Red SAM SA-10']  								= 'Red SAM SA-2',
 	['Red SAM SHORAD SA-15']   						= 'Red SAM SHORAD SA-8',
-	['Red SAM SHORAD SA-15 Fixed Soganlug']  		= 'Red SAM SHORAD SA-8 Fixed Soganlug',
-	['Red SAM SHORAD SA-15 Fixed SAM-Lima']     	= 'Red SAM SHORAD SA-8 Fixed SAM-Lima',
 	['Red SAM SHORAD Pantsir S1']  					= 'Red SAM SHORAD SA-8',
 	['Red SAM SHORAD Tor M2']  						= 'Red SAM SHORAD SA-8',
-	['Red SAM SHORAD SA-15 Fixed Golf-6']  			= 'Red SAM SHORAD SA-8 Fixed Golf-6',
-	['Red SAM SHORAD SA-15 Fixed Golf-5']  			= 'Red SAM SHORAD SA-8 Fixed Golf-5',
-	['Red SAM SHORAD SA-15 Fixed Charlie']  		= 'Red SAM SHORAD SA-8 Fixed Charlie',
 	['Red SAM SHORAD SA-15 Fixed ammunitiondepo']	= 'Red SAM SHORAD SA-8 Fixed ammunitiondepo',
-	['Red SAM SHORAD SA-15 Fixed alpha']  			= 'Red SAM SHORAD SA-8 Fixed alpha',
-	['Red SAM SHORAD SA-15 Fixed']  				= 'Red SAM SHORAD SA-8 Fixed 2',
-	['Red SAM SHORAD SA-15 Fixed Bravo'] 			= 'Red SAM SHORAD SA-8 Fixed Bravo',
 
 }
 
@@ -438,6 +415,93 @@ if NoSA10AndSA11 == true then
 end
 
 
+-- Randomized upgrade pools/templates (fresh start only)
+RandomRedPool = {
+	-- SAM
+	"Red SAM SA-10",
+	"Red SAM SA-11",
+	"Red SAM SA-6",
+	"Red SAM SA-2",
+	"Red SAM SA-3",
+	-- SHORAD
+	"Red SAM SHORAD Pantsir S1",
+	"Red SAM SHORAD SA-15",
+	"Red SAM SHORAD SA-19",
+	"Red SAM SHORAD SA-8",
+	"Red SAM SHORAD SA-13",
+	"Red SAM SHORAD SA-9",
+	"Red SAM SHORAD Tor M2",
+	-- AAA
+	"Red SAM AAA 2",
+	"Red SAM AAA 3",
+	"Red SAM AAA 4",
+	"Red SAM AAA",
+	-- Ground
+	"Enemy Task forces",
+	"Enemy ground forces",
+	-- Armor
+	"Red Armour Group",
+	"Red Armour Group 2",
+	"Red Armour Group 3",
+	-- Arty
+	"Red Arty",
+	"Red Arty 2",
+	"Red Arty 3",
+}
+
+RandomBluePool = {
+	"blueInfantry",
+	"blueArmor",
+	"bSamIR",
+	"bluePD",
+	"bluePD 2",
+	"bluePD1",
+	"bSamBig",
+	"bSamFinal",
+}
+
+if Era == 'Coldwar' then
+	deepSwap(RandomRedPool, cwSwap)
+	deepSwap(RandomBluePool, cwSwap)
+end
+
+if NoSA10AndSA11 == true then
+	deepSwapAgain(RandomRedPool, SamSwap)
+end
+
+ZoneSizeExclusions = {
+	small = { "sa-10", "sa-11","sa-2","pantsir","tor m2" },
+	medium = { "sa-10", "sa-11","pantsir"},
+}
+
+RandomUpgradeTemplates = {
+	small = { sam = 0, shorad = {1,2}, aaa = 2, ground = 1, armor = {1,2}, arty = {0,1}, total = {5,7} },
+	smallmedium = { sam = 0, shorad = {1,3}, aaa = 2, ground = 1, armor = {1,2}, arty = {0,1}, total = {6,8} },
+	medium = { sam = {0,1}, shorad = {1,3}, aaa = {1,3}, ground = 1, armor = {1,2}, arty = 1, total = {7,9} },
+	mediumbig = { sam = {0,1}, shorad = {2,3}, aaa = {1,2}, ground = 1, armor = 2, arty = 1, total = {7,10} },
+	big = { sam = 1, shorad = {2,3}, aaa = {1,2}, ground = 1, armor = 2, arty = 1, total = {8,10} },
+	bignosam = { sam = 0, shorad = {3,4}, aaa = {1,2}, ground = 1, armor = 2, arty = 1, total = {7,10} },
+	extrabig = { sam = 2, shorad = {3,4}, aaa = 2, ground = 1, armor = {1,2}, arty = 1, total = {10,12} },
+	sam = { sam = 1, shorad = {1,2}, aaa = {1,2}, ground = 0, armor = 0, arty = 0, total = {5,5} },
+	sam2 = { sam = 1, shorad = {1,2}, aaa = {1,2}, ground = 0, armor = {0,1}, arty = 0, total = {5,6} },
+	samspecial = { sam = 2, shorad = {1,3}, aaa = {1,2}, ground = 0, armor = 0, arty = 0, total = {6,7} },
+}
+
+RandomUpgradeTemplatesBlue = {
+	small = { sam = {0,1}, ground = 1, armor = 1, total = {2,3} },
+	smallmedium = { sam = {0,1}, ground = 1, armor = 1, total = {2,3} },
+	medium = { sam = {0,1}, ground = 1, armor = 1, total = {2,3} },
+	big = { sam = 1, ground = 1, armor = 1, total = {3,4} },
+	extrabig = { sam = {0,1}, ground = 1, armor = 1, total = {3,4} },
+	bignosam = { sam = {0,1}, ground = 1, armor = 1, total = {3,4} },
+	sam = { sam = {0,1}, ground = 1, armor = 1, total = {3,4} },
+	sam2 = { sam = {0,1}, ground = 1, armor = 1, total = {3,4} },
+	samspecial = { sam = {0,1}, ground = 1, armor = 1, total = {3,4} },
+}
+
+RandomGroundGroups = true
+RandomBlueGroups = true
+
 
 bc = BattleCommander:new(filepath, 10, 60)
 if RankingSystem then
@@ -450,64 +514,64 @@ zones = {
 	redcarrier = ZoneCommander:new({zone='Red Carrier', side=1, level=25, upgrades=upgrades.redships, crates={}, flavorText=flavor.redcarrier}),
 	bluecarrier = ZoneCommander:new({zone='Blue Carrier', side=2, level=25, upgrades=upgrades.blueships, crates={}, flavorText=flavor.bluecarrier}),
 	
-	batumi = ZoneCommander:new({zone='Batumi', side=2, level=25, upgrades=upgrades.airfield1, crates={}, flavorText=flavor.batumi}),
-	kobuleti = ZoneCommander:new({zone='Kobuleti', side=1, level=25, upgrades=upgrades.Kobuleti, crates={}, flavorText=flavor.kobuleti}),
-	senaki = ZoneCommander:new({zone='Senaki', side=1, level=25, upgrades=upgrades.airfield3, crates={}, flavorText=flavor.senaki}),
-	kutaisi = ZoneCommander:new({zone='Kutaisi', side=1, level=25, upgrades=upgrades.airfield4Kutaisi, crates={}, flavorText=flavor.kutaisi}),
-	sukhumi = ZoneCommander:new({zone='Sukhumi', side=1, level=25, upgrades=upgrades.airfield1, crates={}, flavorText=flavor.sukhumi}),
-	gudauta = ZoneCommander:new({zone='Gudauta', side=1, level=25, upgrades=upgrades.airfield2, crates={}, flavorText=flavor.gudauta}),
-	sochi = ZoneCommander:new({zone='Sochi', side=1, level=25, upgrades=upgrades.Sochi, crates={}, flavorText=flavor.sochi}),
-	gelendzhik = ZoneCommander:new({zone='Gelendzhik', side=1, level=25, upgrades=upgrades.airfield4, crates={}, flavorText=flavor.gelendzhik}),
-	novorossiysk = ZoneCommander:new({zone='Novorossiysk', side=1, level=25, upgrades=upgrades.Novorossiysk, crates={}, flavorText=flavor.novorossiysk}),
-	anapa = ZoneCommander:new({zone='Anapa', side=1, level=25, upgrades=upgrades.Anapa, crates={}, flavorText=flavor.anapa}),
-	krymsk = ZoneCommander:new({zone='Krymsk', side=1, level=25, upgrades=upgrades.airfield3, crates={}, flavorText=flavor.krymsk}),
-	krasnodarc = ZoneCommander:new({zone='Krasnodar-Center', side=1, level=25, upgrades=upgrades.airfield2, crates={}, flavorText=flavor.krasnodarc}),
-	krasnodarp = ZoneCommander:new({zone='Krasnodar-Pashkovsky', side=1, level=25, upgrades=upgrades.Pashkovsky, crates={}, flavorText=flavor.krasnodarp}),
-	maykop = ZoneCommander:new({zone='Maykop', side=1, level=25, upgrades=upgrades.airfield3Maykop, crates={}, flavorText=flavor.maykop}),
-	mineralnye = ZoneCommander:new({zone='Mineralnye', side=1, level=25, upgrades=upgrades.Mineralnye, crates={}, flavorText=flavor.mineralnye}),
-	nalchik = ZoneCommander:new({zone='Nalchik', side=1, level=25, upgrades=upgrades.airfield3, crates={}, flavorText=flavor.nalchik}),
-	mozdok = ZoneCommander:new({zone='Mozdok', side=1, level=25, upgrades=upgrades.airfield4, crates={}, flavorText=flavor.mozdok}),
-	beslan = ZoneCommander:new({zone='Beslan', side=1, level=25, upgrades=upgrades.airfield2, crates={}, flavorText=flavor.beslan}),
-	soganlug = ZoneCommander:new({zone='Soganlug', side=1, level=25, upgrades=upgrades.Soganlug, crates={}, flavorText=flavor.soganlug}),
-	tbilisi = ZoneCommander:new({zone='Tbilisi', side=1, level=25, upgrades=upgrades.airfield2, crates={}, flavorText=flavor.tbilisi}),
-	vaziani = ZoneCommander:new({zone='Vaziani', side=1, level=25, upgrades=upgrades.airfield4, crates={}, flavorText=flavor.vaziani}),
+	batumi = ZoneCommander:new({zone='Batumi', side=2, size='bignosam', level=25, upgrades=upgrades.airfield1, crates={}, flavorText=flavor.batumi}),
+	kobuleti = ZoneCommander:new({zone='Kobuleti', side=1, size='mediumbig', level=25, upgrades=upgrades.Kobuleti, crates={}, flavorText=flavor.kobuleti}),
+	senaki = ZoneCommander:new({zone='Senaki', side=1, size='mediumbig', level=25, upgrades=upgrades.airfield3, crates={}, flavorText=flavor.senaki}),
+	kutaisi = ZoneCommander:new({zone='Kutaisi', side=1, size='medium', level=25, upgrades=upgrades.airfield4Kutaisi, crates={}, flavorText=flavor.kutaisi}),
+	sukhumi = ZoneCommander:new({zone='Sukhumi', side=1, size='bignosam', level=25, upgrades=upgrades.airfield1, crates={}, flavorText=flavor.sukhumi}),
+	gudauta = ZoneCommander:new({zone='Gudauta', side=1, size='mediumbig', level=25, upgrades=upgrades.airfield2, crates={}, flavorText=flavor.gudauta}),
+	sochi = ZoneCommander:new({zone='Sochi', side=1, size='mediumbig', level=25, upgrades=upgrades.Sochi, crates={}, flavorText=flavor.sochi}),
+	gelendzhik = ZoneCommander:new({zone='Gelendzhik', side=1, size='mediumbig', level=25, upgrades=upgrades.airfield4, crates={}, flavorText=flavor.gelendzhik}),
+	novorossiysk = ZoneCommander:new({zone='Novorossiysk', side=1, size='bignosam', level=25, upgrades=upgrades.Novorossiysk, crates={}, flavorText=flavor.novorossiysk}),
+	anapa = ZoneCommander:new({zone='Anapa', side=1, size='mediumbig', level=25, upgrades=upgrades.Anapa, crates={}, flavorText=flavor.anapa}),
+	krymsk = ZoneCommander:new({zone='Krymsk', side=1, size='mediumbig', level=25, upgrades=upgrades.airfield3, crates={}, flavorText=flavor.krymsk}),
+	krasnodarc = ZoneCommander:new({zone='Krasnodar-Center', side=1, size='mediumbig', level=25, upgrades=upgrades.airfield2, crates={}, flavorText=flavor.krasnodarc}),
+	krasnodarp = ZoneCommander:new({zone='Krasnodar-Pashkovsky', side=1, size='mediumbig', level=25, upgrades=upgrades.Pashkovsky, crates={}, flavorText=flavor.krasnodarp}),
+	maykop = ZoneCommander:new({zone='Maykop', side=1, size='mediumbig', level=25, upgrades=upgrades.airfield3Maykop, crates={}, flavorText=flavor.maykop}),
+	mineralnye = ZoneCommander:new({zone='Mineralnye', side=1, size='bignosam', level=25, upgrades=upgrades.Mineralnye, crates={}, flavorText=flavor.mineralnye}),
+	nalchik = ZoneCommander:new({zone='Nalchik', side=1, size='mediumbig', level=25, upgrades=upgrades.airfield3, crates={}, flavorText=flavor.nalchik}),
+	mozdok = ZoneCommander:new({zone='Mozdok', side=1, size='mediumbig', level=25, upgrades=upgrades.airfield4, crates={}, flavorText=flavor.mozdok}),
+	beslan = ZoneCommander:new({zone='Beslan', side=1, size='mediumbig', level=25, upgrades=upgrades.airfield2, crates={}, flavorText=flavor.beslan}),
+	soganlug = ZoneCommander:new({zone='Soganlug', side=1, size='smallmedium', level=25, upgrades=upgrades.Soganlug, crates={}, flavorText=flavor.soganlug}),
+	tbilisi = ZoneCommander:new({zone='Tbilisi', side=1, size='mediumbig', level=25, upgrades=upgrades.airfield2, crates={}, flavorText=flavor.tbilisi}),
+	vaziani = ZoneCommander:new({zone='Vaziani', side=1, size='mediumbig', level=25, upgrades=upgrades.airfield4, crates={}, flavorText=flavor.vaziani}),
 	
-	alpha = ZoneCommander:new({zone='Alpha', side=1, level=25, upgrades=upgrades.Alpha, crates={}, flavorText=flavor.alpha}),
-	bravo = ZoneCommander:new({zone='Bravo', side=1, level=25, upgrades=upgrades.farp2, crates={}, flavorText=flavor.bravo}),
-	charlie = ZoneCommander:new({zone='Charlie', side=1, level=25, upgrades=upgrades.farp3, crates={}, flavorText=flavor.charlie}),
-	delta = ZoneCommander:new({zone='Delta', side=1, level=25, upgrades=upgrades.farp4, crates={}, flavorText=flavor.delta}),
-	echo = ZoneCommander:new({zone='Echo', side=1, level=25, upgrades=upgrades.Echo, crates={}, flavorText=flavor.echo}),
-	foxtrot = ZoneCommander:new({zone='Foxtrot', side=1, level=25, upgrades=upgrades.farp2, crates={}, flavorText=flavor.foxtrot}),
-	golf = ZoneCommander:new({zone='Golf', side=1, level=25, upgrades=upgrades.Golf, crates={}, flavorText=flavor.golf}),
-	hotel = ZoneCommander:new({zone='Hotel', side=1, level=25, upgrades=upgrades.farp4, crates={}, flavorText=flavor.hotel}),
-	india = ZoneCommander:new({zone='India', side=1, level=25, upgrades=upgrades.farp1, crates={}, flavorText=flavor.india}),
-	juliett = ZoneCommander:new({zone='Juliett', side=1, level=25, upgrades=upgrades.farp2, crates={}, flavorText=flavor.juliett}),
-	kilo = ZoneCommander:new({zone='Kilo', side=1, level=25, upgrades=upgrades.farp3, crates={}, flavorText=flavor.kilo}),
-	lima = ZoneCommander:new({zone='Lima', side=1, level=25, upgrades=upgrades.farp4, crates={}, flavorText=flavor.lima}),
+	alpha = ZoneCommander:new({zone='Alpha', side=1, size='smallmedium', level=25, upgrades=upgrades.Alpha, crates={}, flavorText=flavor.alpha}),
+	bravo = ZoneCommander:new({zone='Bravo', side=1, size='smallmedium', level=25, upgrades=upgrades.farp2, crates={}, flavorText=flavor.bravo}),
+	charlie = ZoneCommander:new({zone='Charlie', side=1, size='smallmedium', level=25, upgrades=upgrades.farp3, crates={}, flavorText=flavor.charlie}),
+	delta = ZoneCommander:new({zone='Delta', side=1, size='small', level=25, upgrades=upgrades.farp4, crates={}, flavorText=flavor.delta}),
+	echo = ZoneCommander:new({zone='Echo', side=1, size='smallmedium', level=25, upgrades=upgrades.Echo, crates={}, flavorText=flavor.echo}),
+	foxtrot = ZoneCommander:new({zone='Foxtrot', side=1, size='smallmedium', level=25, upgrades=upgrades.farp2, crates={}, flavorText=flavor.foxtrot}),
+	golf = ZoneCommander:new({zone='Golf', side=1, size='smallmedium', level=25, upgrades=upgrades.Golf, crates={}, flavorText=flavor.golf}),
+	hotel = ZoneCommander:new({zone='Hotel', side=1, size='small', level=25, upgrades=upgrades.farp4, crates={}, flavorText=flavor.hotel}),
+	india = ZoneCommander:new({zone='India', side=1, size='smallmedium', level=25, upgrades=upgrades.farp1, crates={}, flavorText=flavor.india}),
+	juliett = ZoneCommander:new({zone='Juliett', side=1, size='small', level=25, upgrades=upgrades.farp2, crates={}, flavorText=flavor.juliett}),
+	kilo = ZoneCommander:new({zone='Kilo', side=1, size='small', level=25, upgrades=upgrades.farp3, crates={}, flavorText=flavor.kilo}),
+	lima = ZoneCommander:new({zone='Lima', side=1, size='small', level=25, upgrades=upgrades.farp4, crates={}, flavorText=flavor.lima}),
 	
-	miningfacility = ZoneCommander:new({zone='MiningFacility', side=1, level=25, upgrades=upgrades.MiningFacilityFixed, crates={}, flavorText=flavor.miningfacility}),
-	insurgentcamp = ZoneCommander:new({zone='InsurgentCamp', side=1, level=25, upgrades=upgrades.insurgentcamp, crates={}, flavorText=flavor.insurgentcamp}),
-	secrettechfacility = ZoneCommander:new({zone='SecretTechFacility', side=1, level=25, upgrades=upgrades.SecretTechFacility, crates={}, flavorText=flavor.secrettechfacility}),
-	fueldepo = ZoneCommander:new({zone='FuelDepo', side=1, level=20, upgrades=upgrades.fueldepo, crates={}, flavorText=flavor.fueldepo}),
-	ammonitiondepo = ZoneCommander:new({zone='AmmonitionDepo', side=1, level=25, upgrades=upgrades.ammunitiondepounits, crates={}, flavorText=flavor.ammonitiondepo}),
-	tankfactory = ZoneCommander:new({zone='TankFactory', side=1, level=25, upgrades=upgrades.TankFactory, crates={}, flavorText=flavor.tankfactory}),
-	chemsite = ZoneCommander:new({zone='ChemSite', side=1, level=25, upgrades=upgrades.ChemSite, crates={}, flavorText=flavor.chemsite}),
-	artilleryfactory = ZoneCommander:new({zone='ArtilleryFactory', side=1, level=25, upgrades=upgrades.ArtilleryFactory, crates={}, flavorText=flavor.artilleryfactory}),
-	samsite = ZoneCommander:new({zone='SAMSite', side=1, level=25, upgrades=upgrades.sam5, crates={}, flavorText=flavor.samsite}),
+	miningfacility = ZoneCommander:new({zone='MiningFacility', side=1, size='small', level=25, upgrades=upgrades.MiningFacilityFixed, crates={}, flavorText=flavor.miningfacility}),
+	insurgentcamp = ZoneCommander:new({zone='InsurgentCamp', side=1, size='mediumbig', level=25, upgrades=upgrades.insurgentcamp, crates={}, flavorText=flavor.insurgentcamp}),
+	secrettechfacility = ZoneCommander:new({zone='SecretTechFacility', side=1, size='smallmedium', level=25, upgrades=upgrades.SecretTechFacility, crates={}, flavorText=flavor.secrettechfacility}),
+	fueldepo = ZoneCommander:new({zone='FuelDepo', side=1, size='smallmedium', level=20, upgrades=upgrades.fueldepo, crates={}, flavorText=flavor.fueldepo}),
+	ammonitiondepo = ZoneCommander:new({zone='AmmonitionDepo', side=1, size='small', level=25, upgrades=upgrades.ammunitiondepounits, crates={}, flavorText=flavor.ammonitiondepo}),
+	tankfactory = ZoneCommander:new({zone='TankFactory', side=1, size='smallmedium', level=25, upgrades=upgrades.TankFactory, crates={}, flavorText=flavor.tankfactory}),
+	chemsite = ZoneCommander:new({zone='ChemSite', side=1, size='smallmedium', level=25, upgrades=upgrades.ChemSite, crates={}, flavorText=flavor.chemsite}),
+	artilleryfactory = ZoneCommander:new({zone='ArtilleryFactory', side=1, size='smallmedium', level=25, upgrades=upgrades.ArtilleryFactory, crates={}, flavorText=flavor.artilleryfactory}),
+	samsite = ZoneCommander:new({zone='SAMSite', side=1, size='sam', level=25, upgrades=upgrades.sam5, crates={}, flavorText=flavor.samsite}),
 
-	samalpha = ZoneCommander:new({zone='SAM-Alpha', side=1, level=25, upgrades=upgrades.samalphaFixed, crates={}, flavorText=flavor.samalpha}),
-	sambravo = ZoneCommander:new({zone='SAM-Bravo', side=1, level=25, upgrades=upgrades.sambravoFixed, crates={}, flavorText=flavor.sambravo}),
-	samcharlie = ZoneCommander:new({zone='SAM-Charlie', side=1, level=25, upgrades=upgrades.samcharliefixed, crates={}, flavorText=flavor.samcharlie}),
-	samdelta = ZoneCommander:new({zone='SAM-Delta', side=1, level=25, upgrades=upgrades.samdeltaFixed, crates={}, flavorText=flavor.samdelta}),
-	samecho = ZoneCommander:new({zone='SAM-Echo', side=1, level=25, upgrades=upgrades.SAMEcho, crates={}, flavorText=flavor.samecho}),
-	samfoxtrot = ZoneCommander:new({zone='SAM-Foxtrot', side=1, level=25, upgrades=upgrades.samFoxtrotFixed, crates={}, flavorText=flavor.samfoxtrot}),
-	samgolf = ZoneCommander:new({zone='SAM-Golf', side=1, level=25, upgrades=upgrades.samgolf, crates={}, flavorText=flavor.samgolf}),
-	samhotel = ZoneCommander:new({zone='SAM-Hotel', side=1, level=25, upgrades=upgrades.sam3, crates={}, flavorText=flavor.samhotel}),
-	samindia = ZoneCommander:new({zone='SAM-India', side=1, level=25, upgrades=upgrades.sam4indiafixed, crates={}, flavorText=flavor.samindia}),
-	samjuliett = ZoneCommander:new({zone='SAM-Juliett', side=1, level=25, upgrades=upgrades.sam5, crates={}, flavorText=flavor.samjuliett}),
-	samkilo = ZoneCommander:new({zone='SAM-Kilo', side=1, level=25, upgrades=upgrades.sam4kilofixed, crates={}, flavorText=flavor.samkilo}),
-	samlima = ZoneCommander:new({zone='SAM-Lima', side=1, level=25, upgrades=upgrades.SamLimaFixedSA11, crates={}, flavorText=flavor.samlima}),
-	sammike = ZoneCommander:new({zone='SAM-Mike', side=1, level=25, upgrades=upgrades.sam6, crates={}, flavorText=flavor.sammike}),
+	samalpha = ZoneCommander:new({zone='SAM-Alpha', side=1, size='sam', level=25, upgrades=upgrades.samalphaFixed, crates={}, flavorText=flavor.samalpha,noLongRangeSam=true}),
+	sambravo = ZoneCommander:new({zone='SAM-Bravo', side=1, size='sam', level=25, upgrades=upgrades.sambravoFixed, crates={}, flavorText=flavor.sambravo, noLongRangeSam=true}),
+	samcharlie = ZoneCommander:new({zone='SAM-Charlie', side=1, size='sam', level=25, upgrades=upgrades.samcharliefixed, crates={}, flavorText=flavor.samcharlie}),
+	samdelta = ZoneCommander:new({zone='SAM-Delta', side=1, size='sam', level=25, upgrades=upgrades.samdeltaFixed, crates={}, flavorText=flavor.samdelta}),
+	samecho = ZoneCommander:new({zone='SAM-Echo', side=1, size='sam', level=25, upgrades=upgrades.SAMEcho, crates={}, flavorText=flavor.samecho}),
+	samfoxtrot = ZoneCommander:new({zone='SAM-Foxtrot', side=1, size='sam', level=25, upgrades=upgrades.samFoxtrotFixed, crates={}, flavorText=flavor.samfoxtrot}),
+	samgolf = ZoneCommander:new({zone='SAM-Golf', side=1, size='samspecial', level=25, upgrades=upgrades.samgolf, crates={}, flavorText=flavor.samgolf}),
+	samhotel = ZoneCommander:new({zone='SAM-Hotel', side=1, size='sam', level=25, upgrades=upgrades.sam3, crates={}, flavorText=flavor.samhotel}),
+	samindia = ZoneCommander:new({zone='SAM-India', side=1, size='sam', level=25, upgrades=upgrades.sam4indiafixed, crates={}, flavorText=flavor.samindia}),
+	samjuliett = ZoneCommander:new({zone='SAM-Juliett', side=1, size='sam', level=25, upgrades=upgrades.sam5, crates={}, flavorText=flavor.samjuliett}),
+	samkilo = ZoneCommander:new({zone='SAM-Kilo', side=1, size='sam', level=25, upgrades=upgrades.sam4kilofixed, crates={}, flavorText=flavor.samkilo}),
+	samlima = ZoneCommander:new({zone='SAM-Lima', side=1, size='sam', level=25, upgrades=upgrades.SamLimaFixedSA11, crates={}, flavorText=flavor.samlima}),
+	sammike = ZoneCommander:new({zone='SAM-Mike', side=1, size='sam', level=25, upgrades=upgrades.sam6, crates={}, flavorText=flavor.sammike}),
 	hidden = ZoneCommander:new({zone='Hidden', side=0, level=25, upgrades=upgrades.HiddenGroup, crates={}, flavorText=flavor.hidden0,ForceNeutral=true}),
 	hidden1 = ZoneCommander:new({zone='Hidden1', side=1, level=25, upgrades=upgrades.Hidden1Group, crates={}, flavorText=flavor.hidden1,ForceNeutral=true}),
 	hidden2 = ZoneCommander:new({zone='Hidden2', side=0, level=25, upgrades=upgrades.Hidden2Group, crates={}, flavorText=flavor.hidden2,ForceNeutral=true}),
@@ -1484,32 +1548,27 @@ timer.scheduleFunction(function()
 
 if Era == 'Coldwar' then
     bc:roamGroupsToLocalSubZone({
-		"Red SAM AAA group 2 #",
+		"Red SAM AAA 2 #",
 		"Red Armour Group #",
 		"Red SAM SHORAD SA-15 #",
-		"Red SAM SHORAD SA-15 2 #",
 		"Red SAM SHORAD SA-19 #",
 		"Red SAM SHORAD SA-8 #",
-		"Red SAM SHORAD SA-8 2 #",
 		'Red Armor Group8 #',
 		'Red Armor Group9 #',
 		'Red Armor Group6 #',
 		'Red Armor Group7 #',
-	}, 50)
+	}, 50, nil, { zoneMin = 210, zoneMax = 600, cycleMin = 600, cycleMax = 1200 })
 else
 	bc:roamGroupsToLocalSubZone({
-		"Red armoured group 1 #",
+		"Red Armour Group 4 #",
 		"Red Armour Group 2 #",
-		"Red SAM AAA group 2 #",
+		"Red SAM AAA 2 #",
 		"Red Armour Group 3 #",
 		"Red Armour Group #",
 		"Red SAM SHORAD SA-15 #",
-		"Red SAM SHORAD SA-15 2 #",
 		"Red SAM SHORAD SA-19 #",
-		"Red SAM SHORAD SA-19 2 #",
 		"Red SAM SHORAD SA-8 #",
-		"Red SAM SHORAD SA-8 2 #",
-	}, 50)
+	}, 50, nil, { zoneMin = 210, zoneMax = 600, cycleMin = 600, cycleMax = 1200 })
 end
 end, {}, timer.getTime() + 30)
 
@@ -2597,6 +2656,241 @@ local function buildLogisticAllowTable()
 	return allowed
 end
 
+-- Red AI zone upgrade helpers
+local function buildRedAllowTable()
+	local t = {}
+	for _, z in pairs(bc:getZones()) do
+		local max = 1 + (bc.globalExtraUnlock and 1 or 0)
+		local used = (type(z.getUpgradesUsed) == "function") and z:getUpgradesUsed(1) or (z.upgradesUsed or 0)
+		if z.side == 1 and z.active and not z.suspended and not z.isHidden
+		   and not z.zone:lower():find("carrier")
+		   and used < max then
+			t[z.zone] = true
+		end
+	end
+	return t
+end
+
+local function normalizeBuiltName(name)
+	return name and name:gsub("#%d+$", "") or name
+end
+
+local function buildStaticNameSet(zoneObj)
+	local statics = {}
+	for _, data in ipairs(zoneObj.newStatics or {}) do
+		if data and data.name then
+			statics[data.name] = true
+			local base = normalizeBuiltName(data.name)
+			if base then
+				statics[base] = true
+			end
+		end
+	end
+	return statics
+end
+
+local function buildBuiltNameSet(zoneObj)
+	local built = {}
+	for _, name in pairs(zoneObj.built or {}) do
+		local base = normalizeBuiltName(name)
+		if base then
+			built[base] = true
+		end
+	end
+	return built
+end
+
+local function buildUpgradeNameSet(zoneObj)
+	local names = {}
+	for _, name in ipairs(zoneObj.upgrades and zoneObj.upgrades.red or {}) do
+		local base = normalizeBuiltName(name)
+		if base then
+			names[base] = true
+		end
+	end
+	return names
+end
+
+local function resolveMinMax(val)
+	if type(val) == "table" then
+		local minv = val[1] or 0
+		local maxv = val[2] or minv
+		return minv, maxv
+	end
+	if type(val) == "number" then
+		return val, val
+	end
+	return 0, 0
+end
+
+local function countZoneRedCategories(zoneObj)
+	local counts = { sam = 0, shorad = 0, aaa = 0, ground = 0, armor = 0, arty = 0 }
+	for _, name in ipairs(zoneObj.upgrades and zoneObj.upgrades.red or {}) do
+		if name and not isStaticUpgrade(name) then
+			local cat = classifyUpgradeName(name)
+			if counts[cat] ~= nil then
+				counts[cat] = counts[cat] + 1
+			end
+		end
+	end
+	return counts
+end
+
+local function buildRedPoolsForZone(zoneObj)
+	local zoneSize = getZoneSize(zoneObj)
+	local pools = { sam = {}, shorad = {}, aaa = {}, ground = {}, armor = {}, arty = {}, other = {} }
+	fillPoolsFrom(getGlobalRedPool(), pools, zoneSize)
+	local existing = buildUpgradeNameSet(zoneObj)
+
+	local function filterPool(src)
+		local out = {}
+		for _, name in ipairs(src or {}) do
+			local base = normalizeBuiltName(name)
+			if base and not existing[base] then
+				out[#out+1] = name
+			end
+		end
+		return out
+	end
+
+	for k, v in pairs(pools) do
+		pools[k] = filterPool(v)
+	end
+	return pools
+end
+
+local function chooseRedUpgradeCategory(counts, template)
+	local order = { "sam", "shorad", "aaa", "ground", "armor", "arty" }
+	local deficits = {}
+	for _, cat in ipairs(order) do
+		local minv = resolveMinMax(template and template[cat])
+		local have = counts[cat] or 0
+		deficits[cat] = math.max(0, minv - have)
+	end
+	if deficits.sam and deficits.sam > 0 then
+		return "sam"
+	end
+	for i = 2, #order do
+		local cat = order[i]
+		if deficits[cat] and deficits[cat] > 0 then
+			return cat
+		end
+	end
+	local bestCat, bestCount = nil, nil
+	for _, cat in ipairs(order) do
+		local have = counts[cat] or 0
+		if bestCount == nil or have < bestCount then
+			bestCount = have
+			bestCat = cat
+		end
+	end
+	return bestCat
+end
+
+local function pickRedUpgradeForZone(zoneObj)
+	local zoneSize = getZoneSize(zoneObj)
+	local template = RandomUpgradeTemplates and RandomUpgradeTemplates[zoneSize]
+	if not template then
+		return nil
+	end
+	local counts = countZoneRedCategories(zoneObj)
+	local pools = buildRedPoolsForZone(zoneObj)
+	local order = { "sam", "shorad", "aaa", "ground", "armor", "arty" }
+
+	local cat = chooseRedUpgradeCategory(counts, template)
+	if cat and pools[cat] and #pools[cat] > 0 then
+		return pools[cat][math.random(1, #pools[cat])]
+	end
+
+	for _, alt in ipairs(order) do
+		if pools[alt] and #pools[alt] > 0 then
+			return pools[alt][math.random(1, #pools[alt])]
+		end
+	end
+
+	if pools.other and #pools.other > 0 then
+		return pools.other[math.random(1, #pools.other)]
+	end
+	return nil
+end
+
+local function getRedUpgradeCandidates(zoneObj)
+	local candidates = {}
+	if not (zoneObj and zoneObj.upgrades and zoneObj.upgrades.red) then
+		return candidates
+	end
+	local built = buildBuiltNameSet(zoneObj)
+	local statics = buildStaticNameSet(zoneObj)
+	for _, name in ipairs(zoneObj.upgrades.red) do
+		if name then
+			local base = normalizeBuiltName(name)
+			local lname = name:lower()
+			if not statics[name] and not statics[base] and not lname:find("fixed") then
+				if not built[base] then
+					candidates[#candidates+1] = name
+				end
+			end
+		end
+	end
+	return candidates
+end
+
+local RED_ZONE_UPGRADE_ID = "redzoneupgrade"
+local RED_ZONE_UPGRADE_COST = 5000
+
+local function redZoneUpgradeAction()
+	local allow = buildRedAllowTable()
+	if not next(allow) then
+		return "No eligible red zones"
+	end
+
+	local zoneChoices = {}
+	for zName,_ in pairs(allow) do
+		local z = bc:getZoneByName(zName)
+		if z then
+			local slot = pickRedUpgradeForZone(z)
+			if slot then
+				zoneChoices[#zoneChoices+1] = { zone = z, slot = slot }
+			end
+		end
+	end
+	if #zoneChoices == 0 then
+		return "No valid upgrades"
+	end
+
+	local pick = zoneChoices[math.random(1,#zoneChoices)]
+	local zoneObj = pick.zone
+	local slot = pick.slot
+
+	local ok = zoneObj:addExtraSlot(slot)
+	if not ok then
+		return "Zone already upgraded"
+	end
+	if type(zoneObj.updateLabel) == "function" then
+		zoneObj:updateLabel()
+	end
+	zoneObj:upgrade(true)
+	trigger.action.outTextForCoalition(1, "Red forces reinforced at "..zoneObj.zone, 10)
+	return true
+end
+
+bc:registerShopItem(RED_ZONE_UPGRADE_ID, "Red zone upgrade", RED_ZONE_UPGRADE_COST, redZoneUpgradeAction)
+
+local RED_MASS_ATTACK_ID = "redmassattack"
+local RED_MASS_ATTACK_COST = 6000
+
+local function redMassAttackAction()
+	if not bc.triggerRedMassAttack then
+		return "Mass attack unavailable"
+	end
+	return bc:triggerRedMassAttack()
+end
+
+bc:registerShopItem(RED_MASS_ATTACK_ID, "Red mass airbase attack", RED_MASS_ATTACK_COST, redMassAttackAction)
+
+-- end of red
+
+
 local function buildWarehouseResupplyAllowTable()
 	local allowed = {}
 	if not WarehouseLogistics then
@@ -3106,6 +3400,8 @@ ShopRankRequirements = ShopRankRequirements or {
 
 
 -- first value below is how much in stock, the second number value is the ranking in the shop menu list, the third is the new ranking system.
+bc:addShopItem(1, 'redzoneupgrade', -1, 1) -- red AI zone upgrade
+bc:addShopItem(1, 'redmassattack', -1, 2) -- red AI mass airbase attack
 bc:addShopItem(2, 'jtac', -1, 1, ShopRankRequirements.jtac) -- MQ-9 Reaper JTAC mission
 bc:addShopItem(2, 'dynamiccap', -1, 2, ShopRankRequirements.dynamiccap) -- CAP
 bc:addShopItem(2, 'dynamiccas', -1, 3, ShopRankRequirements.dynamiccas) -- CAS
@@ -3183,7 +3479,14 @@ supplyZones = {
 lc = LogisticCommander:new({battleCommander = bc, supplyZones = supplyZones})
 lc:init()
 
-bc:loadFromDisk() --will load and overwrite default zone levels, sides, funds and available shop items
+bc:loadFromDisk() -- will load and overwrite default zone levels, sides, funds, and available shop items
+if zonePersistance and zonePersistance.zones and next(zonePersistance.zones) == nil then
+    bc.saveLoaded = false
+end
+if not bc.saveLoaded then
+	applyRandomRedUpgrades()
+	applyRandomBlueUpgrades()
+end
 bc:init()
 RewardContribution = RewardContribution or {infantry = 10, ground = 10, sam = 30, airplane = 50, ship = 200, helicopter=50, crate=100, rescue = 300, ['Zone upgrade'] = 100, ['Zone capture'] = 200}
 bc:startRewardPlayerContribution(15,RewardContribution)
@@ -4395,7 +4698,7 @@ Lat long Decimal Minutes: N 44°27.248' E 39°44.234'
 
 Elevation: 677 feet
 
-reward = 500]],
+reward = 1000]],
 	messageStart = "New strike mission: Strike High value target building",
 	messageEnd = "Strike mission ended: Strike High value target building",
     startAction = function()
@@ -4452,7 +4755,7 @@ Lat long Decimal Minutes: N 42°50.788' E 41°15.108'
 
 Elevation: 193 feet
 
-reward = 500]],
+reward = 1000]],
 	messageStart = "New strike mission: Strike another High value target building",
 	messageEnd = "Strike mission ended: Strike another High value target building",
     startAction = function()

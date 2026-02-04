@@ -6,7 +6,7 @@ end, {}, 2)
 
 missionMarkId = missionMarkId or 900000000
 if Era == 'Gulfwar' then Era = 'Coldwar' end
-
+MISSING_GROUPS = {}
 PATH_CACHE=PATH_CACHE or{}
 Respawn = {}
 farpBuiltByConvoy={}
@@ -307,18 +307,18 @@ end
 local subZoneCache = {}
 
 local function collectSubZones(baseName)
-    if subZoneCache[baseName] then return subZoneCache[baseName] end
-    local zones = {}
-    for i = 1, 100, 1 do
-        local zname = baseName .. '-' .. i
-        if getTriggerZone(zname) then
-            zones[#zones + 1] = zname
-        else
-            break
-        end
-    end
-    subZoneCache[baseName] = zones
-    return zones
+	if subZoneCache[baseName] then return subZoneCache[baseName] end
+	local zones = {}
+	if not zoneByName then buildZoneByName() end
+	local prefix = baseName .. "-"
+	for zname,_ in pairs(zoneByName or {}) do
+		if zname:sub(1, #prefix) == prefix then
+			zones[#zones + 1] = zname
+		end
+	end
+	table.sort(zones)
+	subZoneCache[baseName] = zones
+	return zones
 end
 
 local zoneCenterCache = {}
@@ -625,6 +625,40 @@ do
 	
 	spawnCounter = spawnCounter or {}
 
+	local function isStrategicSamGroup(grname)
+		if not grname then return false end
+		local n = grname:lower()
+		return n:find("sa%-2", 1, false) or n:find("sa%-3", 1, false)
+			or n:find("sa%-6", 1, false) or n:find("sa%-10", 1, false)
+			or n:find("sa%-11", 1, false) or n:find("bluepd", 1, false)
+			or n:find("bluehawk", 1, false)
+	end
+
+	local function getSamSubZones(zoneName, used)
+		local samZones, samUnused = {}, {}
+		if not zoneByName then buildZoneByName() end
+		local prefix = zoneName:lower() .. "-sam-"
+		for zname, _ in pairs(zoneByName or {}) do
+			if zname:lower():find(prefix, 1, true) then
+				samZones[#samZones + 1] = zname
+				if not (used and used[zname]) and not USED_SUB_ZONES[zname] then
+					samUnused[#samUnused + 1] = zname
+				end
+			end
+		end
+		return samZones, samUnused
+	end
+
+	local function filterOutSamZones(zoneName, zones)
+		local filtered = {}
+		local prefix = zoneName:lower() .. "-sam-"
+		for _, z in ipairs(zones) do
+			if not z:lower():find(prefix, 1, true) then
+				filtered[#filtered + 1] = z
+			end
+		end
+		return filtered
+	end
 
 
 	function CustomZone:spawnGroup(grname, forceFirst)
@@ -635,8 +669,20 @@ do
 
 	if grname:find("Fixed") then
 		local grp = GROUP:FindByName(grname)
-		if not grp then trigger.action.outText(grname.." not found, Report it to leka and what map", 60) end
-		local tpl = grp and grp:GetTemplate() or UTILS.DeepCopy(_DATABASE.Templates.Groups[grname].Template)
+		if not grp then
+			trigger.action.outText("Missing upgrade group "..tostring(grname).." in zone "..tostring(self.name)..". Will replace if possible.", 10)
+			MISSING_GROUPS[grname] = true
+		end
+		local tpl = grp and grp:GetTemplate()
+		if not tpl then
+			local db = _DATABASE and _DATABASE.Templates and _DATABASE.Templates.Groups and _DATABASE.Templates.Groups[grname]
+			if not db or not db.Template then
+				env.info("Fixed group template missing: "..tostring(grname).." in zone "..tostring(self.name))
+				MISSING_GROUPS[grname] = true
+				return nil
+			end
+			tpl = UTILS.DeepCopy(db.Template)
+		end
 		if grp and grp:IsAlive() then grp:Destroy() end
 		local g   = SPAWN:NewFromTemplate(tpl,grname,nil,true):InitHiddenOnMFD():Spawn()
 		return g and { name = g:GetName() } or trigger.action.outText("Failed to spawn group: "..grname.." in zone "..self.name,10)
@@ -649,7 +695,18 @@ do
 					unused[#unused + 1] = z
 			end
 	end
-	local zonePool = (#unused > 0) and unused or all
+	local zonePool = nil
+	if isStrategicSamGroup(grname) then
+		local samAll, samUnused = getSamSubZones(self.name, self.usedSpawnZones)
+		if #samAll > 0 then
+			zonePool = (#samUnused > 0) and samUnused or samAll
+		end
+	end
+	if not zonePool then
+		local filteredAll = filterOutSamZones(self.name, all)
+		local filteredUnused = filterOutSamZones(self.name, unused)
+		zonePool = (#filteredUnused > 0) and filteredUnused or filteredAll
+	end
 	if #zonePool==0 then zonePool[#zonePool+1]=self.name end
 
 	while #zonePool>0 do
@@ -2047,11 +2104,19 @@ end
 
 function RespawnGroup(grpName)
   local old=GROUP:FindByName(grpName)
-  if not old then trigger.action.outText("Group "..tostring(grpName).." not found, please report it to Leka",30) 
+  if not old then
+	trigger.action.outText("Group "..tostring(grpName).." not found, please report it to Leka",30)
 	env.info("Group "..tostring(grpName).." not found, please report it to Leka")
-	end
+	MISSING_GROUPS[grpName] = true
+  end
   if old then old:Destroy() end
-  local tpl=UTILS.DeepCopy(_DATABASE.Templates.Groups[grpName].Template)
+  local db = _DATABASE and _DATABASE.Templates and _DATABASE.Templates.Groups and _DATABASE.Templates.Groups[grpName]
+  if not db or not db.Template then
+	env.info("RespawnGroup template missing: "..tostring(grpName))
+	MISSING_GROUPS[grpName] = true
+	return nil
+  end
+  local tpl=UTILS.DeepCopy(db.Template)
   tpl.name=grpName
   return SPAWN:NewFromTemplate(tpl,grpName,nil,true):InitRadioCommsOnOff(false):Spawn()
 end
@@ -2250,7 +2315,9 @@ end
 
 function RegisterGroupTarget(groupName,reward,stat,flagName,setCustomOnComplete)
     local g = Group.getByName(groupName)
-    if not g then return end
+    if not g then
+	trigger.action.outText("Warning: RegisterGroupTarget failed, group "..tostring(groupName).." not found.",30)
+	return end
     local tab = {reward = reward, stat = stat, alive = {}, remaining = 0, killers = {}}
     if flagName then tab.flag = flagName end
 	tab.custom = setCustomOnComplete
@@ -4487,11 +4554,19 @@ function BattleCommander:showEmergencyNeutralZoneMenu(coalition, menuname, callb
 		st = { menu=nil, items={}, callback=nil }
 		self._emergencyNeutralZoneMenus[key] = st
 	end
-	st.callback = callback or st.callback
-	for i=1,#st.items do
-		missionCommands.removeItemForCoalition(coalition, st.items[i])
+	-- If we're starting a new capture selection, force a fresh submenu handle.
+	if callback ~= nil and st.menu then
+		missionCommands.removeItemForCoalition(coalition, st.menu)
+		st.menu = nil
+		st.items = {}
 	end
-	st.items = {}
+	st.callback = callback or st.callback
+	if #st.items > 0 then
+		for i=1,#st.items do
+			missionCommands.removeItemForCoalition(coalition, st.items[i])
+		end
+		st.items = {}
+	end
 	if not st.callback then return st.menu end
 
 	local eligible = 0
@@ -5008,10 +5083,25 @@ function BattleCommander:getStateTable()
             wasBlue           = v.wasBlue or false,
             firstCaptureByRed = v.firstCaptureByRed or false,
             upgradesUsed      = v.upgradesUsed,
+            upgradesUsedRed   = v.upgradesUsedRed,
+            upgradesUsedBlue  = v.upgradesUsedBlue,
 		extraUpgrade      = {},
 		lat_long 	  	  = v.lat_long,
 		logisticCenter   = (v.LogisticCenter == true)
         }
+
+		if v.randomUpgradesRed then
+			states.zones[v.zone].randomUpgradesRed = {}
+			for i2, v2 in ipairs(v.randomUpgradesRed) do
+				states.zones[v.zone].randomUpgradesRed[#states.zones[v.zone].randomUpgradesRed+1] = v2
+			end
+		end
+		if v.randomUpgradesBlue then
+			states.zones[v.zone].randomUpgradesBlue = {}
+			for i2, v2 in ipairs(v.randomUpgradesBlue) do
+				states.zones[v.zone].randomUpgradesBlue[#states.zones[v.zone].randomUpgradesBlue+1] = v2
+			end
+		end
         if v.extraUpgrade then
             for _,grp in ipairs(v.extraUpgrade) do
                 if type(grp)=="table" and grp.side then
@@ -5402,7 +5492,23 @@ end
 
 	GROUP_ZONE_CACHE = {}
 	ZONE_FRIENDLY_CACHE = {}
-	function BattleCommander:roamGroupsToLocalSubZone(prefix, distanceNm,skip)
+	function BattleCommander:roamGroupsToLocalSubZone(prefix, distanceNm, skip, roamTimers)
+		local timers = roamTimers
+		if type(roamTimers) == "number" then
+			timers = { groupMin = roamTimers, groupMax = roamTimers }
+		elseif type(roamTimers) ~= "table" then
+			timers = nil
+		end
+		local groupDelayMin = (timers and timers.groupMin) or 60
+		local groupDelayMax = (timers and timers.groupMax) or 120
+		local zoneDelayMin = (timers and timers.zoneMin) or 300
+		local zoneDelayMax = (timers and timers.zoneMax) or 900
+		local cycleMin = (timers and timers.cycleMin) or 900
+		local cycleMax = (timers and timers.cycleMax) or 2400
+		local startDelayMin = (timers and timers.startMin) or 10
+		local startDelayMax = (timers and timers.startMax) or 30
+		local nextRunPad = (timers and timers.nextRunPad) or 10
+
 		local formations = {"Off Road","On Road","Cone","Diamond","Vee"}  
 		local formationsTall = {"Off Road","Cone","Vee"}
 		
@@ -5681,10 +5787,10 @@ end
 									end
 
 									if zoneCounter % 3 == 0 then
-										offset = offset+math.random(300,900)
+										offset = offset + math.random(zoneDelayMin, zoneDelayMax)
 									end
 										
-									offset = offset + math.random(60,120)
+									offset = offset + math.random(groupDelayMin, groupDelayMax)
 									--env.info("[DEBUG roamGroupsToLocalSubZone] Scheduling "..gData.gName.." -> "..pick.." formation="..form.." speed="..spd)
 									SCHEDULER:New(nil, moveGroup, {gData.gName, pick, gData.formations, spd, gData.ctrl}, offset)
 									scheduledCount = scheduledCount + 1
@@ -5695,7 +5801,7 @@ end
 				end
 			end
 	
-			local nextRun = timer.getTime()+offset+10
+			local nextRun = timer.getTime() + offset + nextRunPad
 			return nextRun
 		end
 	
@@ -5707,11 +5813,11 @@ end
 		local function bigLoop()
 			USED_SUB_ZONES={}
 			buildCycleData()
-			nextBigTime=timer.getTime()+math.random(900,2400)
+			nextBigTime = timer.getTime() + math.random(cycleMin, cycleMax)
 			SCHEDULER:New(nil,bigLoop,{},nextBigTime - timer.getTime(),0)
 			innerLoop()
 		end
-		SCHEDULER:New(nil,bigLoop,{},math.random(10,30),0)
+		SCHEDULER:New(nil,bigLoop,{},math.random(startDelayMin, startDelayMax),0)
 	end
 	function forceMissionComplete()
 		if not missionCompleted then
@@ -6122,6 +6228,13 @@ end
                     success = true
                     trigger.action.removeMark(event.idx)
                 end
+				if event.text:find('^addfundsred\:') then
+					local s = event.text:gsub('^addfundsred\:', '')
+					local amount = tonumber(s)
+					bc:addFunds(1,amount)
+                    success = true
+                    trigger.action.removeMark(event.idx)
+                end
 				if event.text=='upgradera' then
 					local z = bc:getZoneOfPoint(event.pos)
 					if z then
@@ -6281,10 +6394,10 @@ end
 		self:DrawConnectionLines()
 
 
-		--missionCommands.addCommandForCoalition(1, 'Budget overview', nil, self.printShopStatus, self, 1)
+		missionCommands.addCommandForCoalition(1, 'Budget overview', nil, self.printShopStatus, self, 1)
 		--missionCommands.addCommandForCoalition(2, 'Budget overview', nil, self.printShopStatus, self, 2)
 
-		--self:refreshShopMenuForCoalition(1)
+		self:refreshShopMenuForCoalition(1)
 		--self:refreshShopMenuForCoalition(2)
 	SCHEDULER:New(self,function(o)o:_autoZoneSuspend()end,{},1,60)
 	SCHEDULER:New(self,function(o)o:_proximityWakeSuspendedZones()end,{},10,30)
@@ -6453,6 +6566,91 @@ function BattleCommander:updateBlueZoneCount()
 	self._blueAirbaseNamesWarehouse = airbaseNamesWarehouse
 end
 
+function BattleCommander:triggerRedMassAttack()
+	self:updateBlueZoneCount()
+	local blueAirbaseByZone = {}
+	for _, z in ipairs(self._blueAirbaseZones or {}) do
+		if z and z.side == 2 and z.active and not z.suspended and not z.isHidden then
+			if z.airbaseName and z.airbaseName ~= "" and not z.zone:lower():find("carrier") then
+				blueAirbaseByZone[z.zone] = z
+			end
+		end
+	end
+	if not next(blueAirbaseByZone) then
+		return "No valid blue airbase zones"
+	end
+
+	local candidates = {}
+	for _, zc in ipairs(self.zones or {}) do
+		if zc and zc.side == 1 and zc.active and not zc.suspended and not zc.isHidden then
+			for _, gc in ipairs(zc.groups or {}) do
+				if gc and gc.side == 1 and gc.mission == 'attack' and gc.targetzone then
+					if blueAirbaseByZone[gc.targetzone] then
+						candidates[gc.targetzone] = true
+					end
+				end
+			end
+		end
+	end
+	if not next(candidates) then
+		return "No red attack groups targeting a blue airbase zone"
+	end
+
+	local list = {}
+	for zName in pairs(candidates) do list[#list + 1] = zName end
+	local targetName = list[math.random(1, #list)]
+	local total = 0
+	local forced = 0
+	local limits = { CAP = 2, SEAD = 1, RUNWAYSTRIKE = 1, CAS = 2 }
+	local liveCounts = {}
+	local pendingByType = { CAP = {}, SEAD = {}, RUNWAYSTRIKE = {}, CAS = {} }
+	for _, zc in ipairs(self.zones or {}) do
+		if zc and zc.side == 1 and zc.active and not zc.suspended and not zc.isHidden then
+			for _, gc in ipairs(zc.groups or {}) do
+				if gc and gc.side == 1 and gc.mission == 'attack' and gc.targetzone == targetName then
+					total = total + 1
+					local mt = gc.MissionType
+					if mt and limits[mt] then
+						local st = gc.state
+						local live = (st == 'takeoff' or st == 'inair' or st == 'landed' or st == 'enroute' or st == 'atdestination')
+						if live then
+							liveCounts[mt] = (liveCounts[mt] or 0) + 1
+						elseif gc.forceSpawnNow then
+							local bucket = pendingByType[mt]
+							bucket[#bucket + 1] = gc
+						end
+					end
+				end
+			end
+		end
+	end
+	if total == 0 then
+		return "No red attack groups targeting "..targetName
+	end
+
+	local function spawnUpTo(limit, liveCount, bucket)
+		local remaining = limit - (liveCount or 0)
+		while remaining > 0 and #bucket > 0 do
+			local idx = math.random(1, #bucket)
+			local gc = bucket[idx]
+			bucket[idx] = bucket[#bucket]
+			bucket[#bucket] = nil
+			gc:forceSpawnNow(targetName)
+			forced = forced + 1
+			remaining = remaining - 1
+		end
+	end
+
+	spawnUpTo(limits.CAP, liveCounts.CAP, pendingByType.CAP)
+	spawnUpTo(limits.SEAD, liveCounts.SEAD, pendingByType.SEAD)
+	spawnUpTo(limits.RUNWAYSTRIKE, liveCounts.RUNWAYSTRIKE, pendingByType.RUNWAYSTRIKE)
+	spawnUpTo(limits.CAS, liveCounts.CAS, pendingByType.CAS)
+
+	trigger.action.outTextForCoalition(1, "Red mass attack launched on "..targetName.." ("..forced.."/"..total.." forced)", 15)
+	trigger.action.outTextForCoalition(2, "Intel: The enemy is launching a mass attack on "..targetName, 15)
+	return true
+end
+
 SCHEDULER:New(nil, function()
         bc:updateBlueZoneCount()
 end, {}, 0.1)
@@ -6462,9 +6660,13 @@ function BattleCommander:reindexCombatZones()
 	Frontline.BuildFromZones(self.indexedZones or self.zones)
 	self._activeAttackOrPatrol = {}
 	self._activeOrigin = {}
+	self._activeAttackOrPatrolSources = {}
+	self._activeOriginSources = {}
 
 	local activeTargets = self._activeAttackOrPatrol
 	local activeOrigins = self._activeOrigin
+	local activeTargetsSrc = self._activeAttackOrPatrolSources
+	local activeOriginsSrc = self._activeOriginSources
 	local zones = self.zones or {}
 	local autoSuspendBlue = GlobalSettings.autoSuspendNmBlue or 70
 	local autoSuspendRed = GlobalSettings.autoSuspendNmRed or 120
@@ -6481,21 +6683,41 @@ function BattleCommander:reindexCombatZones()
 					if mission == 'attack' or mission == 'patrol' then
 						local targetName = gc.targetzone
 						if targetName then
-							local shouldSpawn = gc:shouldSpawn()
+							-- To restore "shouldSpawn keeps zones awake", uncomment the next line
+							local shouldSpawn = gc:shouldSpawn(true)
+							--local shouldSpawn = false
+							local live = (gc.state ~= 'dead' and gc.state ~= 'inhangar')
+							local reason = nil
+							if shouldSpawn then
+								reason = "spawnable"
+							elseif live then
+								reason = "live"
+							end
 							if mission == 'attack' then
-								if shouldSpawn or gc.state=='takeoff' or gc.state=='inair' or gc.state=='landed' or gc.state=='enroute' or gc.state=='atdestination' then
-									if originName then activeOrigins[originName] = true end
+								if reason then
+									if originName then
+										activeOrigins[originName] = true
+										activeOriginsSrc[originName] = activeOriginsSrc[originName] or {}
+										activeOriginsSrc[originName][#activeOriginsSrc[originName] + 1] =
+											string.format("%s -> %s (%s,%s)", tostring(gc.name or "group"), tostring(targetName), tostring(mission), reason)
+									end
 								end
 							end
 							local tz = self:getZoneByName(targetName)
 							if tz and tz.active and not tz.suspended and tz.side ~= 0 then
 								local tzName = tz.zone
 								if tzName and not tzName.isHidden then
-									if shouldSpawn or gc.state=='takeoff' or gc.state=='inair' or gc.state=='landed' or gc.state=='enroute' or gc.state=='atdestination' then
+									if reason then
 										if mission == 'attack' then
                                             activeTargets[targetName] = true
+											activeTargetsSrc[targetName] = activeTargetsSrc[targetName] or {}
+											activeTargetsSrc[targetName][#activeTargetsSrc[targetName] + 1] =
+												string.format("%s -> %s (%s,%s)", tostring(gc.name or "group"), tostring(targetName), tostring(mission), reason)
                                             if originName then
                                                 activeOrigins[originName] = true
+												activeOriginsSrc[originName] = activeOriginsSrc[originName] or {}
+												activeOriginsSrc[originName][#activeOriginsSrc[originName] + 1] =
+												string.format("%s -> %s (%s,%s)", tostring(gc.name or "group"), tostring(targetName), tostring(mission), reason)
                                             end
 										else
 											local dnm = self:_minEnemyDistanceNm(tz)
@@ -6503,8 +6725,14 @@ function BattleCommander:reindexCombatZones()
 												local lim = (tz.side == 2) and autoSuspendBlue or autoSuspendRed
 												if dnm <= lim then
                                                     activeTargets[targetName] = true
+													activeTargetsSrc[targetName] = activeTargetsSrc[targetName] or {}
+													activeTargetsSrc[targetName][#activeTargetsSrc[targetName] + 1] =
+														string.format("%s -> %s (%s,%s, dnm<=%d)", tostring(gc.name or "group"), tostring(targetName), tostring(mission), reason, lim)
                                                     if originName then
                                                         activeOrigins[originName] = true
+														activeOriginsSrc[originName] = activeOriginsSrc[originName] or {}
+														activeOriginsSrc[originName][#activeOriginsSrc[originName] + 1] =
+															string.format("%s -> %s (%s,%s, dnm<=%d)", tostring(gc.name or "group"), tostring(targetName), tostring(mission), reason, lim)
                                                         --env.info(string.format("[ORIGIN] %s via %s -> %s (patrol, dnm<=%d)", originName, tostring(gc.name or "group"), targetName, lim))
                                                     end
 												end
@@ -7188,8 +7416,8 @@ end
 		group:getController():setOption(AI.Option.Air.id.JETT_TANKS_IF_EMPTY, true)
 		group:getController():setOption(AI.Option.Air.id.PROHIBIT_JETT, true)
 		group:getController():setOption(AI.Option.Air.id.RTB_ON_BINGO, true)
-		--group:getController():setOption(AI.Option.Air.id.REACTION_ON_THREAT, AI.Option.Air.val.REACTION_ON_THREAT.ALLOW_ABORT_MISSION)
-		group:getController():setOption(AI.Option.Air.id.ROE,AI.Option.Air.val.ROE.OPEN_FIRE)
+		group:getController():setOption(AI.Option.Air.id.REACTION_ON_THREAT, AI.Option.Air.val.REACTION_ON_THREAT.ALLOW_ABORT_MISSION)
+		--group:getController():setOption(AI.Option.Air.id.ROE,AI.Option.Air.val.ROE.OPEN_FIRE)
 		if search then group:getController():setOption(AI.Option.Air.id.RADAR_USING,AI.Option.Air.val.RADAR_USING.FOR_CONTINUOUS_SEARCH) end
 		local weapons = 2147485694 + 30720 + 4161536
 		group:getController():setOption(AI.Option.Air.id.RTB_ON_OUT_OF_AMMO, weapons)
@@ -7377,7 +7605,26 @@ end
 function BattleCommander:explainSuspendDecision(zoneName, groupId)
 	local z = self:getZoneByName(zoneName); if not z then return end
 	local function b(v) return v and "true" or "false" end
-	local dist = self:_minEnemyDistanceNm(z)
+	self:reindexCombatZones()
+	local dist = (self._minEnemyDistanceNmWithFarps and self:_minEnemyDistanceNmWithFarps(z)) or self:_minEnemyDistanceNm(z)
+	local nearestEnemyName, nearestEnemyDist = nil, nil
+	do
+		local row = ZONE_DISTANCES and ZONE_DISTANCES[z.zone]
+		if row then
+			for _, other in ipairs(self.zones or {}) do
+				if other.side ~= 0 and other.side ~= z.side and other.active and not other.suspended and not other.isHidden then
+					local d = row[other.zone]
+					if d then
+						local dnm = d / NM
+						if not nearestEnemyDist or dnm < nearestEnemyDist then
+							nearestEnemyDist = dnm
+							nearestEnemyName = other.zone
+						end
+					end
+				end
+			end
+		end
+	end
 	local limit = (z.side==2) and (GlobalSettings.autoSuspendNmBlue or 70) or (GlobalSettings.autoSuspendNmRed or 150)
 
 	local hasOppositeNeighbor, hasNeutralNeighbor = false, false
@@ -7396,7 +7643,7 @@ function BattleCommander:explainSuspendDecision(zoneName, groupId)
 	for _, gc in ipairs(z.groups or {}) do
 		if gc and (gc.mission=='attack' or gc.mission=='patrol') then
 			local live = (gc.state=='takeoff' or gc.state=='inair' or gc.state=='landed' or gc.state=='enroute' or gc.state=='atdestination')
-			local spawnable = (not live) and gc.shouldSpawn and gc:shouldSpawn() or false
+			local spawnable = (not live) and gc.shouldSpawn and gc:shouldSpawn(true) or false
 			local qualifies = false
 			if gc.mission=='attack' then
 				qualifies = spawnable or live
@@ -7417,47 +7664,89 @@ function BattleCommander:explainSuspendDecision(zoneName, groupId)
 	end
 	local originActive = (#originList > 0)
 
-	local incoming = false
-	for _, oz in ipairs(self.zones) do
-		for _, gc in ipairs(oz.groups or {}) do
-			if gc and gc.targetzone == z.zone and gc.mission == 'supply' then
-				local st = gc.state
-				if st ~= 'inhangar' and st ~= 'dead' then incoming = true break end
-			end
-		end
-		if incoming then break end
-	end
-
 	local canReceive = z:canRecieveSupply()
 
-	local supportersOut, supportersDetail = 0, {}
-	if nbrs then
-		for n,_ in pairs(nbrs) do
-			local nz = self:getZoneByName(n)
-			if nz and nz.active and nz.side==z.side and not nz.isHidden and not nz.zone:lower():find("carrier") then
-				for _, gc in ipairs(z.groups or {}) do
-					if gc and gc.mission=='supply' and gc.side==z.side and gc.targetzone==nz.zone then
-						if gc.state ~= 'inhangar' and gc.state ~= 'dead' then
-							supportersOut = supportersOut + 1
-							supportersDetail[#supportersDetail+1] = string.format("%s -> %s (%s)", gc.name or "?", nz.zone, gc.state or "?")
+	local incomingActiveSupply = {}
+	local hasSupplyToTarget = {}
+	for _, oz in ipairs(self.zones) do
+		for _, gc in ipairs(oz.groups or {}) do
+			if gc and gc.mission == 'supply' then
+				local targetName = gc.targetzone
+				if targetName then
+					local st = gc.state
+					if st ~= 'inhangar' and st ~= 'dead' then incomingActiveSupply[targetName] = true end
+					local originName = oz.zone
+					if originName then
+						local row = hasSupplyToTarget[originName]
+						if not row then row = {}; hasSupplyToTarget[originName] = row end
+						local mask = row[targetName] or 0
+						if gc.side == 1 then
+							if mask == 0 or mask == 2 then mask = mask + 1 end
+						elseif gc.side == 2 then
+							if mask == 0 or mask == 1 then mask = mask + 2 end
 						end
-						break
+						row[targetName] = mask
 					end
 				end
 			end
 		end
 	end
-	local supplierHold = supportersOut > 0
+	local incoming = false
+	if canReceive then
+		incoming = incomingActiveSupply[z.zone] == true
+	end
 
-	local shouldSuspend = (not hasOppositeNeighbor) and (not hasNeutralNeighbor) and (not originActive) and (not incoming) and (dist and dist > limit) and (not canReceive) and (not supplierHold)
+	local supportersOut, supportersDetail = 0, {}
+	local supplierHold = false
+	if nbrs and canReceive then
+		local picked = 0
+		for n,_ in pairs(nbrs) do
+			if picked >= 2 then break end
+			local nz = self:getZoneByName(n)
+			if nz and nz.active and nz.side==z.side and not nz.isHidden and not nz.zone:lower():find("red carrier") then
+				local hasSupplyToZ = false
+				local row = hasSupplyToTarget[nz.zone]
+				local mask = row and row[z.zone]
+				if mask and ((z.side == 1 and (mask == 1 or mask == 3)) or (z.side == 2 and (mask == 2 or mask == 3))) then hasSupplyToZ = true end
+				if hasSupplyToZ then
+					supplierHold = true
+					picked = picked + 1
+					supportersOut = supportersOut + 1
+					supportersDetail[#supportersDetail+1] = string.format("%s -> %s", nz.zone, z.zone)
+				end
+			end
+		end
+	end
 
+	local combat = self._activeAttackOrPatrol and self._activeAttackOrPatrol[z.zone]
+	local originActive = self._activeOrigin and self._activeOrigin[z.zone]
+	local now = timer.getTime()
+	local proximityHold = z._proximityWakeUntil and z._proximityWakeUntil > now
+	local shouldSuspend = (not proximityHold) and (not hasOppositeNeighbor) and (not hasNeutralNeighbor) and (not combat) and (not incoming) and (dist and dist > limit) and (not canReceive) and (not supplierHold)
+
+	local enemyLine = ""
+	if nearestEnemyName and dist and dist < limit then
+		enemyLine = string.format("\nnearestEnemy=%s dist=%.1fNm", tostring(nearestEnemyName), nearestEnemyDist or -1)
+	end
 	local header = string.format("[SUSPEND-CHECK] %s\nside=%d active=%s suspended=%s\nminEnemyDist=%.1fNm limit=%.1fNm\noppNbr=%s neutNbr=%s incoming=%s canReceive=%s",
 		z.zone, z.side, b(z.active), b(z.suspended), (dist or -1), limit, b(hasOppositeNeighbor), b(hasNeutralNeighbor), b(incoming), b(canReceive))
-	local origins = (#originList>0) and ("\noriginActive=true\n - "..table.concat(originList, "\n - ")) or "\noriginActive=false"
+	local origins = (#originList>0)
+		and ("\noriginActive=true (allowSpawnWhileSuspended=true)\n - "..table.concat(originList, "\n - "))
+		or "\noriginActive=false (allowSpawnWhileSuspended=false)"
 	local supportersLine = (#supportersDetail>0) and ("\nsupplierHold=true supporters="..tostring(supportersOut).."\n - "..table.concat(supportersDetail, "\n - ")) or "\nsupplierHold=false supporters=0"
+	local combatLine = "\ncombat="..b(combat)..", originActive="..b(originActive)..", proximityHold="..b(proximityHold)
+	local srcTarget = (self._activeAttackOrPatrolSources and self._activeAttackOrPatrolSources[z.zone]) or nil
+	local srcOrigin = (self._activeOriginSources and self._activeOriginSources[z.zone]) or nil
+	local srcLine = ""
+	if srcTarget and #srcTarget > 0 then
+		srcLine = srcLine .. "\nactiveTargetsSources:\n - " .. table.concat(srcTarget, "\n - ")
+	end
+	if srcOrigin and #srcOrigin > 0 then
+		srcLine = srcLine .. "\nactiveOriginSources:\n - " .. table.concat(srcOrigin, "\n - ")
+	end
 	local verdict = "\n=> shouldSuspend="..b(shouldSuspend)
 
-	local msg = header..origins..supportersLine..verdict
+	local msg = header..enemyLine..origins..supportersLine..combatLine..srcLine..verdict
 	if groupId then trigger.action.outTextForGroup(groupId, msg, 25) else trigger.action.outText(msg, 25) end
 end
 
@@ -7472,6 +7761,9 @@ function BattleCommander:_autoZoneSuspend()
 		local supplierHold = {}
 		local incomingActiveSupply = {}
 		local hasSupplyToTarget = {}
+		for _, z in ipairs(self.zones) do
+			z._suspendAllowSpawn = nil
+		end
 		for _, oz in ipairs(self.zones) do
 			for _, gc in ipairs(oz.groups or {}) do
 				if gc and gc.mission == 'supply' then
@@ -7594,9 +7886,11 @@ function BattleCommander:_autoZoneSuspend()
 						end
 
 
-						local limit  = (z.side==2) and (GlobalSettings.autoSuspendNmBlue or 70) or (GlobalSettings.autoSuspendNmRed or 150)
+						local limit  = (type(z.customSuspendNm) == "number" and z.customSuspendNm)
+							or ((z.side==2) and (GlobalSettings.autoSuspendNmBlue or 70) or (GlobalSettings.autoSuspendNmRed or 150))
 						local combat = self._activeAttackOrPatrol and self._activeAttackOrPatrol[z.zone]
 						local originActive = self._activeOrigin and self._activeOrigin[z.zone]
+						z._suspendAllowSpawn = originActive and true or nil
 						local canReceive = z:canRecieveSupply()
 						local incoming = false
 						if canReceive then
@@ -7604,7 +7898,7 @@ function BattleCommander:_autoZoneSuspend()
 						end
 						local now = timer.getTime()
 						local proximityHold = z._proximityWakeUntil and z._proximityWakeUntil > now
-						local shouldSuspend = (not proximityHold) and (not hasOppositeNeighbor) and (not hasNeutralNeighbor) and (not combat) and (not originActive) and (not incoming) and (dist > limit) and (not canReceive) and (not supplierHold[z])
+						local shouldSuspend = (not proximityHold) and (not hasOppositeNeighbor) and (not hasNeutralNeighbor) and (not combat) and (not incoming) and (dist > limit) and (not canReceive) and (not supplierHold[z])
 
 						if shouldSuspend then
 							toSuspend[#toSuspend+1] = z
@@ -7627,7 +7921,7 @@ function BattleCommander:_autoZoneSuspend()
 		end
 	end
 end
-		local neighborWakeMeters = 15*NM
+		local neighborWakeMeters = 12*NM
 		local anchorSet = {}
 		for _, z in ipairs(self.zones) do
 			if z.active and z.side~=0 and not z.isHidden and not z.zone:lower():find("red carrier") then
@@ -7686,13 +7980,12 @@ end
 						end
 						if dist and dist <= limit then hasOppositeNeighbor = true end
 						local combat2 = self._activeAttackOrPatrol and self._activeAttackOrPatrol[sz.zone]
-						local originActive2 = self._activeOrigin and self._activeOrigin[sz.zone]
 						local canReceive2 = sz:canRecieveSupply()
 						local incoming2 = false
 						if canReceive2 then
 							incoming2 = incomingActiveSupply[sz.zone] == true
 						end
-						local shouldSuspend2 = (not hasOppositeNeighbor) and (not combat2) and (not originActive2) and (not incoming2) and dist and (dist > limit) and (not canReceive2)
+						local shouldSuspend2 = (not hasOppositeNeighbor) and (not combat2) and (not incoming2) and dist and (dist > limit) and (not canReceive2)
 						if shouldSuspend2 then finalSuspend[#finalSuspend+1] = sz end
 					end
 				end
@@ -8137,7 +8430,7 @@ function BattleCommander:printMyStats(unitid, player)
 		for _, statKey in ipairs(displayOrder) do
 			local v = playerStats[statKey] or 0
 			if v > 0 or statKey == 'Air' or statKey == 'Helo' or statKey == 'Ground Units' or statKey == 'Ship' or statKey == 'SAM' or statKey == 'Structure' or statKey == 'Deaths' or statKey == 'Points' or statKey == 'Points spent' then
-				message = message .. statKey .. ': ' .. v .. '\n'
+				message = message .. '\n' .. statKey .. ': ' .. v
 			end
 		end
 
@@ -9148,11 +9441,26 @@ function BattleCommander:startRewardPlayerContribution(defaultReward, rewards)
 						end
 					end
 				end
-				if CreditLosewhenKilled and CreditLosewhenKilled == true then
-					local amount = CreditLosewhenKilledAmount or 100
-					if event.id == world.event.S_EVENT_UNIT_LOST then
+				if event.id == world.event.S_EVENT_UNIT_LOST then
+					if CreditLosewhenKilled == true then
+						local amount = CreditLosewhenKilledAmount or 100
 						self.context:addFunds(side,-amount)
 						trigger.action.outTextForCoalition(side,'['..pname..'] aircraft lost, -'..amount..' credits',10)
+					end
+					if RankingSystem == true and RankLoseWhenKilled == true then
+						local amount = RankLoseWhenKilledAmount or 100
+						local before = self.context:getPlayerRank(pname)
+						if amount > 0 then
+							self.context:addPlayerRankCredits(pname, -amount)
+							self.context:saveRanksToDisk()
+							local after = self.context:getPlayerRank(pname)
+							if after < before then
+								local name = self.context:getRankName(after)
+								trigger.action.outTextForCoalition(side, pname..' has been demoted to '..name..'.', 12)
+								local g = un and un.getGroup and un:getGroup()
+								if g and g:isExist() then self.context:refreshShopMenuForGroup(g:getID(), g) end
+							end
+						end
 					end
 				end
 			end
@@ -9450,6 +9758,63 @@ function BattleCommander:loadFromDisk()
 		if zonePersistance then
 			if zonePersistance.zones then
 				self.saveLoaded = true
+				local function shouldKeepUpgradeName(name)
+					if not name then return false end
+					if isStaticUpgrade and isStaticUpgrade(name) then return true end
+					if hasGroupTemplate and hasGroupTemplate(name) then return true end
+					return false
+				end
+				local function listEqual(a, b)
+					if a == b then return true end
+					if (a == nil) ~= (b == nil) then return false end
+					if #a ~= #b then return false end
+					for i = 1, #a do
+						if a[i] ~= b[i] then return false end
+					end
+					return true
+				end
+				local function pruneAndTopUp(zoneObj, list, isRed)
+					local pruned = false
+					local out = {}
+					local missing = {}
+					local used = {}
+					for idx, name in ipairs(list or {}) do
+						if shouldKeepUpgradeName(name) then
+							out[idx] = name
+							used[name] = true
+						else
+							pruned = true
+							missing[#missing + 1] = { idx = idx, name = name }
+						end
+					end
+						if pruned then
+							for _, entry in ipairs(missing) do
+								local replacement = pickReplacementUpgrade(zoneObj, entry.name, out)
+								if replacement then
+									out[entry.idx] = replacement
+									used[replacement] = true
+									local msg = string.format("[RandomUpgrades] %s: replaced missing '%s' with '%s'", tostring(zoneObj and zoneObj.zone or "zone"), tostring(entry.name), tostring(replacement))
+									env.info(msg)
+									trigger.action.outText(msg, 10)
+								else
+									local msg = string.format("[RandomUpgrades] %s: missing '%s' could not be replaced (pool empty)", tostring(zoneObj and zoneObj.zone or "zone"), tostring(entry.name))
+									env.info(msg)
+									trigger.action.outText(msg, 10)
+								end
+							end
+						end
+					if pruned then
+						local compacted = {}
+						for i = 1, #out do
+							local n = out[i]
+							if n then
+								compacted[#compacted + 1] = n
+							end
+						end
+						out = compacted
+					end
+					return out, pruned
+				end
 				for i, v in pairs(zonePersistance.zones) do
 					local zn = self:getZoneByName(i)
 					if zn then
@@ -9467,6 +9832,54 @@ function BattleCommander:loadFromDisk()
 						zn.upgrades = zn.upgrades or {}
 						zn.upgrades.blue = zn.upgrades.blue or {}
 						zn.upgrades.red  = zn.upgrades.red  or {}
+
+						local randomChanged = false
+						if v.randomUpgradesRed and type(v.randomUpgradesRed) == "table" then
+							local original = v.randomUpgradesRed
+							local list, pruned = pruneAndTopUp(zn, original, true)
+							zn.randomUpgradesRed = list
+							zn.upgrades.red = zn.randomUpgradesRed
+							if pruned or not listEqual(original, list) then
+								randomChanged = true
+							end
+						end
+						if v.randomUpgradesBlue and type(v.randomUpgradesBlue) == "table" then
+							local original = v.randomUpgradesBlue
+							local list, pruned = pruneAndTopUp(zn, original, false)
+							zn.randomUpgradesBlue = list
+							zn.upgrades.blue = zn.randomUpgradesBlue
+							if pruned or not listEqual(original, list) then
+								randomChanged = true
+							end
+						end
+						if randomChanged then
+							zn.remainingUnits = nil
+							zn._refreshRandomUpgrades = true
+						end
+
+						-- Replace missing entries in upgrades.red/blue (including "Fixed" ones)
+						local function fixMissingUpgradeList(zoneObj, list, isRed)
+							if not list then return end
+							for idx, entry in ipairs(list) do
+								local name = getUpgradeEntryName(entry)
+								if name and not isStaticUpgrade(name) and not hasGroupTemplate(name) then
+									local replacement = pickReplacementUpgrade(zoneObj, name, list)
+									if replacement then
+										list[idx] = replacement
+										local msg = string.format("[RandomUpgrades] %s: replaced missing '%s' with '%s'", tostring(zoneObj and zoneObj.zone or "zone"), tostring(name), tostring(replacement))
+										env.info(msg)
+										trigger.action.outText(msg, 10)
+									else
+										local msg = string.format("[RandomUpgrades] %s: missing '%s' could not be replaced (pool empty)", tostring(zoneObj and zoneObj.zone or "zone"), tostring(name))
+										env.info(msg)
+										trigger.action.outText(msg, 10)
+									end
+								end
+							end
+						end
+
+						fixMissingUpgradeList(zn, zn.upgrades.red, true)
+						fixMissingUpgradeList(zn, zn.upgrades.blue, false)
 
 						local raw = v.extraUpgrade
 						zn.extraUpgrade = (type(raw)=="table") and raw or {}
@@ -9490,7 +9903,22 @@ function BattleCommander:loadFromDisk()
 							end
 						end
 
-						zn.upgradesUsed = v.upgradesUsed or 0
+						local baseUsed = v.upgradesUsed or 0
+						local redUsed = v.upgradesUsedRed
+						local blueUsed = v.upgradesUsedBlue
+						if redUsed == nil and blueUsed == nil then
+							redUsed = baseUsed
+							blueUsed = baseUsed
+						end
+						zn.upgradesUsedRed = redUsed or 0
+						zn.upgradesUsedBlue = blueUsed or 0
+						if zn.side == 1 then
+							zn.upgradesUsed = zn.upgradesUsedRed
+						elseif zn.side == 2 then
+							zn.upgradesUsed = zn.upgradesUsedBlue
+						else
+							zn.upgradesUsed = baseUsed or 0
+						end
 
 						if not zn.active then
 							zn.side = 0
@@ -9609,7 +10037,10 @@ do
 		obj.active = true
 		obj.destroyOnInit = {}
 		obj.triggers = {}
-		obj.upgradesUsed = 0
+		local baseUpg = obj.upgradesUsed or 0
+		obj.upgradesUsed = baseUpg
+		obj.upgradesUsedRed = obj.upgradesUsedRed or baseUpg
+		obj.upgradesUsedBlue = obj.upgradesUsedBlue or baseUpg
 		obj.suspended = false
 		obj._hibernated = {}
 
@@ -9722,12 +10153,37 @@ function ZoneCommander:suspend()
 	end
 
 	
+	function ZoneCommander:getUpgradesUsed(side)
+		local s = side or self.side
+		if s == 1 then
+			return self.upgradesUsedRed or 0
+		elseif s == 2 then
+			return self.upgradesUsedBlue or 0
+		end
+		return self.upgradesUsed or 0
+	end
+
+	function ZoneCommander:_setUpgradesUsed(side, val)
+		if side == 1 then
+			self.upgradesUsedRed = val
+		elseif side == 2 then
+			self.upgradesUsedBlue = val
+		end
+		if side == self.side then
+			self.upgradesUsed = val
+		end
+	end
+
+	function ZoneCommander:_syncUpgradesUsed()
+		self.upgradesUsed = self:getUpgradesUsed(self.side)
+	end
+
 	function ZoneCommander:addExtraSlot(groupName)
 		local max = 1 + (bc.globalExtraUnlock and 1 or 0)
-		local cur = self.upgradesUsed or 0
+		local cur = self:getUpgradesUsed(self.side)
 		if cur >= max then return false end
 
-		self.upgradesUsed = cur + 1
+		self:_setUpgradesUsed(self.side, cur + 1)
 		self.level        = self.level + 1
 
 		self.extraUpgrade = self.extraUpgrade or {}
@@ -9756,16 +10212,26 @@ function ZoneCommander:getFilteredUpgrades()
 		if self.suspended and self.remainingUnitsSnapshot then
 			local res = {}
 			for idx,_ in pairs(self.remainingUnitsSnapshot) do
-				local name = upgrades[idx]
+				local entry = upgrades[idx]
+				local name = getUpgradeEntryName(entry)
 				if name then res[#res+1] = name end
 			end
 			return res
 		end
 
-		if UseStatics then return upgrades end
+		if UseStatics then
+			-- Always return resolved names (upgrade lists may contain table entries).
+			local res = {}
+			for idx, entry in pairs(upgrades) do
+				local name = getUpgradeEntryName(entry)
+				if name then res[idx] = name end
+			end
+			return res
+		end
 
 		local res = {}
-		for idx, name in pairs(upgrades) do
+		for idx, entry in pairs(upgrades) do
+			local name = getUpgradeEntryName(entry)
 			local isStatic = false
 			if self.newStatics then
 				for _, data in ipairs(self.newStatics) do
@@ -9779,11 +10245,674 @@ function ZoneCommander:getFilteredUpgrades()
 				local st = StaticObject.getByName(name)
 				if st and st:isExist() then st:destroy() end
 			else
-				res[#res + 1] = name
+				res[idx] = name
 			end
 		end
 		return res
 	end
+
+-- Randomized upgrade helpers (shared across missions)
+RandomGroundGroups = RandomGroundGroups or false
+RandomBlueGroups = RandomBlueGroups or false
+
+
+function fhRand(min, max)
+	if math and math.randomseed then
+		if min == nil then return math.random() end
+		if max == nil then return math.random(min) end
+		return math.random(min, max)
+	end
+	FH_RNG_SEED = FH_RNG_SEED or 1234567
+	FH_RNG_SEED = (1103515245 * FH_RNG_SEED + 12345) % 2147483648
+	local r = FH_RNG_SEED / 2147483648
+	if min == nil then return r end
+	if max == nil then return math.floor(r * min) + 1 end
+	return math.floor(r * (max - min + 1)) + min
+end
+
+function resolveCount(v)
+	if type(v) == "table" then
+		local a, b = v[1], v[2]
+		if a and b then
+			return fhRand(a, b)
+		end
+	end
+	return tonumber(v) or 0
+end
+
+function resolveTemplate(t)
+	return {
+		sam = resolveCount(t.sam),
+		shorad = resolveCount(t.shorad),
+		aaa = resolveCount(t.aaa),
+		ground = resolveCount(t.ground),
+		armor = resolveCount(t.armor),
+		arty = resolveCount(t.arty),
+		total = resolveCount(t.total),
+	}
+end
+
+
+function resolveTemplateBlue(t)
+	return {
+		sam = resolveCount(t.sam),
+		ground = resolveCount(t.ground),
+		armor = resolveCount(t.armor),
+		total = resolveCount(t.total),
+	}
+end
+
+function getZoneSize(zoneObj)
+	if not zoneObj then return "none" end
+	return zoneObj.size or "none"
+end
+
+function classifyUpgradeName(name)
+	if not name then return "other" end
+	local n = name:lower()
+
+	local function hasAny(list)
+		for i = 1, #list do
+			if n:find(list[i], 1, true) then return true end
+		end
+		return false
+	end
+
+	if hasAny({ "aaa" }) then
+		return "aaa"
+	elseif hasAny({ "shorad", "pantsir", "tor", "sa-8", "sa 8", "sa-13", "sa 13", "sa-15", "sa 15", "sa-19", "sa 19", "dog ear" }) then
+		return "shorad"
+	elseif hasAny({ "sa-2", "sa 2", "sa-3", "sa 3", "sa-6", "sa 6", "sa-10", "sa 10", "sa-11", "sa 11" }) then
+		return "sam"
+	elseif hasAny({ "arty", "artillery", "mlrs", "grad", "smerch", "uragan", "bm-21" }) then
+		return "arty"
+	elseif hasAny({ "armour", "armor" }) then
+		return "armor"
+	elseif hasAny({ "enemy ground", "enemy task", "enemy forces" }) then
+		return "ground"
+	elseif hasAny({ "sam" }) then
+		return "sam"
+	end
+	return "other"
+end
+
+function classifyBlueUpgradeName(name)
+	if not name then return "other" end
+	local n = name:lower()
+	if n:find("infantry", 1, true) then
+		return "ground"
+	elseif n:find("armor", 1, true) then
+		return "armor"
+	elseif n:find("sam", 1, true) or n:find("pd", 1, true) then
+		return "sam"
+	end
+	return "other"
+end
+
+function isFixedName(name)
+	if not name then return false end
+	local n = name:lower()
+	return n:find("fixed", 1, true) ~= nil or n:find("(p)", 1, true) ~= nil
+end
+
+-- Upgrade entries can be either a string group/static name, or a table like:
+--   { n = "Group Name", p = true }  -- p=true means "pinned": never random-picked/replaced
+function getUpgradeEntryName(entry)
+	if type(entry) == "table" then
+		return entry.n or entry.name or entry[1]
+	end
+	return entry
+end
+
+function isPinnedUpgradeEntry(entry)
+	return type(entry) == "table" and entry.p == true
+end
+
+function hasGroupTemplate(name)
+	if not name then return false end
+	if _DATABASE and _DATABASE.Templates and _DATABASE.Templates.Groups and _DATABASE.Templates.Groups[name] then
+		return true
+	end
+	if Group and Group.getByName then
+		local gr = Group.getByName(name)
+		if gr then return true end
+	end
+	return false
+end
+
+function isStaticUpgrade(name)
+	if not name then return false end
+	return StaticObject and StaticObject.getByName and StaticObject.getByName(name) ~= nil
+end
+
+function isLongRangeSam(name)
+	if not name then return false end
+	local n = name:lower()
+	return n:find("sa-2", 1, true) or n:find("sa 2", 1, true)
+		or n:find("sa-10", 1, true) or n:find("sa 10", 1, true)
+		or n:find("sa-11", 1, true) or n:find("sa 11", 1, true)
+end
+
+function isExcludedBySize(name, zoneObj, zoneSize)
+	if not name or not zoneSize then return false end
+	local list = ZoneSizeExclusions[zoneSize]
+	if list then
+		local n = name:lower()
+		for i = 1, #list do
+			local pat = list[i]
+			if pat and n:find(pat, 1, true) then
+				return true
+			end
+		end
+	end
+	if zoneObj and zoneObj.noLongRangeSam and isLongRangeSam(name) then
+		return true
+	end
+	return false
+end
+
+function buildGlobalRedPool()
+	if RandomRedPool and #RandomRedPool > 0 then
+		return RandomRedPool
+	end
+	if type(upgrades) ~= "table" then return {} end
+	local pool = {}
+	local seen = {}
+	for key, def in pairs(upgrades) do
+		if type(def) == "table" then
+			local k = tostring(key):lower()
+			if not k:find("carrier", 1, true) and not k:find("hidden", 1, true) then
+				local red = def.red
+				if type(red) == "table" then
+					for _, entry in ipairs(red) do
+						local name = getUpgradeEntryName(entry)
+						if name and not isPinnedUpgradeEntry(entry) and not isFixedName(name) and not isStaticUpgrade(name) and not seen[name] and hasGroupTemplate(name) then
+							seen[name] = true
+							pool[#pool+1] = name
+						end
+					end
+				end
+			end
+		end
+	end
+	return pool
+end
+
+function getGlobalRedPool()
+	if not GlobalRedPool or #GlobalRedPool == 0 then
+		GlobalRedPool = buildGlobalRedPool()
+	end
+	return GlobalRedPool
+end
+
+GlobalRedPool = GlobalRedPool or buildGlobalRedPool()
+
+function buildGlobalBluePool()
+	if RandomBluePool and #RandomBluePool > 0 then
+		return RandomBluePool
+	end
+	if type(upgrades) ~= "table" then return {} end
+	local pool = {}
+	local seen = {}
+	for _, def in pairs(upgrades) do
+		if type(def) == "table" then
+			local blue = def.blue
+			if type(blue) == "table" then
+				for _, entry in ipairs(blue) do
+					local name = getUpgradeEntryName(entry)
+					if name and not isPinnedUpgradeEntry(entry) and name ~= "bluePATRIOT" and not isFixedName(name) and not isStaticUpgrade(name) and not seen[name] and hasGroupTemplate(name) then
+						seen[name] = true
+						pool[#pool+1] = name
+					end
+				end
+			end
+		end
+	end
+	return pool
+end
+
+function getGlobalBluePool()
+	if not GlobalBluePool or #GlobalBluePool == 0 then
+		GlobalBluePool = buildGlobalBluePool()
+	end
+	return GlobalBluePool
+end
+
+GlobalBluePool = GlobalBluePool or buildGlobalBluePool()
+
+function fillPoolsFrom(source, pools, zoneObj, zoneSize)
+	local poolSeen = {}
+	local count = 0
+	for _, entry in ipairs(source or {}) do
+		local name = getUpgradeEntryName(entry)
+		if name and not isPinnedUpgradeEntry(entry) and not isFixedName(name) and not isStaticUpgrade(name) and not isExcludedBySize(name, zoneObj, zoneSize) and hasGroupTemplate(name) then
+			if not poolSeen[name] then
+				poolSeen[name] = true
+				local cat = classifyUpgradeName(name)
+				pools[cat] = pools[cat] or {}
+				pools[cat][#pools[cat]+1] = name
+				count = count + 1
+			end
+		end
+	end
+	return count
+end
+
+function fillPoolsFromBlue(source, pools)
+	local poolSeen = {}
+	local count = 0
+	for _, entry in ipairs(source or {}) do
+		local name = getUpgradeEntryName(entry)
+		if name and not isPinnedUpgradeEntry(entry) and name ~= "bluePATRIOT" and not isFixedName(name) and not isStaticUpgrade(name) and hasGroupTemplate(name) then
+			if not poolSeen[name] then
+				poolSeen[name] = true
+				local cat = classifyBlueUpgradeName(name)
+				pools[cat] = pools[cat] or {}
+				pools[cat][#pools[cat]+1] = name
+				count = count + 1
+			end
+		end
+	end
+	return count
+end
+
+function pickFromPool(pool, count)
+	local picks = {}
+	for i = 1, count do
+		local n = #pool
+		if n == 0 then break end
+		local idx = fhRand(1, n)
+		picks[#picks+1] = pool[idx]
+		pool[idx] = pool[n]
+		pool[n] = nil
+	end
+	return picks
+end
+
+function buildRandomRedUpgrades(zoneObj)
+	if not (zoneObj and zoneObj.upgrades and zoneObj.upgrades.red) then return nil end
+	local zoneSize = getZoneSize(zoneObj)
+	local template = RandomUpgradeTemplates and RandomUpgradeTemplates[zoneSize]
+	if not template then return nil end
+	template = resolveTemplate(template)
+
+	local extraForced = {}
+	if zoneObj.extraUpgrade then
+		for _, grp in ipairs(zoneObj.extraUpgrade) do
+			if type(grp) == "table" then
+				local n = grp.name
+				if n and (grp.side == 1 or (grp.side == nil and zoneObj.side == 1)) then
+					extraForced[n] = true
+				end
+			end
+		end
+	end
+
+	local fixedList = {}
+	local staticList = {}
+	local fixedCounts = { sam = 0, shorad = 0, aaa = 0, ground = 0, armor = 0, arty = 0, other = 0 }
+	local fixedUnknown = 0
+	local totalFixed = 0
+	local pools = { sam = {}, shorad = {}, aaa = {}, ground = {}, armor = {}, arty = {}, other = {} }
+
+	for _, entry in ipairs(zoneObj.upgrades.red) do
+		local name = getUpgradeEntryName(entry)
+		if name then
+			if isStaticUpgrade(name) then
+				staticList[#staticList+1] = name
+			elseif isFixedName(name) or extraForced[name] or isPinnedUpgradeEntry(entry) then
+				fixedList[#fixedList+1] = name
+				totalFixed = totalFixed + 1
+				local cat = classifyUpgradeName(name)
+				if fixedCounts[cat] ~= nil then
+					fixedCounts[cat] = fixedCounts[cat] + 1
+				else
+					fixedUnknown = fixedUnknown + 1
+				end
+			end
+		end
+	end
+	if fixedUnknown > 0 then
+		totalFixed = totalFixed + fixedUnknown
+	end
+
+	local poolCount = 0
+	if RandomGroundGroups then
+		poolCount = fillPoolsFrom(getGlobalRedPool(), pools, zoneObj, zoneSize)
+	else
+		poolCount = fillPoolsFrom(zoneObj.upgrades.red, pools, zoneObj, zoneSize)
+		if poolCount == 0 then
+			pools = { sam = {}, shorad = {}, aaa = {}, ground = {}, armor = {}, arty = {}, other = {} }
+			poolCount = fillPoolsFrom(getGlobalRedPool(), pools, zoneObj, zoneSize)
+		end
+	end
+	if next(extraForced) ~= nil then
+		for _, cat in ipairs({"sam","shorad","aaa","ground","armor","arty","other"}) do
+			local list = pools[cat]
+			if list and #list > 0 then
+				local filtered = {}
+				for i = 1, #list do
+					local n = list[i]
+					if n and not extraForced[n] then
+						filtered[#filtered+1] = n
+					end
+				end
+				pools[cat] = filtered
+			end
+		end
+	end
+
+	local targetTotal = template.total
+	if not targetTotal or targetTotal <= 0 then
+		targetTotal = (template.sam or 0) + (template.shorad or 0) + (template.aaa or 0) + (template.ground or 0) + (template.armor or 0) + (template.arty or 0)
+	end
+	local remainingTotal = math.max(0, targetTotal - totalFixed)
+	local needed = {
+		sam = math.max(0, (template.sam or 0) - fixedCounts.sam),
+		shorad = math.max(0, (template.shorad or 0) - fixedCounts.shorad),
+		aaa = math.max(0, (template.aaa or 0) - fixedCounts.aaa),
+		ground = math.max(0, (template.ground or 0) - fixedCounts.ground),
+		armor = math.max(0, (template.armor or 0) - fixedCounts.armor),
+		arty = math.max(0, (template.arty or 0) - fixedCounts.arty),
+	}
+
+	local result = {}
+	for _, name in ipairs(staticList) do
+		result[#result+1] = name
+	end
+	for _, name in ipairs(fixedList) do
+		result[#result+1] = name
+	end
+
+	for _, cat in ipairs({"sam","shorad","aaa","ground","armor","arty"}) do
+		if remainingTotal <= 0 then break end
+		local want = math.min(needed[cat] or 0, remainingTotal)
+		if want > 0 then
+			local picks = pickFromPool(pools[cat] or {}, want)
+			for _, name in ipairs(picks) do
+				result[#result+1] = name
+			end
+			local got = #picks
+			needed[cat] = math.max(0, (needed[cat] or 0) - got)
+			remainingTotal = remainingTotal - got
+		end
+	end
+
+	if remainingTotal > 0 then
+		local anyPool = {}
+		local allowCat = {}
+		for _, cat in ipairs({"sam","shorad","aaa","ground","armor","arty"}) do
+			if (needed[cat] or 0) > 0 then
+				allowCat[cat] = true
+			end
+		end
+		for _, cat in ipairs({"sam","shorad","aaa","ground","armor","arty","other"}) do
+			if cat == "other" or allowCat[cat] then
+				for _, name in ipairs(pools[cat] or {}) do
+					anyPool[#anyPool+1] = name
+				end
+			end
+		end
+		local picks = pickFromPool(anyPool, remainingTotal)
+		for _, name in ipairs(picks) do
+			result[#result+1] = name
+		end
+	end
+
+	return result
+end
+
+function buildRandomBlueUpgrades(zoneObj)
+	if not (zoneObj and zoneObj.upgrades and zoneObj.upgrades.blue) then return nil end
+	local zoneSize = getZoneSize(zoneObj)
+	local template = RandomUpgradeTemplatesBlue and RandomUpgradeTemplatesBlue[zoneSize]
+	if not template then return nil end
+	template = resolveTemplateBlue(template)
+
+	local extraForced = {}
+	if zoneObj.extraUpgrade then
+		for _, grp in ipairs(zoneObj.extraUpgrade) do
+			if type(grp) == "table" then
+				local n = grp.name
+				if n and (grp.side == 2 or (grp.side == nil and zoneObj.side == 2)) then
+					extraForced[n] = true
+				end
+			elseif type(grp) == "string" and zoneObj.side == 2 then
+				extraForced[grp] = true
+			end
+		end
+	end
+
+	local fixedList = {}
+	local staticList = {}
+	local fixedCounts = { sam = 0, ground = 0, armor = 0, other = 0 }
+	local fixedUnknown = 0
+	local totalFixed = 0
+	local pools = { sam = {}, ground = {}, armor = {}, other = {} }
+
+	for _, entry in ipairs(zoneObj.upgrades.blue) do
+		local name = getUpgradeEntryName(entry)
+		if name then
+			if isStaticUpgrade(name) then
+				staticList[#staticList+1] = name
+			elseif isFixedName(name) or extraForced[name] or isPinnedUpgradeEntry(entry) then
+				fixedList[#fixedList+1] = name
+				totalFixed = totalFixed + 1
+				local cat = classifyBlueUpgradeName(name)
+				if fixedCounts[cat] ~= nil then
+					fixedCounts[cat] = fixedCounts[cat] + 1
+				else
+					fixedUnknown = fixedUnknown + 1
+				end
+			end
+		end
+	end
+	if fixedUnknown > 0 then
+		totalFixed = totalFixed + fixedUnknown
+	end
+
+	local poolCount = 0
+	if RandomBlueGroups then
+		poolCount = fillPoolsFromBlue(getGlobalBluePool(), pools)
+	else
+		poolCount = fillPoolsFromBlue(zoneObj.upgrades.blue, pools)
+		if poolCount == 0 then
+			pools = { sam = {}, ground = {}, armor = {}, other = {} }
+			poolCount = fillPoolsFromBlue(getGlobalBluePool(), pools)
+		end
+	end
+	if next(extraForced) ~= nil then
+		for _, cat in ipairs({"sam","ground","armor","other"}) do
+			local list = pools[cat]
+			if list and #list > 0 then
+				local filtered = {}
+				for i = 1, #list do
+					local n = list[i]
+					if n and not extraForced[n] then
+						filtered[#filtered+1] = n
+					end
+				end
+				pools[cat] = filtered
+			end
+		end
+	end
+
+	local targetTotal = template.total
+	if not targetTotal or targetTotal <= 0 then
+		targetTotal = (template.sam or 0) + (template.ground or 0) + (template.armor or 0)
+	end
+	local remainingTotal = math.max(0, targetTotal - totalFixed)
+	local needed = {
+		sam = math.max(0, (template.sam or 0) - fixedCounts.sam),
+		ground = math.max(0, (template.ground or 0) - fixedCounts.ground),
+		armor = math.max(0, (template.armor or 0) - fixedCounts.armor),
+	}
+
+	local result = {}
+	for _, name in ipairs(staticList) do
+		result[#result+1] = name
+	end
+	for _, name in ipairs(fixedList) do
+		result[#result+1] = name
+	end
+
+	for _, cat in ipairs({"sam","ground","armor"}) do
+		if remainingTotal <= 0 then break end
+		local want = math.min(needed[cat] or 0, remainingTotal)
+		if want > 0 then
+			local picks = pickFromPool(pools[cat] or {}, want)
+			for _, name in ipairs(picks) do
+				result[#result+1] = name
+			end
+			local got = #picks
+			needed[cat] = math.max(0, (needed[cat] or 0) - got)
+			remainingTotal = remainingTotal - got
+		end
+	end
+
+	if remainingTotal > 0 then
+		local anyPool = {}
+		local allowCat = {}
+		for _, cat in ipairs({"sam","ground","armor"}) do
+			if (needed[cat] or 0) > 0 then
+				allowCat[cat] = true
+			end
+		end
+		for _, cat in ipairs({"sam","ground","armor","other"}) do
+			if cat == "other" or allowCat[cat] then
+				for _, name in ipairs(pools[cat] or {}) do
+					anyPool[#anyPool+1] = name
+				end
+			end
+		end
+		local picks = pickFromPool(anyPool, remainingTotal)
+		for _, name in ipairs(picks) do
+			result[#result+1] = name
+		end
+	end
+
+	return result
+end
+
+function applyRandomRedUpgrades()
+	for _, z in pairs(zones or {}) do
+		if z and z.isHidden then
+		elseif z and z.zone and z.zone:lower():find("carrier") then
+		else
+			local list = buildRandomRedUpgrades(z)
+			if list and #list > 0 then
+				z.upgrades.red = list
+				z.randomUpgradesRed = list
+			end
+		end
+	end
+end
+
+function applyRandomBlueUpgrades()
+	for _, z in pairs(zones or {}) do
+		if z and z.isHidden then
+		elseif z and z.zone and z.zone:lower():find("carrier") then
+		else
+			local list = buildRandomBlueUpgrades(z)
+			if list and #list > 0 then
+				z.upgrades.blue = list
+				z.randomUpgradesBlue = list
+			end
+		end
+	end
+end
+
+function pickReplacementUpgrade(zoneObj, missingName, upgradesList)
+	if not zoneObj or not missingName then return nil end
+	local used = {}
+	if upgradesList then
+		for _, entry in pairs(upgradesList) do
+			local n = getUpgradeEntryName(entry)
+			if n then used[n] = true end
+		end
+	end
+	used[missingName] = true
+
+	if zoneObj.side == 1 then
+		local zoneSize = getZoneSize(zoneObj)
+		local pools = { sam = {}, shorad = {}, aaa = {}, ground = {}, armor = {}, arty = {}, other = {} }
+		local source = (RandomGroundGroups and getGlobalRedPool()) or (zoneObj.upgrades and zoneObj.upgrades.red) or {}
+		fillPoolsFrom(source, pools, zoneObj, zoneSize)
+		local cat = classifyUpgradeName(missingName)
+
+		local function pickFrom(list)
+			local filtered = {}
+			for i = 1, #list do
+				local n = list[i]
+				if n and not used[n] then
+					filtered[#filtered + 1] = n
+				end
+			end
+			if #filtered == 0 then return nil end
+			return filtered[fhRand(1, #filtered)]
+		end
+
+		local choice = pickFrom(pools[cat] or {})
+		if not choice then
+			local any = {}
+			for _, c in ipairs({ "sam", "shorad", "aaa", "ground", "armor", "arty", "other" }) do
+				local list = pools[c]
+				if list then
+					for i = 1, #list do
+						local n = list[i]
+						if n and not used[n] then
+							any[#any + 1] = n
+						end
+					end
+				end
+			end
+			if #any > 0 then
+				choice = any[fhRand(1, #any)]
+			end
+		end
+		return choice
+	elseif zoneObj.side == 2 then
+		local pools = { sam = {}, ground = {}, armor = {}, other = {} }
+		local source = (RandomBlueGroups and getGlobalBluePool()) or (zoneObj.upgrades and zoneObj.upgrades.blue) or {}
+		fillPoolsFromBlue(source, pools)
+		local cat = classifyBlueUpgradeName(missingName)
+
+		local function pickFrom(list)
+			local filtered = {}
+			for i = 1, #list do
+				local n = list[i]
+				if n and not used[n] then
+					filtered[#filtered + 1] = n
+				end
+			end
+			if #filtered == 0 then return nil end
+			return filtered[fhRand(1, #filtered)]
+		end
+
+		local choice = pickFrom(pools[cat] or {})
+		if not choice then
+			local any = {}
+			for _, c in ipairs({ "sam", "ground", "armor", "other" }) do
+				local list = pools[c]
+				if list then
+					for i = 1, #list do
+						local n = list[i]
+						if n and not used[n] then
+							any[#any + 1] = n
+						end
+					end
+				end
+			end
+			if #any > 0 then
+				choice = any[fhRand(1, #any)]
+			end
+		end
+		return choice
+	end
+
+	return nil
+end
+
 
 
 	function ZoneCommander:addRestrictedPlayerGroup(groupinfo)
@@ -10869,13 +11998,19 @@ function ZoneCommander:init()
 				local st = StaticObject.getByName(v)
 				local hasTpl = _DATABASE and _DATABASE.Templates and _DATABASE.Templates.Groups and _DATABASE.Templates.Groups[v]
 				if not gr and not st and not hasTpl then
-					local msg = "ZoneCommander INIT: upgrade group "..tostring(v).." missing for zone ["..tostring(self.zone).."] index ["..tostring(i).."]"
+					MISSING_GROUPS[v] = true
+					local msg = "ZoneCommander INIT: missing upgrade group "..tostring(v).." for zone ["..tostring(self.zone).."] index ["..tostring(i).."] (will replace if possible)"
 					env.info(msg)
-					trigger.action.outText(msg, 15)
+					trigger.action.outText(msg, 10)
 				end
 			end
 		end
 		self._validatedUpgrades = true
+	end
+
+	local forceRefresh = self._refreshRandomUpgrades == true
+	if forceRefresh then
+		self.remainingUnits = nil
 	end
 
 	if self.remainingUnits then
@@ -10894,7 +12029,8 @@ function ZoneCommander:init()
 							local gr = zone:spawnGroup(upg, false)
 							if gr then
 								self.built[i] = gr.name
-							else
+								else
+								MISSING_GROUPS[upg] = true
 								trigger.action.outText('Upgrade group '..tostring(upg)..' missing, skipped.',10)
 								env.info('zoneCommander ERROR: spawnGroup returned nil for zone ['..self.zone..'] extra upgrade index '..tostring(i)..' name='..(upg or 'nil'))
 							end							
@@ -10904,7 +12040,7 @@ function ZoneCommander:init()
 			end
 		end
 	else
-		if Utils.getTableSize(self.built) < self.level then
+		if forceRefresh or Utils.getTableSize(self.built) < self.level then
 			for i, v in pairs(upgrades) do
 				if not self.built[i] and i <= self.level then
 					local staticObj = StaticObject.getByName(v)
@@ -10916,8 +12052,41 @@ function ZoneCommander:init()
 						if not tostring(v):find("dismounted") then
 							local gr = zone:spawnGroup(v, false)
 							if not gr then
-								trigger.action.outText("Failed to spawn group for upgrade: " .. (v or "nil"), 10)
-								env.info("zoneCommander DEBUG: spawnGroup returned nil for zone ["..self.zone.."] upgrade index "..tostring(i).." name="..(v or "nil"))
+								MISSING_GROUPS = MISSING_GROUPS or {}
+								MISSING_GROUPS[v] = true
+								local replacement = pickReplacementUpgrade(self, v, upgrades)
+								if replacement then
+									upgrades[i] = replacement
+									if self.side == 1 and self.upgrades and self.upgrades.red then
+										local cur = self.upgrades.red[i]
+										if getUpgradeEntryName(cur) == v then
+											-- If the original entry was pinned, replacement implicitly unpins it.
+											self.upgrades.red[i] = replacement
+										end
+									elseif self.side == 2 and self.upgrades and self.upgrades.blue then
+										local cur = self.upgrades.blue[i]
+										if getUpgradeEntryName(cur) == v then
+											self.upgrades.blue[i] = replacement
+										end
+									end
+									if self.randomUpgradesRed and self.randomUpgradesRed[i] == v then
+										self.randomUpgradesRed[i] = replacement
+									end
+									if self.randomUpgradesBlue and self.randomUpgradesBlue[i] == v then
+										self.randomUpgradesBlue[i] = replacement
+									end
+									local gr2 = zone:spawnGroup(replacement, false)
+									if gr2 then
+										self.built[i] = gr2.name
+									else
+										MISSING_GROUPS[replacement] = true
+										trigger.action.outText("Failed to spawn replacement group: " .. (replacement or "nil"), 10)
+										env.info("zoneCommander DEBUG: spawnGroup returned nil for zone ["..self.zone.."] replacement index "..tostring(i).." name="..(replacement or "nil"))
+									end
+								else
+									trigger.action.outText("Failed to spawn group for upgrade: " .. (v or "nil"), 10)
+									env.info("zoneCommander DEBUG: spawnGroup returned nil for zone ["..self.zone.."] upgrade index "..tostring(i).." name="..(v or "nil"))
+								end
 							else
 								self.built[i] = gr.name
 							end
@@ -10926,6 +12095,9 @@ function ZoneCommander:init()
 				end
 			end
 		end
+	end
+	if forceRefresh then
+		self._refreshRandomUpgrades = nil
 	end
 	
 
@@ -10936,7 +12108,8 @@ function ZoneCommander:init()
 		else
 			if self.upgrades.red then
 				for i, v in pairs(self.upgrades.red) do
-					allUpgrades[v] = true
+					local name = getUpgradeEntryName(v)
+					if name then allUpgrades[name] = true end
 				end
 			end
 		end
@@ -11091,9 +12264,18 @@ end
 	end
 	
 	function ZoneCommander:update()
-		if self.suspended then return end
 		if not self.active then return end
-		self:checkCriticalObjects()
+		local allowSpawnWhileSuspended = self._suspendAllowSpawn == true
+		if self.suspended then
+			if allowSpawnWhileSuspended then
+				for i, v in ipairs(self.groups) do
+					v:update()
+				end
+			end
+			return
+		end
+		if not self.suspended then
+			self:checkCriticalObjects()
 
 			local toRemove = {}
 			local marked   = {}
@@ -11263,45 +12445,49 @@ end
 			self.battleCommander:_rebalanceRedDifficulty()
 		end
 
+		end
+
 		for i, v in ipairs(self.groups) do
 			v:update()
 		end
 
-		if self.crates then
-			for i, v in ipairs(self.crates) do
-				local crate = StaticObject.getByName(v)
-				if crate and Utils.isCrateSettledInZone(crate, self.zone) then
-					if self.side == 0 then
-						self:capture(crate:getCoalition())
-						if self.battleCommander.playerRewardsOn then
-							self.battleCommander:addFunds(self.side, self.battleCommander.rewards.crate)
-							trigger.action.outTextForCoalition(self.side, 'Capture +' .. self.battleCommander.rewards.crate .. ' credits', 5)
-						end
-					elseif self.side == crate:getCoalition() then
-						if self.battleCommander.playerRewardsOn then
-							if self:canRecieveSupply() then
+		if not self.suspended then
+			if self.crates then
+				for i, v in ipairs(self.crates) do
+					local crate = StaticObject.getByName(v)
+					if crate and Utils.isCrateSettledInZone(crate, self.zone) then
+						if self.side == 0 then
+							self:capture(crate:getCoalition())
+							if self.battleCommander.playerRewardsOn then
 								self.battleCommander:addFunds(self.side, self.battleCommander.rewards.crate)
-								trigger.action.outTextForCoalition(self.side, 'Resupply +' .. self.battleCommander.rewards.crate .. ' credits', 5)
-							else
-								local reward = self.battleCommander.rewards.crate * 0.25
-								self.battleCommander:addFunds(self.side, reward)
-								trigger.action.outTextForCoalition(self.side, 'Resupply +' .. reward .. ' credits (-75% due to no demand)', 5)
+								trigger.action.outTextForCoalition(self.side, 'Capture +' .. self.battleCommander.rewards.crate .. ' credits', 5)
 							end
+						elseif self.side == crate:getCoalition() then
+							if self.battleCommander.playerRewardsOn then
+								if self:canRecieveSupply() then
+									self.battleCommander:addFunds(self.side, self.battleCommander.rewards.crate)
+									trigger.action.outTextForCoalition(self.side, 'Resupply +' .. self.battleCommander.rewards.crate .. ' credits', 5)
+								else
+									local reward = self.battleCommander.rewards.crate * 0.25
+									self.battleCommander:addFunds(self.side, reward)
+									trigger.action.outTextForCoalition(self.side, 'Resupply +' .. reward .. ' credits (-75% due to no demand)', 5)
+								end
+							end
+							self:upgrade()
 						end
-						self:upgrade()
-					end
 
-					crate:destroy()
+						crate:destroy()
+					end
 				end
 			end
-		end
 
-		for i, v in ipairs(self.restrictedGroups) do
-			trigger.action.setUserFlag(v.name, v.side ~= self.side)
-		end
+			for i, v in ipairs(self.restrictedGroups) do
+				trigger.action.setUserFlag(v.name, v.side ~= self.side)
+			end
 
-		if self.income and self.side ~= 0 and self.active then
-			self.battleCommander:addFunds(self.side, self.income)
+			if self.income and self.side ~= 0 and self.active then
+				self.battleCommander:addFunds(self.side, self.income)
+			end
 		end
 	end
 
@@ -11403,6 +12589,7 @@ SCHEDULER:New(nil,function() for i,v in pairs(bc.zones or {}) do v:validateTarge
 function ZoneCommander:capture(newside,silent)
     if self.active and self.side == 0 and newside ~= 0 then
         self.side = newside
+        self:_syncUpgradesUsed()
 		self.battleCommander:buildZoneStatusMenuForGroup()
         local sidename = ''
         local color = {0.7,0.7,0.7,0.3}
@@ -11772,6 +12959,19 @@ end
 function GroupCommander:_enterHangar(isInitial)
     self.state = 'inhangar'
     self:_applyHangarDelay(isInitial)
+end
+
+function GroupCommander:forceSpawnNow(targetZoneName)
+	if targetZoneName then
+		self.targetzone = targetZoneName
+	end
+	self.forceSpawn = true
+	self.diceRolled = false
+	self.Spawned = false
+	self.state = 'preparing'
+	self.lastStateTime = timer.getAbsTime() - 3600
+	self:update()
+	self.forceSpawn = nil
 end
 
 function GroupCommander:init()
@@ -13487,16 +14687,23 @@ end
 function GroupCommander:shouldSpawn(ignore)
 	local plane = Unit.Category.AIRPLANE
 	local heli = Unit.Category.HELICOPTER
+	local force = self.forceSpawn == true
 
 	if not self.zoneCommander.active then
 		return false
 	end
 
-	if self.zoneCommander.suspended then 
-		return false 
+	if self.zoneCommander.suspended and not ignore and not force then
+		local allow = self.zoneCommander._suspendAllowSpawn
+		if not allow then
+			return false
+		end
+		if self.mission ~= 'attack' and self.mission ~= 'patrol' then
+			return false
+		end
 	end
 
-	if self.side == 1 and (self.unitCategory == plane or self.unitCategory == heli) and self.zoneCommander.BlueIsNear then
+	if self.side == 1 and (self.unitCategory == plane or self.unitCategory == heli) and self.zoneCommander.BlueIsNear and not force then
 		self:_enterHangar(false)
 		return false
 	end
@@ -13505,21 +14712,49 @@ function GroupCommander:shouldSpawn(ignore)
 
 	if not tg or tg.suspended or tg.active == false then return false end
 
-	
-	if self.condition and not self.condition() then return false end
+	if force then
+		if self.template then
+			self:_ensureTemplateCache()
+			local zside = self.zoneCommander.side
+			if zside~=0 and self.side~=zside then
+				local lst=self._tplBySide[zside]
+				if lst and #lst>0 then self.side=zside else return false end
+			end
+			if self.side~=0 then
+				local lst=self._tplBySide[self.side]
+				if not lst or #lst==0 then return false end
+			end
+		end
 
-	if self.Bluecondition then 
+		if self.side ~= self.zoneCommander.side then
+			return false 
+		end
+
+		if self.MissionType == 'SEAD' then
+			if not self.zoneCommander.battleCommander:HasSeadTargets(tg.zone) then
+				return false
+			end
+			self.SpawnHot = true
+		end
+
+		return true
+	end
+
+	
+	if self.condition and self:condition() == false then return false end
+
+	if self.Bluecondition then
 		if self.side == 2 then
-			if not self.Bluecondition() then return false end
-		else
+			if not self:Bluecondition() then return false end
+	else
 			return false
 		end
 	end
 
-	if self.Redcondition then 
+	if self.Redcondition then
 		if self.side == 1 then
-			if not self.Redcondition() then return false end
-		else
+			if not self:Redcondition() then return false end
+	else
 			return false
 		end
 	end
@@ -14052,10 +15287,11 @@ end
 										end
 
 								end)
-									local tk = (self.mission == 'supply' and self.side == 2) and SPAWN.Takeoff.Hot or SPAWN.Takeoff.Cold
+									local spawnHot = ((self.mission == 'supply' and self.side == 2) or self.SpawnHot) and true or false
+									local tk = spawnHot and SPAWN.Takeoff.Hot or SPAWN.Takeoff.Cold
 									local spawned = nil
 								if self.ForceFromGround and self.unitCategory == heli then
-									local tk = (self.mission == 'supply' and self.side == 2) and true or false
+									local tk = spawnHot and true or false
 									spawned = self:_spawnFromGroundAt(resolved, originZone, self.targetzone, tk)
 								else
 									if not self.Airbase then
@@ -14082,7 +15318,8 @@ end
 							if self.unitCategory == plane then
 								self:_enterHangar(false)
 							else
-								local tk = (self.mission == 'supply' and self.side == 2) and SPAWN.Takeoff.Hot or SPAWN.Takeoff.Cold
+								local spawnHot = ((self.mission == 'supply' and self.side == 2) or self.SpawnHot) and true or false
+								local tk = spawnHot and SPAWN.Takeoff.Hot or SPAWN.Takeoff.Cold
 								local spawned = self:_spawnFromGroundAt(resolved, originZone, self.targetzone, tk)
 								if spawned then
 									if (self.mission=='supply' or self.MissionType=='CAS') and self.unitCategory == heli then spawned:OptionPreferVerticalLanding() end
@@ -19757,7 +20994,7 @@ local BombMission = AUFTRAG:NewCASENHANCED(targetZone,27000,550,15,nil)
 	BombMission:AddConditionSuccess(function() return bc.indexedZones[targetZoneName].side == 0 end)
 	BombMission:AddConditionFailure(function() return BomberGroup and bc.indexedZones[targetZoneName].side == 1 and BomberGroup:IsOutOfBombs() end)
 	BombMission:SetMissionAltitude(27000)
-	if era == 'Coldwar' then
+	if Era == 'Coldwar' then
 		BombMission:SetWeaponExpend(AI.Task.WeaponExpend.FOUR)
 	else
 		BombMission:SetWeaponExpend(AI.Task.WeaponExpend.ONE)
@@ -21934,7 +23171,7 @@ local WEAPONSLIST_MODS_ITEMS = {
 		"weapons.containers.BA_58",
 	}
 
-if AllowMods and era == "Coldwar" then
+if AllowMods and Era == "Modern" then
   WEAPONSLIST.Items[WEAPONSLIST.ItemCategory.MODS] = WEAPONSLIST_MODS_ITEMS
 end
 

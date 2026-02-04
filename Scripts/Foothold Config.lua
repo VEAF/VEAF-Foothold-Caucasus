@@ -42,7 +42,7 @@ FriendlyCapSupport  = "medium" -- BLUE CAP support limit. This can be further cu
 FriendlyCasSupport  = "medium" -- BLUE CAS support limit.  This can be further custommized in the advance section.
 FriendlySeadSupport = "medium" -- BLUE SEAD support limit.  This can be further custommized in the advance section.
 
-AiPlaneSkill = "Excellent" 
+AiPlaneSkill = "Random"
 -- AI skill used for spawned airplanes Red only (MOOSE SPAWN:InitSkill).
 -- Valid: "Average", "Good", "High", "Excellent", "Random" (case-insensitive). Unknown values become "High".
 
@@ -60,14 +60,20 @@ AiGroundSkill = "Excellent"
 UseStatics = true
 
 -- "Modern" or "Coldwar" ("Gulfwar" if the map is Iraq).
--- In the editor, Don't copy to all ships.
-Era = "Modern" -- does not work in Afghanistan
+-- In the editor, Don't copy to all ships, make sure all planes in every warehouse are set to LIMITED!!!
+Era = "Modern" -- does not work in Afghanistan or kola
 
 -- If true, when players die their coalition loses 100 credits per death.
 CreditLosewhenKilled = false
 
 -- If you want to change the amount, you can do it here.
 CreditLosewhenKilledAmount = 100
+
+-- If true, when players die they lose 100 rank credits (only if RankingSystem == true).
+RankLoseWhenKilled = true
+
+-- If you want to change the amount, you can do it here.
+RankLoseWhenKilledAmount = 100
 
 -- If true: remove SA-10 and SA-11 (replaced by older SAMs) AND remove SA-15 and Pantsir.
 NoSA10AndSA11 = false
@@ -412,10 +418,10 @@ AllowedCsar = {
 PilotWeight = 80
 
 -- Distance (meters) from the survivor where the helicopter must hover.
-CsarHoverDistance = 15
+CsarHoverDistance = 20
 
 -- Hover height (meters AGL) required to complete a CSAR pickup.
-CsarHoverHeight = 40
+CsarHoverHeight = 60
 
 -- How many seconds the helicopter must maintain the hover to complete pickup.
 CsarHoverSeconds = 10
@@ -479,20 +485,22 @@ CapLimitStages = {
 	},
 	medium = {
 		{ player = 0,   amount = 1 },
-		{ player = 1,   amount = 2 },
+		{ player = 1,   amount = 1 },
 		{ player = 2,   amount = 3 },
 		{ player = 3,   amount = 4 },
 		{ player = 4,   amount = 4 },
+		{ player = 5,   amount = 4 },
 		{ player = 9,   amount = 5 },
 		{ player = 10,  amount = 6 },
 		{ player = 999, amount = 7 },
 	},
 	hard = {
-		{ player = 0,   amount = 2 },
-		{ player = 1,   amount = 3 },
+		{ player = 0,   amount = 1 },
+		{ player = 1,   amount = 2 },
 		{ player = 2,   amount = 4 },
-		{ player = 3,   amount = 5 },
+		{ player = 3,   amount = 4 },
 		{ player = 4,   amount = 5 },
+		{ player = 5,   amount = 5 },
 		{ player = 9,   amount = 6 },
 		{ player = 10,  amount = 7 },
 		{ player = 999, amount = 8 },
@@ -502,31 +510,43 @@ CapLimitStages = {
 RedCasLimitStages = {
 	easy = {
 		{ player = 0,   amount = 0 },
+		{ player = 1,   amount = 0 },
 		{ player = 2,   amount = 1 },
+		{ player = 3,   amount = 1 },
 		{ player = 4,   amount = 2 },
+		{ player = 5,   amount = 2 },
 		{ player = 999, amount = 3 },
 	},
 	medium = {
+		{ player = 0,   amount = 1 },
 		{ player = 1,   amount = 1 },
+		{ player = 2,   amount = 1 },
 		{ player = 3,   amount = 2 },
 		{ player = 4,   amount = 3 },
+		{ player = 5,   amount = 3 },
+		{ player = 9,   amount = 4 },
 		{ player = 999, amount = 4 },
 	},
 	hard = {
 		{ player = 0,   amount = 1 },
+		{ player = 1,   amount = 1 },
 		{ player = 2,   amount = 2 },
 		{ player = 3,   amount = 3 },
-		{ player = 9,   amount = 4 },
-		{ player = 999, amount = 5 },
+		{ player = 4,   amount = 4 },
+		{ player = 5,   amount = 4 },
+		{ player = 9,   amount = 6 },
+		{ player = 999, amount = 7 },
 	},
 }
 
 BlueCapSupportStages = {
 	easy = {
+		{ player = 0,   amount = 2 },
 		{ player = 1,   amount = 2 },
 		{ player = 999, amount = 1 },
 	},
 	medium = {
+		{ player = 0,   amount = 1 },
 		{ player = 1,   amount = 1 },
 		{ player = 999, amount = 0 },
 	},
@@ -537,10 +557,12 @@ BlueCapSupportStages = {
 
 BlueCasSupportStages = {
 	easy = {
+		{ player = 0,   amount = 2 },
 		{ player = 1,   amount = 2 },
 		{ player = 999, amount = 1 },
 	},
 	medium = {
+		{ player = 0,   amount = 1 },
 		{ player = 1,   amount = 1 },
 		{ player = 999, amount = 0 },
 	},
@@ -551,10 +573,12 @@ BlueCasSupportStages = {
 
 BlueSeadSupportStages = {
 	easy = {
+		{ player = 0,   amount = 2 },
 		{ player = 1,   amount = 2 },
 		{ player = 999, amount = 1 },
 	},
 	medium = {
+		{ player = 0,   amount = 1 },
 		{ player = 1,   amount = 1 },
 		{ player = 999, amount = 0 },
 	},
@@ -710,13 +734,15 @@ restrictedWeapons = {
     "weapons.bombs.LS_6_100",
     "weapons.bombs.GBU-43/B(MOAB)",}
 
+ -- Harrier is AV8BNA
+ -- Strike eagle is F-15ESE
 -- In this list, you can either remove or add what is allowed in the coldwar era.
 allowedPlanes = {
   "MiG-19P","Mirage-F1AD","F/A-18A","Su-24MR","F-4E-45MC","MiG-23MLD","Mirage-F1CR","SA342Mistral","Mi-24V","F-15E","AJS37","UH-1H",
   "UH-60L","MB-339A","F-14A-135-GR", "F-14A-135-GR-Early", "F-15C","F-16A MLU","Mirage-F1BD","P3C_Orion","Mirage-F1M-EE","An-30M","F-5E-3_FC",
   "Mirage-F1EQ","A-10A", "Mirage-F1M-CE","Mirage-F1ED","Ka-27","E-2C","UH-60A","Mirage-F1C","Mirage-F1CE","AH-1W","MiG-21Bis","Mirage-F1BE",
-  "MB-339APAN","Hercules","Su-25","SA342M","Mirage-F1EDA","OH58D","MiG-15bis_FC","Mirage-F1CZ", "Mirage-F1BQ", "Mirage-F1B",
-  "Mirage-F1C-200","Mirage-F1DDA","MiG-15bis","Mirage-F1CJ","Mirage-F1CK","Mirage-F1AZ", "A-10C_2", "Mirage-F1CT","A-10C","M-2000C",
+  "MB-339APAN","Hercules","Su-25","SA342M","Mirage-F1EDA","OH58D","MiG-15bis_FC","Mirage-F1CZ", "Mirage-F1BQ", "Mirage-F1B", "AV8BNA",
+  "Mirage-F1C-200","Mirage-F1DDA","MiG-15bis","Mirage-F1CJ","Mirage-F1CK","Mirage-F1AZ", "A-10C_2", "Mirage-F1CT","A-10C","M-2000C","F-15ESE", "ka-50", "Ka-50_3",
   "Mirage-F1EH","Mirage-F1CH","SA342Minigun","MiG-29A","Bronco-OV-10A","OH-6A", "Mirage-F1CG","F-5E-3","F-86F Sabre","F-14A","L-39C","C-101CC","SU22",
   "SA342L","Mi-8MT","Mirage-F1EE","Mi-24P","CH-47Fbl1","FA-18C_hornet","F-16C_50", "MiG-29 Fulcrum","UH-60L_DAP","C-130J-30","F-14B","AH-64D_BLK_II","MH-6J","AH-6J","Mi-28NE"}
 
@@ -724,7 +750,7 @@ allowedPlanes = {
 -- If you have added a mod, and you want the mod to be shown in the warehouse, the plane it self, you can add it here. This will be refilled then.
 -- If you are in the Coldwar era, make sure to add it to the allowedPlanes as well.
 restockAircraft = {
-"FA-18FT","EA-18G","F-22A","FA-18E","B-52H","FA-18F","FA-18ET","F15EX","A-29B","F-23A","Ka-50_3","Ka-50","Mi-28NE","SU22",
+"FA-18FT","EA-18G","F-22A","FA-18E","B-52H","FA-18F","FA-18ET","F15EX","A-29B","F-23A","Ka-50_3","Ka-50","Mi-28NE","SU22","AV8BNA",
 "Bronco-OV-10A","JAS39Gripen_AG","MiG-31BM","JAS39Gripen","Su-35S","UH-60L","OH-6A","Su-35","JAS39Gripen_BVR","SK-60","T-45","UH-60L_DAP", "MiG-29 Fulcrum","MH-6J","AH-6J"}
 
 

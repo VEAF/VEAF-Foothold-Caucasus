@@ -60,6 +60,7 @@ AIEN.config.densityRange                      = 5000              -- meters, use
 -- reactions and tasking variables
 AIEN.config.intelDbTimeout                    = 1200              -- seconds. Used to cancel intelDb entries for units (not static!), when the time of the contact gathering is more than this value
 AIEN.config.artyFireLastContactThereshold     = 180               -- seconds, max amount of time since last contact to consider an arty target ok
+AIEN.config.artyTargetMaxSpeed               = 0.5               -- m/s, max target speed for arty fire (<=0.5 m/s)
 AIEN.config.taskTimeout                       = 480               -- seconds after which a tasked group is removed from the database
 AIEN.config.targetedTimeout                   = 240               -- seconds after which a targeted variable in inteldb is removed from database
 AIEN.config.artyTaskTimeout                   = 160               -- 160
@@ -69,11 +70,13 @@ AIEN.config.disperseActionTime				  = 120               -- seconds
 AIEN.config.counterBatteryRadarRange          = 50000             -- m, capable distance for a radar to perform counter battery calculations
 AIEN.config.counterBatteryPlanDelay           = 160               -- s, will be also randomized on +-35%. Used to define the delay of the planned counter battery fire if available
 AIEN.config.smoke_source_num                  = 5                 -- number, between 4 and 9. Generated smokes for each unit when smoke reaction is called in. Any number below 4 or above 9 will be converted in the nearest threshold
+if AIEN.config.delegationZoneLockTimeout == nil then AIEN.config.delegationZoneLockTimeout = 1200 end -- s, zone delegation lock timeout (default 20 min)
 
 -- SA evaluation variables
 AIEN.config.proxyBuildingDistance			  = 2500              -- m, if buildings are within this distance value, they are considered "close"
 AIEN.config.proxyUnitsDistance                = 4500              -- m, if units are within this distance value, they are considered "close"
 AIEN.config.supportDistance					  = 4000			  -- m, maximum distance for evaluating support or cover movements when under attack
+if AIEN.config.delegationArtyAttackRange == nil then AIEN.config.delegationArtyAttackRange = 10000 end -- m, max distance for delegated ground assault on enemy ARTY/MLRS
 AIEN.config.withrawDist                       = 3500             -- m, maximum distance for withdraw manoeuvre nearby a friendly support unit
 
 
@@ -121,6 +124,7 @@ local stupidIndex                       = 1                                     
 --AI processing timers
 local underAttack                       = {}                                        -- used when a group has been attacked, it keeps "tactical" tasking off for 10 mins leaving room for "reaction" decision making
 local movingGroups                      = 0                                         -- used to keep track of groups that are currently moving, so that no initiative actions can be taken if the number is more than allowed by AIEN.config.maxGroupInMovement
+local delegationZoneLocks               = {}                                        -- zone name => timer.getTime() when delegation started
 
 
 --Dynamic and_or linked to other code
@@ -8785,6 +8789,36 @@ local function groupAllowedForAI(group)
     return true
 end
 
+local function groupHasInfantryUnits(group)
+    if group and group:isExist() == true then
+        local units, count = getGroupUnitsData(group)
+        if units and count > 0 then
+            for _, uData in pairs(units) do
+                if uData and uData:hasAttribute("Infantry") then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+local function isZoneDelegationLocked(zoneName)
+    if not zoneName then
+        return false
+    end
+    local t = delegationZoneLocks[zoneName]
+    if not t then
+        return false
+    end
+    local timeout = AIEN.config.delegationZoneLockTimeout or 1200
+    if timer.getTime() - t >= timeout then
+        delegationZoneLocks[zoneName] = nil
+        return false
+    end
+    return true
+end
+
 --###### GROUP AI QUERY FUNCTIONS ##################################################################
 
 -- Below functions has been created to query ground groups for informations about them, most of them used in the key getSA functions that
@@ -10361,16 +10395,14 @@ local function counterBattery(hitPos, tgtPos, coa) -- this function emulates cou
                     }
 
                     local _search = function(_obj)
-                        pcall(function()
-                            if _obj ~= nil and Object.getCategory(_obj) == 1 and _obj:isExist() and _obj:getCoalition() == coa then
-                                if _obj:hasAttribute("SAM SR") or _obj:hasAttribute("SAM TR") or _obj:hasAttribute("EWR") then
-                                    local d = getDist(_obj:getPoint(), hitPos)
-                                    if d < closestRange then
-                                        closestRange = d
-                                    end
+                        if _obj ~= nil and Object.getCategory(_obj) == 1 and _obj:isExist() and _obj:getCoalition() == coa then
+                            if _obj:hasAttribute("SAM SR") or _obj:hasAttribute("SAM TR") or _obj:hasAttribute("EWR") then
+                                local d = getDist(_obj:getPoint(), hitPos)
+                                if d < closestRange then
+                                    closestRange = d
                                 end
                             end
-                        end)
+                        end
                     end
                     world.searchObjects(Object.Category.UNIT, _volume, _search)
 
@@ -10412,6 +10444,7 @@ local function counterBattery(hitPos, tgtPos, coa) -- this function emulates cou
                                     groupfireAtPoint({arty, fpos, 20, "Counter battery fire"})
                                 end
                                 timer.scheduleFunction(func, nil, timer.getTime() + t)
+                                return true
 
                             else
                                 if AIEN.config.AIEN_debugProcessDetail == true then
@@ -10428,6 +10461,7 @@ local function counterBattery(hitPos, tgtPos, coa) -- this function emulates cou
                         end
 
                     end
+                    return false
 
                 else
                     if AIEN.config.AIEN_debugProcessDetail == true then
@@ -11455,7 +11489,7 @@ local function ac_withdraw(group, ownPos, tgtPos, resume, sa, skill) -- this wil
 end
 
 
-local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will make the group to run toward the shooting enemy and open fire
+local function ac_attack(group, ownPos, tgtPos, resume, sa, skill, returnToZone, zoneLockName) -- this will make the group to run toward the shooting enemy and open fire
     -- group is the group subject of the action
     -- pos is, when needed, the reference position for the actions, or own position
     -- resume is a boolean. If true, after some time the group will resume it's previous condition, else no.
@@ -11507,12 +11541,15 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
         if resume then
             -- check if there's a route to be followed once action end
             local destination = nil
-            local points = getMEroute(group)
-            if points and #points > 1 then
-                local last = #points
-                local data = points[last] 
-                if data and type(data) == "table" then
-                    destination = { x = data.x, y = land.getHeight({x = data.x, y = data.y}), z = data.y}
+            if not returnToZone then
+                -- when returning to zone, skip ME route and fall back to ownPos
+                local points = getMEroute(group)
+                if points and #points > 1 then
+                    local last = #points
+                    local data = points[last] 
+                    if data and type(data) == "table" then
+                        destination = { x = data.x, y = land.getHeight({x = data.x, y = data.y}), z = data.y}
+                    end
                 end
             end
             if not destination then
@@ -11520,7 +11557,14 @@ local function ac_attack(group, ownPos, tgtPos, resume, sa, skill) -- this will 
             end            
             local funcresumeRoute = function()
                 if group:isExist() then
-                    moveToPoint(group, destination, 200, 10, false, nil, nil, nil, nil, nil, nil, "ac_attack_resume")
+                    local useZone = nil
+                    if returnToZone == true then
+                        useZone = true
+                    end
+                    moveToPoint(group, destination, 200, 10, false, nil, nil, nil, nil, nil, useZone, "ac_attack_resume")
+                    if zoneLockName then
+                        delegationZoneLocks[zoneLockName] = nil
+                    end
                 end
             end
             if AIEN.config.AIEN_debugProcessDetail == true then
@@ -13305,6 +13349,8 @@ function update_ISR() -- basically clean old ISR data
                                 local ttl = AIEN.config.targetedTimeout             -- default
                                     if tData.targeted_by == "ARTY" then                 -- see note below
                                     ttl = AIEN.config.artyTargetedTimeout           -- shorter for arty
+                                    elseif tData.targeted_by == "ARTY_MOVE" then
+                                    ttl = AIEN.config.artyFireLastContactThereshold or AIEN.config.artyTargetedTimeout or ttl
                                     end
 
                                     if now - tData.targeted >= ttl then
@@ -13597,13 +13643,14 @@ end
                                                 if (not report) and gData.coa == 2 then
                                                     report = buildJTACFallbackReport(_obj, zTgt, gData, now)
                                                     if report then
+                                                        report.speed = 0
                                                         intelDb[_obj_id] = report
                                                         if AIEN.config.AIEN_debugProcessDetail then
                                                             env.info("ARTY_JTAC "..gData.n.." seeded ".._obj:getName())
                                                         end
                                                     end
                                                 end
-                                                                 if scoutActive then
+                                                if scoutActive then
                                                     if report then
                                                         report.pos = p
                                                         report.record = now
@@ -13656,23 +13703,20 @@ end
                                                     end
                                                 end
                                                 if report and report.targeted == nil then
-                                                    local speed = report.speed or 0
-                                                    if speed < 1 then
-                                                        local lastContact = now - (report.record or now)
-                                                        if lastContact < AIEN.config.artyFireLastContactThereshold then
-                                                            local timeFactor = (AIEN.config.artyFireLastContactThereshold-lastContact)/AIEN.config.artyFireLastContactThereshold
-                                                            local pri = (classPriority[report.cls] or 0.5) * timeFactor
-                                                            if getDangerClose(report.pos, gData.coa) == false then
-                                                                if pri > curPri then
-                                                                    curPri   = pri
-                                                                    firePoint = report.pos
-                                                                    targetId  = report.cls
-                                                                    bestReport = report
-                                                                end
-                                                                candidates[#candidates+1] = {pos = report.pos, pri = pri}
-                                                            elseif AIEN.config.AIEN_debugProcessDetail then
-                                                                env.info((tostring(ModuleName) .. ", update_ARTY, target skipped for danger close"))
+                                                    local lastContact = now - (report.record or now)
+                                                    if lastContact < AIEN.config.artyFireLastContactThereshold then
+                                                        local timeFactor = (AIEN.config.artyFireLastContactThereshold-lastContact)/AIEN.config.artyFireLastContactThereshold
+                                                        local pri = (classPriority[report.cls] or 0.5) * timeFactor
+                                                        if getDangerClose(report.pos, gData.coa) == false then
+                                                            if pri > curPri then
+                                                                curPri   = pri
+                                                                firePoint = report.pos
+                                                                targetId  = report.cls
+                                                                bestReport = report
                                                             end
+                                                            candidates[#candidates+1] = {pos = report.pos, pri = pri, report = report, obj = report.obj, cls = report.cls}
+                                                        elseif AIEN.config.AIEN_debugProcessDetail then
+                                                            env.info((tostring(ModuleName) .. ", update_ARTY, target skipped for danger close"))
                                                         end
                                                     end
                                                     if AIEN.config.AIEN_debugProcessDetail then
@@ -13684,9 +13728,46 @@ end
                                             end
                                         end
                                         world.searchObjects(Object.Category.UNIT, _volume, _search)
-                                        if bestReport then
+                                        local movingSkip = false
+                                        local movingReport = nil
+                                        local maxSpeed = AIEN.config.artyTargetMaxSpeed or 0
+                                        if firePoint and bestReport and bestReport.obj and bestReport.obj:isExist() and maxSpeed > 0 then
+                                            local v = vecmag(bestReport.obj:getVelocity()) or 0
+                                            if v > maxSpeed then
+                                                movingSkip = true
+                                                movingReport = bestReport
+                                                firePoint = nil
+                                                bestReport.targeted = cycleTime
+                                                bestReport.targeted_by = "ARTY_MOVE"
+                                                bestReport.record = now
+                                            end
+                                        end
+                                        if movingSkip and candidates and #candidates > 0 then
+                                            table.sort(candidates, function(a,b) return a.pri > b.pri end)
+                                            for _, c in ipairs(candidates) do
+                                                local rep = c.report
+                                                if rep and rep ~= movingReport then
+                                                    local robj = c.obj
+                                                    if not (maxSpeed > 0 and robj and robj:isExist() and (vecmag(robj:getVelocity()) or 0) > maxSpeed) then
+                                                        firePoint = c.pos
+                                                        bestReport = rep
+                                                        targetId = c.cls
+                                                        movingSkip = false
+                                                        break
+                                                    end
+                                                end
+                                            end
+                                        end
+                                        if firePoint and bestReport then
                                             bestReport.targeted = cycleTime
                                             bestReport.targeted_by = "ARTY"
+                                        end
+                                        if movingSkip and AIEN.config.message_feed then
+                                            local cooldown = AIEN.config.artyFireLastContactThereshold or 180
+                                            if not gData.lastMoveSkipMsg or (cycleTime - gData.lastMoveSkipMsg) >= cooldown then
+                                                trigger.action.outTextForCoalition(gData.coa, "C2, "..tostring(gData.n)..", we can't fire now, target is on the move.", 10)
+                                                gData.lastMoveSkipMsg = cycleTime
+                                            end
                                         end
                                         -- issuing mission
                                         if firePoint then
@@ -14407,41 +14488,59 @@ end
     
                                     -- record the attack, for preventing phases to act for 10 mins
                                     underAttack[group:getID()] = timer.getTime()
-    
+
                                     if not delegationOnly then
                                         choosenAct = executeReactions(group, o_pos, a_pos, bc_ac, db_group.sa, db_group.skill, s_cat, s_cls)
                                     end
-    
-                                    if shooter and a_pos and s_cat == 1 and (o_cls == "SAM" or o_cls == "SHORAD" or o_cls == "ARTY" or o_cls == "MLRS") then
-                                        if AIEN.config.AIEN_debugProcessDetail == true then
-                                            env.info(("AIEN.event_hit, delegation eligible, hit cls " .. tostring(o_cls)))
+
+                                    local counterBatteryDone = false
+                                    if choosenAct ~= "ac_fireMissionOnShooter" then
+                                        if AIEN.config.firemissions == true then
+                                            if shooter and shooter:getPoint() and position then
+                                                counterBatteryDone = counterBattery(position, shooter:getPoint(), group:getCoalition()) == true
+                                            end
                                         end
-    
-                                        local z1 = bc:getZoneOfPoint(o_pos)
-                                        if z1 and z1.built and #z1.built > 0 then
-                                            local bestGroup1
-                                            local bestGroup2
-                                            local bestScore1
-                                            local bestScore2
-    
-                                            for _, gName in ipairs(z1.built) do
-                                                local gObj = Group.getByName(gName)
-                                                if gObj and gObj:isExist() and gObj:getCoalition() == group:getCoalition() and gObj:getName() ~= group:getName() then
-                                                    local gid = gObj:getID()
-                                                    if not underAttack[gid] then
-                                                        local gData = groundgroupsDb[gid]
-                                                        if gData and gData.tasked == false and gData.sa and gData.sa.pos and gData.sa.cls and gData.sa.cls ~= "SAM" and gData.sa.cls ~= "SHORAD" and gData.sa.cls ~= "ARTY" and gData.sa.cls ~= "MLRS" then
-                                                            local dist = getDist(gData.sa.pos, o_pos)
-                                                            if dist < AIEN.config.supportDistance then
-                                                                local base = supportCounterAirClasses[gData.class] or 0
-                                                                if base > 0 then
-                                                                    local score = base * 10000 - dist
-                                                                    if not bestScore1 or score > bestScore1 then
-                                                                        bestGroup2, bestScore2 = bestGroup1, bestScore1
-                                                                        bestGroup1, bestScore1 = gObj, score
-                                                                    elseif not bestScore2 or score > bestScore2 then
-                                                                        if not bestGroup1 or gObj:getName() ~= bestGroup1:getName() then
-                                                                            bestGroup2, bestScore2 = gObj, score
+                                    end
+
+                                    if shooter and a_pos and s_detected and not counterBatteryDone then
+                                        local delegated = false
+                                        if s_cat == 1 and (o_cls == "SAM" or o_cls == "SHORAD" or o_cls == "ARTY" or o_cls == "MLRS") then
+                                            delegated = true
+                                            if AIEN.config.AIEN_debugProcessDetail == true then
+                                                env.info(("AIEN.event_hit, delegation eligible, hit cls " .. tostring(o_cls)))
+                                            end
+
+                                            local z1 = bc:getZoneOfPoint(o_pos)
+                                            if z1 and z1.built and #z1.built > 0 then
+                                                if isZoneDelegationLocked(z1.zone) then
+                                                    if AIEN.config.AIEN_debugProcessDetail == true then
+                                                        env.info(("AIEN.event_hit, delegation skipped, zone locked: " .. tostring(z1.zone)))
+                                                    end
+                                                else
+                                                local bestGroup1
+                                                local bestGroup2
+                                                local bestScore1
+                                                local bestScore2
+
+                                                for _, gName in ipairs(z1.built) do
+                                                    local gObj = Group.getByName(gName)
+                                                    if gObj and gObj:isExist() and gObj:getCoalition() == group:getCoalition() and gObj:getName() ~= group:getName() and not groupHasInfantryUnits(gObj) then
+                                                        local gid = gObj:getID()
+                                                        if not underAttack[gid] then
+                                                            local gData = groundgroupsDb[gid]
+                                                            if gData and gData.tasked == false and gData.sa and gData.sa.pos and gData.sa.cls and gData.sa.cls ~= "SAM" and gData.sa.cls ~= "SHORAD" and gData.sa.cls ~= "ARTY" and gData.sa.cls ~= "MLRS" then
+                                                                local dist = getDist(gData.sa.pos, o_pos)
+                                                                if dist < AIEN.config.supportDistance then
+                                                                    local base = supportCounterAirClasses[gData.class] or 0
+                                                                    if base > 0 then
+                                                                        local score = base * 10000 - dist
+                                                                        if not bestScore1 or score > bestScore1 then
+                                                                            bestGroup2, bestScore2 = bestGroup1, bestScore1
+                                                                            bestGroup1, bestScore1 = gObj, score
+                                                                        elseif not bestScore2 or score > bestScore2 then
+                                                                            if not bestGroup1 or gObj:getName() ~= bestGroup1:getName() then
+                                                                                bestGroup2, bestScore2 = gObj, score
+                                                                            end
                                                                         end
                                                                     end
                                                                 end
@@ -14449,63 +14548,152 @@ end
                                                         end
                                                     end
                                                 end
-                                            end
-    
-                                            if bestGroup1 then
-                                                local gid1 = bestGroup1:getID()
-                                                local gData1 = groundgroupsDb[gid1]
-                                                gData1.tasked = true
-                                                gData1.taskTime = timer.getTime()
-                                                underAttack[gid1] = timer.getTime()
-                                                ac_attack(bestGroup1, gData1.sa.pos, a_pos, true, gData1.sa, gData1.skill or 1)
-    
-                                                if AIEN.config.AIEN_debugProcessDetail == true then
-                                                    env.info(("AIEN.event_hit, delegation task 1: " .. tostring(bestGroup1:getName())))
-                                                end
-    
-                                                if bestGroup2 and math.random(1,100) <= 25 then
-                                                    local gid2 = bestGroup2:getID()
-                                                    local gData2 = groundgroupsDb[gid2]
-                                                    gData2.tasked = true
-                                                    gData2.taskTime = timer.getTime()
-                                                    underAttack[gid2] = timer.getTime()
-                                                    ac_attack(bestGroup2, gData2.sa.pos, a_pos, true, gData2.sa, gData2.skill or 1)
-    
+
+                                                if bestGroup1 then
+                                                    delegationZoneLocks[z1.zone] = timer.getTime()
+                                                    local gid1 = bestGroup1:getID()
+                                                    local gData1 = groundgroupsDb[gid1]
+                                                    gData1.tasked = true
+                                                    gData1.taskTime = timer.getTime()
+                                                    underAttack[gid1] = timer.getTime()
+                                                    ac_attack(bestGroup1, gData1.sa.pos, a_pos, true, gData1.sa, gData1.skill or 1, true, z1.zone)
+
                                                     if AIEN.config.AIEN_debugProcessDetail == true then
-                                                        env.info(("AIEN.event_hit, delegation task 2: " .. tostring(bestGroup2:getName())))
+                                                        env.info(("AIEN.event_hit, delegation task 1: " .. tostring(bestGroup1:getName())))
+                                                    end
+
+                                                    if bestGroup2 and math.random(1,100) <= 25 then
+                                                        local gid2 = bestGroup2:getID()
+                                                        local gData2 = groundgroupsDb[gid2]
+                                                        gData2.tasked = true
+                                                        gData2.taskTime = timer.getTime()
+                                                        underAttack[gid2] = timer.getTime()
+                                                        ac_attack(bestGroup2, gData2.sa.pos, a_pos, true, gData2.sa, gData2.skill or 1, true, z1.zone)
+
+                                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                                            env.info(("AIEN.event_hit, delegation task 2: " .. tostring(bestGroup2:getName())))
+                                                        end
+                                                    else
+                                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                                            env.info(("AIEN.event_hit, delegation task 2: no"))
+                                                        end
                                                     end
                                                 else
                                                     if AIEN.config.AIEN_debugProcessDetail == true then
-                                                        env.info(("AIEN.event_hit, delegation task 2: no"))
+                                                        env.info(("AIEN.event_hit, delegation: no eligible groups in zone"))
                                                     end
+                                                end
                                                 end
                                             else
                                                 if AIEN.config.AIEN_debugProcessDetail == true then
-                                                    env.info(("AIEN.event_hit, delegation: no eligible groups in zone"))
+                                                    env.info(("AIEN.event_hit, delegation: no zone built list"))
                                                 end
                                             end
-                                        else
+                                        elseif s_cat == 2 and (s_cls == "ARTY" or s_cls == "MLRS") then
+                                            delegated = true
                                             if AIEN.config.AIEN_debugProcessDetail == true then
-                                                env.info(("AIEN.event_hit, delegation: no zone built list"))
+                                                env.info(("AIEN.event_hit, delegation eligible, shooter cls " .. tostring(s_cls)))
+                                            end
+
+                                            local z1 = bc:getZoneOfPoint(o_pos)
+                                            if z1 and z1.built and #z1.built > 0 then
+                                                if isZoneDelegationLocked(z1.zone) then
+                                                    if AIEN.config.AIEN_debugProcessDetail == true then
+                                                        env.info(("AIEN.event_hit, arty delegation skipped, zone locked: " .. tostring(z1.zone)))
+                                                    end
+                                                else
+                                                local bestGroup1
+                                                local bestGroup2
+                                                local bestScore1
+                                                local bestScore2
+                                                local maxRange = AIEN.config.delegationArtyAttackRange or 10000
+
+                                                for _, gName in ipairs(z1.built) do
+                                                    local gObj = Group.getByName(gName)
+                                                    if gObj and gObj:isExist() and gObj:getCoalition() == group:getCoalition() and gObj:getName() ~= group:getName() and not groupHasInfantryUnits(gObj) then
+                                                        local gid = gObj:getID()
+                                                        if not underAttack[gid] then
+                                                            local gData = groundgroupsDb[gid]
+                                                            if gData and gData.tasked == false and gData.sa and gData.sa.pos and gData.sa.cls and gData.sa.cls ~= "SAM" and gData.sa.cls ~= "SHORAD" and gData.sa.cls ~= "ARTY" and gData.sa.cls ~= "MLRS" then
+                                                                local dist = getDist(gData.sa.pos, a_pos)
+                                                                if dist < maxRange then
+                                                                    local base = supportGroundClasses[gData.class] or 0
+                                                                    if base > 0 then
+                                                                        local score = base * 10000 - dist
+                                                                        if not bestScore1 or score > bestScore1 then
+                                                                            bestGroup2, bestScore2 = bestGroup1, bestScore1
+                                                                            bestGroup1, bestScore1 = gObj, score
+                                                                        elseif not bestScore2 or score > bestScore2 then
+                                                                            if not bestGroup1 or gObj:getName() ~= bestGroup1:getName() then
+                                                                                bestGroup2, bestScore2 = gObj, score
+                                                                            end
+                                                                        end
+                                                                    end
+                                                                end
+                                                            end
+                                                        end
+                                                    end
+                                                end
+
+                                                if bestGroup1 then
+                                                    delegationZoneLocks[z1.zone] = timer.getTime()
+                                                    local gid1 = bestGroup1:getID()
+                                                    local gData1 = groundgroupsDb[gid1]
+                                                    gData1.tasked = true
+                                                    gData1.taskTime = timer.getTime()
+                                                    underAttack[gid1] = timer.getTime()
+                                                    ac_attack(bestGroup1, gData1.sa.pos, a_pos, true, gData1.sa, gData1.skill or 1, true, z1.zone)
+
+                                                    if AIEN.config.AIEN_debugProcessDetail == true then
+                                                        env.info(("AIEN.event_hit, arty delegation task 1: " .. tostring(bestGroup1:getName())))
+                                                    end
+
+                                                    if bestGroup2 and math.random(1,100) <= 25 then
+                                                        local gid2 = bestGroup2:getID()
+                                                        local gData2 = groundgroupsDb[gid2]
+                                                        gData2.tasked = true
+                                                        gData2.taskTime = timer.getTime()
+                                                        underAttack[gid2] = timer.getTime()
+                                                        ac_attack(bestGroup2, gData2.sa.pos, a_pos, true, gData2.sa, gData2.skill or 1, true, z1.zone)
+
+                                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                                            env.info(("AIEN.event_hit, arty delegation task 2: " .. tostring(bestGroup2:getName())))
+                                                        end
+                                                    else
+                                                        if AIEN.config.AIEN_debugProcessDetail == true then
+                                                            env.info(("AIEN.event_hit, arty delegation task 2: no"))
+                                                        end
+                                                    end
+                                                else
+                                                    if AIEN.config.AIEN_debugProcessDetail == true then
+                                                        env.info(("AIEN.event_hit, arty delegation: no eligible groups in range"))
+                                                    end
+                                                end
+                                                end
+                                            else
+                                                if AIEN.config.AIEN_debugProcessDetail == true then
+                                                    env.info(("AIEN.event_hit, arty delegation: no zone built list"))
+                                                end
+                                            end
+                                        end
+
+                                        if not delegated then
+                                            if AIEN.config.AIEN_debugProcessDetail == true then
+                                                env.info(("AIEN.event_hit, delegation skipped, shooterAir " .. tostring(shooter and shooter:hasAttribute("Air")) .. ", hit cls " .. tostring(o_cls) .. ", shooter cls " .. tostring(s_cls)))
                                             end
                                         end
                                     else
                                         if AIEN.config.AIEN_debugProcessDetail == true then
-                                            env.info(("AIEN.event_hit, delegation skipped, shooterAir " .. tostring(shooter and shooter:hasAttribute("Air")) .. ", hit cls " .. tostring(o_cls)))
+                                            if counterBatteryDone then
+                                                env.info(("AIEN.event_hit, delegation skipped, counter battery already planned"))
+                                            else
+                                                env.info(("AIEN.event_hit, delegation skipped, shooter not detected or position missing"))
+                                            end
                                         end
                                     end
-    
+
                                 end
-    
-                            end
-    
-                            -- counter battery part
-                            if choosenAct ~= "ac_fireMissionOnShooter" then
-                                if AIEN.config.firemissions == true then
-                                    if shooter:getPoint() and position then
-                                        counterBattery(position, shooter:getPoint(), group:getCoalition())
-                                    end
-                                end
+
                             end
     
                         else

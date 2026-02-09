@@ -611,8 +611,10 @@ if Era == "Coldwar" then
     CasHeloTemplate = {
         'RED_Mi-24V_ONESHIP',
         'RED_Mi-24V_TWOSHIP',
-        'BLUE_UH-1H_CAS',
-        'BLUE_UH-1H_CAS_TwoShip',
+        'BLUE_AH-64D_OneShip_Load2',
+        'BLUE_AH-64D_TwoShip_Load2',
+		'OH_58D',
+        'OH_58D_TwoShip',
     }
     HeloSupplyTemplate = {
         'RED_MI-8',
@@ -3488,6 +3490,8 @@ if not bc.saveLoaded then
 	applyRandomBlueUpgrades()
 end
 bc:init()
+budgetAI = BudgetCommander:new({ battleCommander = bc, side=1, decissionFrequency=20*60, decissionVariance=10*60, skipChance = 10})
+budgetAI:init()
 RewardContribution = RewardContribution or {infantry = 10, ground = 10, sam = 30, airplane = 50, ship = 200, helicopter=50, crate=100, rescue = 300, ['Zone upgrade'] = 100, ['Zone capture'] = 200}
 bc:startRewardPlayerContribution(15,RewardContribution)
 buildTemplateCache()

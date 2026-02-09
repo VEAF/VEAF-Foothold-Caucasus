@@ -34,7 +34,7 @@ veaf.loggers.get(veaf.Id):info("init - veafRemote")
 veafRemote.initialize()
 
 -- load first batch of scripts
-assert(loadfile(FOOTHOLD_DYNAMIC_SCRIPTS_PATH .. "Moose_2026-01-24.lua")) ()
+assert(loadfile(FOOTHOLD_DYNAMIC_SCRIPTS_PATH .. "Moose_2026-02-06.lua")) ()
 assert(loadfile(FOOTHOLD_DYNAMIC_SCRIPTS_PATH .. "Foothold Config.lua")) ()
 assert(loadfile(FOOTHOLD_DYNAMIC_SCRIPTS_PATH .. "zoneCommander.lua")) ()
 assert(loadfile(FOOTHOLD_DYNAMIC_SCRIPTS_PATH .. "MA_Setup_CA.lua")) ()

@@ -527,23 +527,36 @@ do
 		end
 	end
 
+	INVALID_SPAWN_SUB_ZONES = INVALID_SPAWN_SUB_ZONES or {}
 	function GetValidCords(zoneName, allowed, attempts)
 		local zone = getMooseZone(zoneName); if not zone then return nil end
 		attempts = attempts or 100
+		local found
 		for _=1,attempts do
 			local coord = zone:GetRandomCoordinate()
 			if coord then
 				local st = coord:GetSurfaceType()
-				if st ~= land.SurfaceType.RUNWAY and (not allowed or allowed[st]) then return coord end
+				if st ~= land.SurfaceType.RUNWAY and (not allowed or allowed[st]) then found = coord; break end
 			end
 		end
-		env.info("GetValidCords: no valid coord in "..tostring(zoneName))
+		if found then return found end
+		if not INVALID_SPAWN_SUB_ZONES[zoneName] then
+			INVALID_SPAWN_SUB_ZONES[zoneName] = true
+			env.info("[ZoneCommander] Blacklisted spawn sub-zone: "..tostring(zoneName))
+			local list = {}
+			for name,_ in pairs(INVALID_SPAWN_SUB_ZONES) do
+				list[#list + 1] = name
+			end
+			table.sort(list)
+			env.info("[ZoneCommander] Blacklisted spawn sub-zones ("..tostring(#list).."): "..table.concat(list, ", "))
+		end
 		if env.mission.theatre=="GermanyCW" then
 			for _=1,attempts do
 				local coord = zone:GetRandomCoordinate()
 				if coord then return coord end
 			end
 		end
+		env.info("GetValidCords: no valid coord in "..tostring(zoneName))
 		return nil
 	end
 
@@ -603,7 +616,12 @@ do
 	function CustomZone:getRandomUnusedSpawnZone(markUsed)
 		if markUsed == nil then markUsed = true end
 		self.usedSpawnZones = self.usedSpawnZones or {}
-		local all = collectSubZones(self.name)
+		local all = {}
+		for _, zname in ipairs(collectSubZones(self.name)) do
+			if not INVALID_SPAWN_SUB_ZONES[zname] then
+				all[#all + 1] = zname
+			end
+		end
 		local unused = {}
 		for _, zname in ipairs(all) do
 			if not self.usedSpawnZones[zname] and not USED_SUB_ZONES[zname] then
@@ -639,7 +657,7 @@ do
 		if not zoneByName then buildZoneByName() end
 		local prefix = zoneName:lower() .. "-sam-"
 		for zname, _ in pairs(zoneByName or {}) do
-			if zname:lower():find(prefix, 1, true) then
+			if zname:lower():find(prefix, 1, true) and not INVALID_SPAWN_SUB_ZONES[zname] then
 				samZones[#samZones + 1] = zname
 				if not (used and used[zname]) and not USED_SUB_ZONES[zname] then
 					samUnused[#samUnused + 1] = zname
@@ -688,10 +706,15 @@ do
 		return g and { name = g:GetName() } or trigger.action.outText("Failed to spawn group: "..grname.." in zone "..self.name,10)
 	end
 
-	local all    = collectSubZones(self.name)
+	local all    = {}
+	for _, z in ipairs(collectSubZones(self.name)) do
+		if not INVALID_SPAWN_SUB_ZONES[z] then
+			all[#all + 1] = z
+		end
+	end
 	local unused = {}
 	for _, z in ipairs(all) do
-			if not (self.usedSpawnZones and self.usedSpawnZones[z]) and not USED_SUB_ZONES[z] then
+			if not INVALID_SPAWN_SUB_ZONES[z] and not (self.usedSpawnZones and self.usedSpawnZones[z]) and not USED_SUB_ZONES[z] then
 					unused[#unused + 1] = z
 			end
 	end
@@ -2367,6 +2390,7 @@ function SetUpCAP_DefaultAA(group)
 	--group:getController():setOption(AI.Option.Air.id.ROE, AI.Option.Air.val.ROE.OPEN_FIRE)
 	group:getController():setOption(AI.Option.Air.id.MISSILE_ATTACK, AI.Option.Air.val.MISSILE_ATTACK.MAX_RANGE)
 	group:getController():setOption(AI.Option.Air.id.RTB_ON_OUT_OF_AMMO, 268402688) -- AnyMissile
+	--group:getController():setOption(37, true)
 end
 
 
@@ -3940,7 +3964,7 @@ function BattleCommander:addShopItem(coalition,id,ammount,prio,reqRank)
 
 		local function safeSet(itemName, qty)
 		if not itemName then return end
-		pcall(function() dstStore:SetItem(itemName, qty) end)
+		dstStore:SetItem(itemName, qty)
 		end
 
 		local rocketSet = nil
@@ -8974,16 +8998,18 @@ function BattleCommander:startRewardPlayerContribution(defaultReward, rewards)
 						if event.target and event.target.getCoalition and side == event.target:getCoalition() then
 							local tgtName = (event.target.getName and event.target:getName()) or 'Unknown'
 							local tgtPlayer = (event.target.getPlayerName and event.target:getPlayerName()) or nil
-							local msg = '!! FRIENDLY FIRE !!\n['..pname..'] killed friendly '..(tgtPlayer and tgtPlayer ~= '' and ('player: '..tgtPlayer) or ('unit: '..tgtName))
+							if not (tgtPlayer and tgtPlayer ~= '' and tgtPlayer == pname) then
+								local msg = '!! FRIENDLY FIRE !!\n['..pname..'] killed friendly '..(tgtPlayer and tgtPlayer ~= '' and ('player: '..tgtPlayer) or ('unit: '..tgtName))
 
-							if RankingSystem == true then
-								FriendlyFireRankPenalty = FriendlyFireRankPenalty or 500
-								if FriendlyFireRankPenalty > 0 then
-									self.context:addPlayerRankCredits(pname, -FriendlyFireRankPenalty)
-									msg = msg..' (Lost '..tostring(FriendlyFireRankPenalty)..' in ranking)'
+								if RankingSystem == true then
+									FriendlyFireRankPenalty = FriendlyFireRankPenalty or 500
+									if FriendlyFireRankPenalty > 0 then
+										self.context:addPlayerRankCredits(pname, -FriendlyFireRankPenalty)
+										msg = msg..' (Lost '..tostring(FriendlyFireRankPenalty)..' in ranking)'
+									end
 								end
+								trigger.action.outTextForCoalition(side,msg,10)
 							end
-							trigger.action.outTextForCoalition(side,msg,10)
 						end
 						if event.target.getCoalition and side ~= event.target:getCoalition() then
 							local tgtName = event.target:getName()
@@ -13307,7 +13333,7 @@ function GroupCommander:_assignHeloLogisticsRoute(groupName, targetZoneName, own
 
 	local kmh = 289
 	local spd = kmh / 3.6
-	local alt = 500
+	local alt = 1000
 
 	-- Use MOOSE route engine end-to-end (this also gives the 1s delayed SetTask that Route(...,1) uses).
 	local gmoose = GROUP:FindByName(groupName)
@@ -15605,7 +15631,7 @@ end
                     Respawn.Group(self.name)
                     if isUrgent then env.info("Group [" .. self.name .. "] is spawning urgently!") else env.info("Group [" .. self.name .. "] is spawning normally.") end
                 end
-                self:_jtacMessage('JTAC: We spotted enemy convoy ', nil, self.zoneCommander.zone)
+                self:_jtacMessage('JTAC: We spotted enemy convoy moving out from ', nil, self.zoneCommander.zone)
                 self.state = 'enroute'
 				self.groundconvoyMessaged = false
                 self.lastStateTime = timer.getAbsTime()
@@ -17019,6 +17045,37 @@ end
 			end
 		end
 	end
+
+	function LogisticCommander:infoTopPilots(groupname, limit)
+		local gr = Group.getByName(groupname)
+		if not gr then return end
+		local un = gr:getUnit(1)
+		if not un or not un:isExist() then return end
+		limit = limit or 3
+
+		local list = {}
+		local up = un:getPoint()
+		for _, v in ipairs(self.ejectedPilots) do
+			if v and v:isExist() then
+				local vp = v:getPoint()
+				if vp then
+					local dist = UTILS.VecDist3D(up, vp)
+					list[#list+1] = { pilot = v, dist = dist }
+				end
+			end
+		end
+
+		if #list == 0 then
+			trigger.action.outTextForGroup(gr:getID(), 'No ejected pilots nearby', 15)
+			return
+		end
+
+		table.sort(list, function(a,b) return a.dist < b.dist end)
+		local count = math.min(limit, #list)
+		for i = 1, count do
+			self:printPilotInfo(list[i].pilot, gr:getID(), un, 60)
+		end
+	end
 	
 		function LogisticCommander:infoHumanPilot(groupname)
 		local gr = Group.getByName(groupname)
@@ -17129,6 +17186,62 @@ end
 		trigger.action.outTextForGroup(groupid,toprint,duration)
 	end
 
+	function LogisticCommander:_csarMarkerLabel(pilotObj)
+		self.csarBeaconFreq = self.csarBeaconFreq or {}
+		self.csarBeaconName = self.csarBeaconName or {}
+		self.csarPilotDataByObject = self.csarPilotDataByObject or {}
+		if not pilotObj or not pilotObj:isExist() then return nil end
+		local pid = pilotObj:getObjectID()
+		if not pid then return nil end
+		local pilotData = landedPilotOwners[pid] or self.csarPilotDataByObject[pid] or ejectedPilotOwners[pid]
+		local freq = self.csarBeaconFreq[pid]
+		if not freq then
+			self.csarBeaconName[pid] = self.csarBeaconName[pid] or ("FOOTHOLD_CSAR_"..pid.."_BEACON")
+			freq = 250000 + math.random(0,1000)*1000
+			self.csarBeaconFreq[pid] = freq
+		end
+
+		local label
+		if pilotData and pilotData.player and pilotData.player ~= '' then
+			local lost = pilotData.lostCredits or 0
+			label = '['..pilotData.player..'] Lost: '..lost..' Credits'
+		else
+			label = 'Downed pilot'
+		end
+		if freq and freq > 0 then
+			label = label .. '\nADF: ' .. string.format('%.0f',freq/1000) .. ' kHz'
+		end
+		return label
+	end
+
+	function LogisticCommander:createCsarMarker(pilotObj)
+		if not pilotObj or not pilotObj:isExist() then return end
+		self.csarPilotMarks = self.csarPilotMarks or {}
+		local pid = pilotObj:getObjectID()
+		if not pid or self.csarPilotMarks[pid] then return end
+		local p = pilotObj:getPoint()
+		if not p then return end
+		local label = self:_csarMarkerLabel(pilotObj) or 'Downed pilot'
+		missionMarkId = missionMarkId + 1
+		local id = missionMarkId
+		trigger.action.markToCoalition(id, label, p, 2, false, false)
+		self.csarPilotMarks[pid] = { id = id, label = label, point = { x = p.x, y = p.y, z = p.z } }
+	end
+
+	function LogisticCommander:removeCsarMarker(pilotOrId)
+		self.csarPilotMarks = self.csarPilotMarks or {}
+		local pid = pilotOrId
+		if type(pilotOrId) == "table" and pilotOrId.getObjectID then
+			pid = pilotOrId:getObjectID()
+		end
+		local entry = pid and self.csarPilotMarks[pid]
+		if entry and entry.id then
+			trigger.action.removeMark(entry.id)
+		end
+		if pid then
+			self.csarPilotMarks[pid] = nil
+		end
+	end
 
 	function LogisticCommander:update()
 		self.csarBeaconName = self.csarBeaconName or {}
@@ -17149,7 +17262,8 @@ end
 			if v and v:isExist() then
 				local keep = true
 				if v.getLife and v:getLife() <= 0 then
-					table.insert(tocleanup, { index = i, kia = true })
+					local pid = v.getObjectID and v:getObjectID() or nil
+					table.insert(tocleanup, { index = i, kia = true, pid = pid })
 					keep = false
 				end
 				if keep then
@@ -17170,7 +17284,8 @@ end
 					table.insert(self.ejectedPilotsState, ejectedPilotTable)
 				end
 			else
-				table.insert(tocleanup, { index = i, kia = true })
+				local pid = v and v.getObjectID and v:getObjectID() or nil
+				table.insert(tocleanup, { index = i, kia = true, pid = pid })
 			end
 		end
 
@@ -17302,6 +17417,7 @@ end
 			self.csarCloseMsg[pid] = nil
 			self.csarRunEta[pid] = nil
 
+			self:removeCsarMarker(pid)
 			return true
 
 		end
@@ -17692,7 +17808,7 @@ end
 			local pilot = self.ejectedPilots[index]
 
 			if entry.kia then
-				local pid = pilot and pilot:isExist() and pilot:getObjectID() or nil
+				local pid = entry.pid or (pilot and pilot.getObjectID and pilot:getObjectID()) or nil
 				local pilotData = pid and (landedPilotOwners[pid] or self.csarPilotDataByObject[pid] or ejectedPilotOwners[pid]) or nil
 				local pname = pilotData and pilotData.player
 				local coal = pilotData and pilotData.coalition or 2
@@ -17729,6 +17845,9 @@ end
 					self.csarBeaconName[pid]=nil
 					self.csarBeaconFreq[pid]=nil
 					self.csarBeaconNext[pid]=nil
+				end
+				if pid then
+					self:removeCsarMarker(pid)
 				end
 				if pilot and pilot:isExist() then
 					pilot:destroy()
@@ -17943,12 +18062,13 @@ function LogisticCommander:init()
 							missionCommands.removeItemForGroup(groupid, self.context.groupMenus[groupid])
 						end
 							self.context.groupMenus[groupid] = nil
-					if LogisticCommander.AllowedCsar[unitType] > 0 then
-						self.context.csarGroupMenus[groupid] = true
-						local csar = missionCommands.addSubMenuForGroup(groupid, 'CSAR')
-						missionCommands.addCommandForGroup(groupid, 'Info on closest pilot', csar, self.context.infoPilot, self.context, groupname)
-						missionCommands.addCommandForGroup(groupid, 'Deploy smoke at closest pilot', csar, self.context.markPilot, self.context, groupname)
-						missionCommands.addCommandForGroup(groupid, 'Deploy flare at closest pilot', csar, self.context.flarePilot, self.context, groupname)
+						if LogisticCommander.AllowedCsar[unitType] > 0 then
+							self.context.csarGroupMenus[groupid] = true
+							local csar = missionCommands.addSubMenuForGroup(groupid, 'CSAR')
+							missionCommands.addCommandForGroup(groupid, 'Info on closest pilot', csar, self.context.infoPilot, self.context, groupname)
+							missionCommands.addCommandForGroup(groupid, 'Info on three closest pilots', csar, self.context.infoTopPilots, self.context, groupname, 3)
+							missionCommands.addCommandForGroup(groupid, 'Deploy smoke at closest pilot', csar, self.context.markPilot, self.context, groupname)
+							missionCommands.addCommandForGroup(groupid, 'Deploy flare at closest pilot', csar, self.context.flarePilot, self.context, groupname)
 						missionCommands.addCommandForGroup(groupid, 'Smoke nearest zone', csar, function() Foothold_ctld:SmokeZoneNearBy(GROUP:FindByName(groupname):GetUnit(1), false) end)
 						missionCommands.addCommandForGroup(groupid, 'Flare nearest zone', csar, function() Foothold_ctld:SmokeZoneNearBy(GROUP:FindByName(groupname):GetUnit(1), true) end)
 						--missionCommands.addCommandForGroup(groupid, 'Pick up pilot', csar, self.context.loadPilot, self.context, groupname)
@@ -18437,6 +18557,7 @@ function LogisticCommander:init()
 			end
 
 			table.insert(self.context.ejectedPilots,pilotObj)
+			self.context:createCsarMarker(pilotObj)
 			for i in pairs(self.context.csarGroupMenus) do
 				local groupid=i
 				SCHEDULER:New(nil,function()
@@ -21634,6 +21755,8 @@ WEAPONSLIST.Items = {
         'weapons.missiles.HB-AIM-7E-2',
         'weapons.missiles.AIM-9E',
         'weapons.missiles.OH58D_FIM_92',
+        -- new
+        'weapons.missiles.OH_6_FIM_92',
         'weapons.missiles.P_40R',
         'weapons.missiles.P_24R',
     },
@@ -21748,6 +21871,8 @@ WEAPONSLIST.Items = {
         'weapons.missiles.X_31P',
         'weapons.missiles.AGM_65D',
         'weapons.missiles.Kormoran',
+        -- new
+        'weapons.missiles.V-1',
     },
 
 
@@ -21840,6 +21965,7 @@ WEAPONSLIST.Items = {
         'weapons.bombs.BAP-100',
         'weapons.bombs.BetAB_500ShP',
         'weapons.bombs.Type_200A',
+		'weapons.adapters.KMGU-2',
         'weapons.bombs.Durandal',
         'weapons.bombs.RBK_250',
         'weapons.bombs.RBK_500AO',
@@ -21999,6 +22125,7 @@ WEAPONSLIST.Items = {
 [WEAPONSLIST.ItemCategory.FUEL_TANKS] = {
     -- FUEL TANKS
         'weapons.droptanks.fuel_tank_230',
+		'weapons.droptanks.{IAFS_ComboPak_100}',
         'weapons.droptanks.HB_A6E_AERO1D_EMPTY',
         'weapons.droptanks.HB_A6E_D704',
         'weapons.droptanks.HB_A6E_AERO1D',
@@ -22069,6 +22196,28 @@ WEAPONSLIST.Items = {
         'weapons.droptanks.C130J_Ext_Tank_L',
         'weapons.droptanks.fueltank230',
         'weapons.droptanks.uh60l_iafts',
+		'weapons.droptanks.PTB-800',
+		'weapons.droptanks.PTB-275',
+		'weapons.droptanks.Drop tank 75gal',
+		'weapons.droptanks.S-3-PTB',
+		'weapons.droptanks.F4-BAK-C',
+		'weapons.droptanks.PTB-1150-29',
+		'weapons.droptanks.f-18c-ptb',
+		'weapons.droptanks.F4-BAK-L',
+		'weapons.droptanks.PTB-2000',
+		'weapons.droptanks.MIG-23-PTB',
+		'weapons.droptanks.PTB-150',
+		'weapons.droptanks.PTB-1150',
+		'weapons.droptanks.fuel_tank_300gal',
+		'weapons.droptanks.MIG-25-PTB',
+		'weapons.droptanks.PTB-1500',
+		'weapons.droptanks.PTB-3000',
+		'weapons.droptanks.M2000-PTB',
+		'weapons.droptanks.FT600',
+		'weapons.droptanks.T-PTB',
+		'weapons.droptanks.F15-PTB',
+		'weapons.droptanks.fuel_tank_370gal',
+		'weapons.droptanks.F-16-PTB-N2',
     },
 
 [WEAPONSLIST.ItemCategory.MISC] = {
@@ -22581,12 +22730,183 @@ WEAPONSLIST.Items = {
 		'weapons.gunmounts.Ju88_Turret_Top_Left_MG_81',
 		'weapons.gunmounts.B17_TopTurret_M2_L',
 		'weapons.adapters.B-8V20A',
+		'weapons.adapters.OH-58D_Gorgona',
 		'weapons.torpedoes.G7A_T1',
 		'weapons.torpedoes.YU-6',
 		'weapons.torpedoes.Mark_46',
 		'weapons.torpedoes.mk46torp_name',
 		'weapons.torpedoes.LTF_5B',
+        -- new
+        'weapons.adapters.',
+        -- new
+        'weapons.containers.BRU-42_LS',
+        -- new
+        'weapons.containers.GUV_VOG',
+        -- new
+        'weapons.containers.GUV_YakB_GSHP',
+        -- new
+        'weapons.containers.KORD_12_7',
+        -- new
+        'weapons.containers.KORD_12_7_MI24_L',
+        -- new
+        'weapons.containers.KORD_12_7_MI24_R',
+        -- new
+        'weapons.containers.M134_L',
+        -- new
+        'weapons.containers.M134_R',
+        -- new
+        'weapons.containers.M134_SIDE_L',
+        -- new
+        'weapons.containers.M134_SIDE_R',
+        -- new
+        'weapons.containers.M60_SIDE_L',
+        -- new
+        'weapons.containers.M60_SIDE_R',
+        -- new
+        'weapons.containers.MXU-648',
+        -- new
+        'weapons.containers.OH58D_M3P_L100',
+        -- new
+        'weapons.containers.OH58D_M3P_L200',
+        -- new
+        'weapons.containers.OH58D_M3P_L300',
+        -- new
+        'weapons.containers.OH58D_M3P_L400',
+        -- new
+        'weapons.containers.OH58D_M3P_L500',
+        -- new
+        'weapons.containers.PKT_7_62',
+        -- new
+        'weapons.containers.R-73U',
+        -- new
+        'weapons.containers.hvar_SmokeGenerator',
+        -- new
+        'weapons.containers.oh-58-brauning',
+        -- new
+        'weapons.containers.{05544F1A-C39C-466b-BC37-5BD1D52E57BB}',
+        -- new
+        'weapons.containers.{ADEN_GUNPOD}',
+        -- new
+        'weapons.containers.{AKAN_NO_TRC}',
+        -- new
+        'weapons.containers.{AKAN}',
+        -- new
+        'weapons.containers.{AN-M3}',
+        -- new
+        'weapons.containers.{C-101-DEFA553}',
+        -- new
+        'weapons.containers.{C130-Cargo-Bay-M4}',
+        -- new
+        'weapons.containers.{C130-M18-Sidearm}',
+        -- new
+        'weapons.containers.{CC420_GUN_POD}',
+        -- new
+        'weapons.containers.{CH47_AFT_M240H}',
+        -- new
+        'weapons.containers.{CH47_AFT_M3M}',
+        -- new
+        'weapons.containers.{CH47_AFT_M60D}',
+        -- new
+        'weapons.containers.{CH47_PORT_M134D}',
+        -- new
+        'weapons.containers.{CH47_PORT_M240H}',
+        -- new
+        'weapons.containers.{CH47_PORT_M60D}',
+        -- new
+        'weapons.containers.{CH47_STBD_M134D}',
+        -- new
+        'weapons.containers.{CH47_STBD_M240H}',
+        -- new
+        'weapons.containers.{CH47_STBD_M60D}',
+        -- new
+        'weapons.containers.{E92CBFE5-C153-11d8-9897-000476191836}',
+        -- new
+        'weapons.containers.{FN_HMP400_100}',
+        -- new
+        'weapons.containers.{FN_HMP400_200}',
+        -- new
+        'weapons.containers.{FN_HMP400}',
+        -- new
+        'weapons.containers.{GAU_12_Equalizer_AP}',
+        -- new
+        'weapons.containers.{GAU_12_Equalizer_HE}',
+        -- new
+        'weapons.containers.{GAU_12_Equalizer}',
+        -- new
+        'weapons.containers.{GIAT_M621_APHE}',
+        -- new
+        'weapons.containers.{GIAT_M621_AP}',
+        -- new
+        'weapons.containers.{GIAT_M621_HEAP}',
+        -- new
+        'weapons.containers.{GIAT_M621_HE}',
+        -- new
+        'weapons.containers.{GIAT_M621_SAPHEI}',
+        -- new
+        'weapons.containers.{INV-SMOKE-BLUE}',
+        -- new
+        'weapons.containers.{INV-SMOKE-GREEN}',
+        -- new
+        'weapons.containers.{INV-SMOKE-ORANGE}',
+        -- new
+        'weapons.containers.{INV-SMOKE-RED}',
+        -- new
+        'weapons.containers.{INV-SMOKE-WHITE}',
+        -- new
+        'weapons.containers.{INV-SMOKE-YELLOW}',
+        -- new
+        'weapons.containers.{MB339_ANM3_L}',
+        -- new
+        'weapons.containers.{MB339_ANM3_R}',
+        -- new
+        'weapons.containers.{MB339_DEFA553_L}',
+        -- new
+        'weapons.containers.{MB339_DEFA553_R}',
 
+        'weapons.containers.{PK-3}',
+        -- new
+        'weapons.containers.{RKL609_L}',
+        -- new
+        'weapons.containers.{RKL609_R}',
+        -- new
+        'weapons.containers.{SA342_M134_SIDE_R}',
+        -- new
+        'weapons.containers.{SUU_23_POD}',
+        -- new
+        'weapons.containers.{UH60L_M134_GUNNER}',
+        -- new
+        'weapons.containers.{UH60L_M2_GUNNER}',
+        -- new
+        'weapons.containers.{UH60L_M60_GUNNER}',
+        -- new
+        'weapons.containers.{UH60_GAU19_LEFT}',
+        -- new
+        'weapons.containers.{UH60_GAU19_RIGHT}',
+        -- new
+        'weapons.containers.{UH60_M134_LEFT}',
+        'weapons.containers.{UH60_M134_RIGHT}',
+        'weapons.containers.{UH60_M230_LEFT}',
+        'weapons.containers.{UH60_M230_RIGHT}',
+        'weapons.containers.{UPK-23-250 MiG-21}',
+
+		'weapons.gunmounts.{ACH_47_M230_Combat_Mix}',
+		'weapons.containers.{ACH_47_M230_Combat_Mix}',
+		'weapons.containers.{ACH_47_M230_NoTracers}',
+		'weapons.gunmounts.ACH_47_M230_NT',
+		'weapons.gunmounts.ACH_47_M230',
+		'weapons.adapters.ACH_47F_GL',
+		"weapons.gunmounts.{ACH_47_M230_NoTracers}",
+		"weapons.containers.ACH_47F_Right",
+		"weapons.containers.ACH_47F_Left",
+		"weapons.containers.ACH_47F_GL",
+
+		 {4,4,8,11212},
+		 {4,4,8,11210},
+		 {4,4,8,11211},
+		 {4,4,8,11209},
+	
+
+--[[ 		
 		{4,15,46,825}, -- harrier gunpod
 		{4,15,46,824}, -- harrier gunpod
 		{4,15,46,300}, -- harrier gunpod
@@ -22684,7 +23004,7 @@ WEAPONSLIST.Items = {
 		{4,15,46,3193},
 		{4,15,46,3194},
 		{4,15,46,3195},
-		{4,15,46,3196},
+		{4,15,46,3196}, ]]
     },
 }
 
@@ -22705,7 +23025,6 @@ local WEAPONSLIST_MODS_ITEMS = {
 		'weapons.adapters.B-8V20A',
 		'weapons.adapters.apu-13mt',
 		'weapons.adapters.HB_ORD_Missile_Well_Adapter',
-		'weapons.adapters.KMGU-2',
 		'weapons.adapters.9M114-PYLON_EMPTY',
 		'weapons.adapters.adapter_gdj_kd63',
 		'weapons.adapters.LAU-117',
@@ -22758,7 +23077,7 @@ local WEAPONSLIST_MODS_ITEMS = {
 		'weapons.adapters.MER-5E',
 		'weapons.adapters.gdj-iv1',
 		'weapons.adapters.14-3-M2',
-		'weapons.adapters.OH-58D_Gorgona',
+
 		'weapons.adapters.ARAKM70B',
 		'weapons.adapters.apu-6',
 		'weapons.adapters.BRU-42_LS',
@@ -22771,6 +23090,7 @@ local WEAPONSLIST_MODS_ITEMS = {
 		'weapons.adapters.b-52_suu67',
 		'weapons.adapters.JF-17_GDJ-II19L',
 		'weapons.adapters.AUF2_RACK',
+		'weapons.adapters.KMGU-2',
 		'weapons.adapters.kmgu-2',
 		'weapons.adapters.JF-17_GDJ-II19R',
 		'weapons.adapters.F-15E_LAU-88',
@@ -22928,6 +23248,73 @@ local WEAPONSLIST_MODS_ITEMS = {
 		'weapons.missiles.Mi28NE_9M120F',
 		'weapons.missiles.Mi28NE_9M220',
 		'weapons.missiles.Mi28NE_305E',
+-- Su 30 mod
+		'weapons.missiles.Su30_SAAW',
+		'weapons.missiles.CF-ASTRA-MK-1',
+		'weapons.missiles.Su30_KH-38MTE',
+		'weapons.missiles.CF-R-73L',
+		'weapons.missiles.Su30_KH31PD',		
+		'weapons.missiles.Su30_KH35UE',
+		'weapons.missiles.Su30_KH_59MK2',
+
+		'weapons.containers.Su30_R73U_BLACK',
+		'weapons.containers.SU30_SAP518_R1',
+		'weapons.containers.Su30SM_T2201',
+		'weapons.containers.{GSh_30_1}',
+		'weapons.containers.SU30_SAP518_L1',
+		'weapons.containers.Su30_ELM2060',
+		'weapons.containers.Su30SM_T220',
+
+		'weapons.bombs.SU30_244N',
+		'weapons.bombs.Su30_OFAB250',
+		'weapons.bombs.Su30_FAB500M62',
+		'weapons.bombs.KAB-500S',
+		'weapons.bombs.KAB-1500LG',
+		'weapons.bombs.FAB-500M62NV',
+		'weapons.bombs.Su30_OFAB100',
+		'weapons.bombs.SU30_GBU-38',
+		'weapons.bombs.SU30-KAB-1500T',
+		'weapons.bombs.Su30_FAB250M62',
+		'weapons.bombs.Su30_FAB500M54',
+
+		'weapons.missiles.Su30_KH_59MK',
+		'weapons.missiles.CF-RVV-SD',
+		'weapons.missiles.CF-R-74M2',
+		'weapons.missiles.CF-R-27T1',
+		'weapons.missiles.CF-R-27ER',
+		'weapons.missiles.Su30_CMII',
+		'weapons.missiles.CF-R-77PD',
+		'weapons.missiles.CF-RVV-AE',
+		'weapons.missiles.Su30_BRAHMOS_S',
+		'weapons.missiles.CF-R-27R',
+
+		'weapons.missiles.Su30_KH-29TE',
+		'weapons.missiles.Su30_Rudra-M1',
+		'weapons.missiles.CF-R-27EA',
+		'weapons.missiles.CF-R-27ET1',
+		'weapons.missiles.CF-R-77M',
+		'weapons.missiles.CF-R-74M',
+		'weapons.missiles.SU30_KH31A',
+		'weapons.missiles.CF-R-77',
+		'weapons.missiles.Su30_KH38MAE',
+		'weapons.missiles.Su30_KH31P',
+		'weapons.missiles.Su30_KH29L',
+		'weapons.missiles.Su30_KH36',
+		'weapons.missiles.CF-R-37M',
+		'weapons.missiles.CF-I-DERBY-ER',
+		'weapons.missiles.CF-RVV-MD2',
+		'weapons.missiles.Su30_KH35A',
+		'weapons.missiles.CF-R-27P',
+		'weapons.missiles.CF-R-27EP',
+		'weapons.missiles.Su30_KH-59M',
+		'weapons.missiles.CF-R-77-1',
+		'weapons.missiles.Su30_FAB500UMPK',
+		'weapons.missiles.Su30_KH31AD',
+		'weapons.missiles.Su30_KH38MLE',
+		'weapons.missiles.Su30_BRAHMOS_SEAD',
+		'weapons.containers.Su30_DAMOCLES',
+-- end of su 30 mod
+
 		'weapons.nurs.SMERCH_9M55F',
 		'weapons.nurs.M26',
 		'weapons.nurs.AGR_20_M282_unguided',
@@ -23036,15 +23423,30 @@ local WEAPONSLIST_MODS_ITEMS = {
 		'weapons.gunmounts.{OH-6_M134_Minigun12}',
 		'weapons.gunmounts.{OH-6_M134_Minigun13}',
 		'weapons.gunmounts.{OH-6_M134_Minigun14}',
-		'weapons.gunmounts.{ACH_47_M230_Combat_Mix}',
 		'weapons.gunmounts.{OH-6_M134_Door}',
 		'weapons.gunmounts.{OH-6_M60_Door}',
+        'weapons.containers.AIM-9S',
+        'weapons.containers.{OH-6_M134_Door}',
+        'weapons.containers.{OH-6_M134_Minigun10}',
+        'weapons.containers.{OH-6_M134_Minigun11}',
+        'weapons.containers.{OH-6_M134_Minigun12}',
+        'weapons.containers.{OH-6_M134_Minigun13}',
+        'weapons.containers.{OH-6_M134_Minigun14}',
+        'weapons.containers.{OH-6_M134_Minigun1}',
+        'weapons.containers.{OH-6_M134_Minigun2}',
+        'weapons.containers.{OH-6_M134_Minigun3}',
+        'weapons.containers.{OH-6_M134_Minigun4}',
+        'weapons.containers.{OH-6_M134_Minigun5}',
+        'weapons.containers.{OH-6_M134_Minigun6}',
+        'weapons.containers.{OH-6_M134_Minigun7}',
+        'weapons.containers.{OH-6_M134_Minigun8}',
+        'weapons.containers.{OH-6_M134_Minigun9}',
+        'weapons.containers.{OH-6_M60_Door}',
 		'weapons.gunmounts.{MK4_Mod0_OV10}',
 		'weapons.missiles.IRIS-T IR AAM',
-		'weapons.gunmounts.ACH_47_M230_NT',
-		'weapons.gunmounts.ACH_47_M230',
+
 		'weapons.missiles.Personal',
-		'weapons.adapters.ACH_47F_GL',
+
 		'weapons.missiles.V1',
 		'weapons.missiles.A-Darter IR AAM',
 		'weapons.missiles.Ammo',
@@ -23106,6 +23508,7 @@ local WEAPONSLIST_MODS_ITEMS = {
 		'weapons.nurs.M56ARAK135HE',
 		'weapons.nurs.OH6Rocket FFAR',
 		'weapons.shells.OH-6 7.62x51mm M61',
+		'weapons.shells.EB_US_5_56',
 		'weapons.shells.MG_20x64_HEI',
 		'weapons.shells.BK_27_AP',
 		'weapons.shells.MG_20x64_APT',
@@ -23122,12 +23525,11 @@ local WEAPONSLIST_MODS_ITEMS = {
 		'weapons.shells.7.62x51mm',
 		"weapons.containers.ALQ-167",
 		"weapons.containers.{SPRAYER_P}",
-		"weapons.gunmounts.{ACH_47_M230_NoTracers}",
+
 		"weapons.gunmounts.{5d5aa063-a002-4de8-8a89-6eda1e80ee7b}",
 		"weapons.containers.{SPRAYER_F}",
 		"weapons.containers.{OV10_SMOKE}",
-		"weapons.containers.ACH_47F_Right",
-		"weapons.containers.ACH_47F_Left",
+
 		"weapons.adapters.DAGR_Launcher",
 		"weapons.containers.Litening III Targeting Pod",
 		"weapons.containers.TLAU_127",
@@ -23135,7 +23537,6 @@ local WEAPONSLIST_MODS_ITEMS = {
 		"weapons.containers.{SPRAY_F}",
 		"weapons.containers.OV-10A_Paratrooper",
 		"weapons.containers.FLIR-STAR-SAFIRE",
-		"weapons.containers.ACH_47F_GL",
 		"weapons.containers.Legion Pod",
 		"weapons.containers.A29B_SMOKE-POD",
 		"weapons.shells.BK_27_HE",
@@ -23235,6 +23636,169 @@ end
 
 function WEAPONSLIST.GetAllItems()
   return WEAPONSLIST.GetItems("ALL")
+end
+
+local _wsAllowedPrefixes = {
+  'weapons.missiles.',
+  'weapons.nurs.',
+  'weapons.bombs.',
+  'weapons.containers.',
+  'weapons.droptanks.',
+  'weapons.adapters.',
+  'weapons.shells.',
+  'weapons.gunmounts.',
+}
+
+local function _wsIsAllowedWeaponKey(name)
+  if type(name) ~= "string" then return false end
+  for i = 1, #_wsAllowedPrefixes do
+    local prefix = _wsAllowedPrefixes[i]
+    if name:sub(1, #prefix) == prefix then
+      return true
+    end
+  end
+  return false
+end
+
+local function _wsLooksGuidedBomb(name)
+  local u = name:upper()
+  return u:find("GBU") or u:find("KAB") or u:find("LGB") or u:find("JDAM") or
+         u:find("SDB") or u:find("LS_6") or u:find("SPICE") or
+         u:find("AGM_62") or u:find("AGM-62")
+end
+
+local function _wsLooksAGMissile(name)
+  local u = name:upper()
+  return u:find("AGM") or u:find("KH") or u:find("X_") or u:find("X-") or
+         u:find("YJ") or u:find("CM_") or u:find("CM-") or u:find("KD_") or
+         u:find("KD-") or u:find("LD-") or u:find("BRM") or u:find("BK90") or
+         u:find("DWS39") or u:find("TOW") or u:find("HOT") or u:find("SPIKE") or
+         u:find("ADM_") or u:find("ADM-")
+end
+
+local function _wsLooksAAMissile(name)
+  local u = name:upper()
+  return u:find("AIM") or u:find("MICA") or u:find("IRIS") or u:find("PL-") or
+         u:find("PL_") or u:find("SD-") or u:find("SD_") or u:find("CATM") or
+         u:find("R_") or u:find("R-") or u:find("P_") or u:find("P-")
+end
+
+local function _wsCategoryForWeapon(name)
+  if name:sub(1, 17) == "weapons.missiles." then
+    if _wsLooksAGMissile(name) then
+      return WEAPONSLIST.ItemCategory.AG_MISSILES
+    end
+    if _wsLooksAAMissile(name) then
+      return WEAPONSLIST.ItemCategory.AA_MISSILES
+    end
+    return WEAPONSLIST.ItemCategory.AG_MISSILES
+  end
+  if name:sub(1, 13) == "weapons.nurs." then
+    return WEAPONSLIST.ItemCategory.AG_ROCKETS
+  end
+  if name:sub(1, 14) == "weapons.bombs." then
+    if _wsLooksGuidedBomb(name) then
+      return WEAPONSLIST.ItemCategory.AG_GUIDED_BOMBS
+    end
+    return WEAPONSLIST.ItemCategory.AG_BOMBS
+  end
+  if name:sub(1, 18) == "weapons.droptanks." then
+    return WEAPONSLIST.ItemCategory.FUEL_TANKS
+  end
+  return WEAPONSLIST.ItemCategory.MISC
+end
+
+local function _wsAddItem(category, name)
+  if not (category and name) then return end
+  WEAPONSLIST.Items[category] = WEAPONSLIST.Items[category] or {}
+  table.insert(WEAPONSLIST.Items[category], name)
+end
+
+local function _wsCollectLogisticCenterAirbases()
+  if not (bc and bc.getZones and bc.indexedZones) then return {} end
+  local list, seen = {}, {}
+  for _, zref in ipairs(bc:getZones() or {}) do
+    local z = bc.indexedZones[zref.zone]
+    local ab = z and z.airbaseName
+    if ab and z.LogisticCenter == true and not seen[ab] then
+      seen[ab] = true
+      list[#list + 1] = ab
+    end
+  end
+  table.sort(list)
+  return list
+end
+
+function WEAPONSLIST.SyncFromWarehouseLogistics(opts)
+  if WarehouseLogistics ~= true then return false end
+  if not (STORAGE and STORAGE.FindByName) then return false end
+  if not (WEAPONSLIST and WEAPONSLIST.Items) then return false end
+
+  opts = opts or {}
+  local addToList = (opts.addToList ~= false)
+  local logMissing = (opts.logMissing ~= false)
+  local logAdded = (opts.logAdded ~= false)
+
+  local known = {}
+  for _, list in pairs(WEAPONSLIST.Items or {}) do
+    for _, name in ipairs(list) do
+      known[name] = true
+    end
+  end
+
+  local airbases = _wsCollectLogisticCenterAirbases()
+  if #airbases == 0 then return false end
+
+  local addedByCat = {}
+  local scanned = 0
+
+  for _, airbaseName in ipairs(airbases) do
+    local storage = STORAGE:FindByName(airbaseName)
+    if storage and storage.GetInventory then
+      local _, _, wp = storage:GetInventory()
+      for weaponName, qty in pairs(wp or {}) do
+        if qty and qty > 0 and _wsIsAllowedWeaponKey(weaponName) then
+          scanned = scanned + 1
+          if not known[weaponName] then
+            known[weaponName] = true
+            local cat = _wsCategoryForWeapon(weaponName)
+            addedByCat[cat] = addedByCat[cat] or {}
+            table.insert(addedByCat[cat], weaponName)
+            if addToList then
+              _wsAddItem(cat, weaponName)
+            end
+          end
+        end
+      end
+    end
+  end
+
+  local addedCount = 0
+  for _, list in pairs(addedByCat) do
+    table.sort(list)
+    addedCount = addedCount + #list
+  end
+
+  if logMissing then
+    if addedCount == 0 then
+      env.info("[WEAPONSLIST] Warehouse scan: no missing weapons found")
+    else
+      env.info(string.format("[WEAPONSLIST] Warehouse scan: %d airbases, %d items scanned, %d missing", #airbases, scanned, addedCount))
+      for cat, list in pairs(addedByCat) do
+        for _, item in ipairs(list) do
+          env.info(string.format("[WEAPONSLIST] Missing (%s): %s", tostring(cat), tostring(item)))
+        end
+      end
+    end
+  end
+
+  if addToList and logAdded and addedCount > 0 then
+    for cat, list in pairs(addedByCat) do
+      env.info(string.format("[WEAPONSLIST] Added %d item(s) to %s", #list, tostring(cat)))
+    end
+  end
+
+  return true
 end
 
 function WEAPONSLIST.ClearWeaponsInStorage(storage)
@@ -23353,7 +23917,7 @@ allowedPlanes = allowedPlanes or {
   "SA342L","Mi-8MT","Mirage-F1EE","Mi-24P","CH-47Fbl1","FA-18C_hornet","F-16C_50", "MiG-29 Fulcrum","UH-60L_DAP","C-130J-30","F-14B","AH-64D_BLK_II","MH-6J","AH-6J","Mi-28NE"}
 
 restockAircraft = restockAircraft or {
-"FA-18FT","EA-18G","F-22A","FA-18E","B-52H","FA-18F","FA-18ET","F15EX","A-29B","F-23A","Ka-50_3","Ka-50","Mi-28NE","SU22","AV8BNA",
+"FA-18FT","EA-18G","F-22A","FA-18E","B-52H","FA-18F","FA-18ET","F15EX","A-29B","F-23A","Ka-50_3","Ka-50","Mi-28NE","SU22","AV8BNA","Su-30MKA","Su-30MKI","Su-30MKM","Su-30SM",
 "Bronco-OV-10A","JAS39Gripen_AG","MiG-31BM","JAS39Gripen","Su-35S","UH-60L","OH-6A","Su-35","JAS39Gripen_BVR","SK-60","T-45","UH-60L_DAP", "MiG-29 Fulcrum","MH-6J","AH-6J"}
 
 
@@ -23546,3 +24110,16 @@ end
 timer.scheduleFunction(function()
     checkWeaponsList()
 end, {}, timer.getTime() + 1)
+
+local _wsWarehouseSyncDone = false
+timer.scheduleFunction(function()
+    if _wsWarehouseSyncDone then return end
+    if WarehouseLogistics ~= true then return end
+    if WEAPONSLIST and WEAPONSLIST.SyncFromWarehouseLogistics then
+        local ok = WEAPONSLIST.SyncFromWarehouseLogistics({ addToList = true, logMissing = true, logAdded = true })
+        if ok then
+            _wsWarehouseSyncDone = true
+            return
+        end
+    end
+end, {}, timer.getTime() + 0.1)

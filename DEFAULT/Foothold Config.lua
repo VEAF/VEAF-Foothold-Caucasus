@@ -89,14 +89,14 @@ NoSA10AndSA11 = false
 SplashDamage = false
 
 -- If true, show Foothold kill messages.
-ShowKills = true
+ShowKills = false
 
 -- If true, limit shop purchases by personal credits earned (rank gates):
 --   >  250 cost requires   100 earned
 --   > 1000 cost requires  1000 earned
 --   > 2000 cost requires  2000 earned
 --   > 3000 cost requires  3000 earned
-StoreLimit = true
+StoreLimit = false
 
 -- If false, CTLD crates/units are free.
 CTLDCost = true
@@ -132,7 +132,7 @@ AutoFillResources = 5
 
 AllowedToCarrySupplies = {
     ["Ka-50"]         = false,
-    ["Ka-50_3"]       = false,
+    ["Ka-50_3"]       = true,
     ["Mi-24P"]        = true,
     ["SA342Mistral"]  = false,
     ["SA342L"]        = false,
@@ -140,14 +140,14 @@ AllowedToCarrySupplies = {
     ["SA342Minigun"]  = false,
     ["UH-60L"]        = true,
     ["UH-60L_DAP"]    = true,
-    ["AH-64D_BLK_II"] = false,
+    ["AH-64D_BLK_II"] = true,
     ["UH-1H"]         = true,
     ["Mi-8MT"]        = true,
     ["Hercules"]      = true,
     ["OH58D"]         = false,
     ["CH-47Fbl1"]     = true,
-    ["Bronco-OV-10A"] = false,
-    ["OH-6A"]         = false,
+    ["Bronco-OV-10A"] = true,
+    ["OH-6A"]         = true,
     ["C-130J-30"]     = true,
 }
 
@@ -157,14 +157,14 @@ AllowedToCarrySupplies = {
 
 -- Earning per kill by target type.
 RewardContribution = {
-	infantry       = 10,
-	ground         = 10,
-	sam            = 30,
-	airplane       = 50,
-	ship           = 200,
-	helicopter     = 50,
-	crate          = 100,
-	rescue         = 200,
+	infantry         = 10,
+	ground           = 10,
+	sam              = 30,
+	airplane         = 50,
+	ship             = 200,
+	helicopter       = 50,
+	crate            = 100,
+	rescue           = 200,
 	["Zone upgrade"] = 100,
 	["Zone capture"] = 200,
     structure        = 100,
@@ -400,23 +400,23 @@ AllowedCsar = {
     ["Ka-50"]         = 0,
     ["Ka-50_3"]       = 0,
     ["Mi-24P"]        = 8,
-    ["SA342Mistral"]  = 0,
-    ["SA342L"]        = 0,
-    ["SA342M"]        = 0,
-    ["SA342Minigun"]  = 0,
+    ["SA342Mistral"]  = 3,
+    ["SA342L"]        = 3,
+    ["SA342M"]        = 3,
+    ["SA342Minigun"]  = 3,
     ["UH-60L"]        = 11,
     ["UH-60L_DAP"]    = 11,
-    ["AH-64D_BLK_II"] = 0,
-    ["UH-1H"]         = 4,
-    ["Mi-8MT"]        = 11,
-    ["OH58D"]         = 0,
+    ["AH-64D_BLK_II"] = 2,
+    ["UH-1H"]         = 11,
+    ["Mi-8MT"]        = 24,
+    ["OH58D"]         = 1,
     ["CH-47Fbl1"]     = 32,
-    ["Bronco-OV-10A"] = 0,
-    ["OH-6A"]         = 0,
-    ["C-130J-30"]     = 60,
-    ["Hercules"]      = 60,
-    ["MH-6J"]         = 0,
-    ["AH-6J"]         = 0,
+    ["Bronco-OV-10A"] = 5,
+    ["OH-6A"]         = 2,
+    ["C-130J-30"]     = 0,
+    ["Hercules"]      = 0,
+    ["MH-6J"]         = 4,
+    ["AH-6J"]         = 4,
 }
 
 

@@ -341,7 +341,7 @@ local cwSwap = {
 	['Red SAM SHORAD Tor M2']  						= 'Red SAM SHORAD SA-8',
 	['Neustrashimy']  								= 'Molniya',
 	['blueArmor']  									= 'blueArmor-Coldwar',
-	['bluePD1']  									= 'bluePD1-Coldwar',
+	['bluePD1']  									= 'blueHAWK-Coldwar',
 	['blueHAWK']  									= 'blueHAWK-Coldwar',
 	['Red Arty 4']  								= 'Red Arty 3',
 	['Red Arty 2']  								= 'Red Arty 3',
@@ -1603,7 +1603,7 @@ function (sender, params)
     return
 end)
 
-bc:registerShopItem('dynamicarco', 'Dynamic Tanker (Drogue)', ShopPrices.dynamicarco, function(sender)
+bc:registerShopItem('dynamicarco', 'Unlock Tanker (Drogue)', ShopPrices.dynamicarco, function(sender)
     if ArcoActive then
         return 'Arco is still airborne'
     end
@@ -1611,7 +1611,7 @@ bc:registerShopItem('dynamicarco', 'Dynamic Tanker (Drogue)', ShopPrices.dynamic
 		return 'Choose spawn zone from F10 menu'
 	end
     buildArcoMenu()
-	trigger.action.outTextForCoalition(2, 'Tanker (Drogue) is requested. Select spawn zone.', 10)
+	trigger.action.outTextForCoalition(2, '(Drogue) Tanker is unlocked. Select spawn zone.', 20)
     return
 end,
 function (sender, params)
@@ -1620,11 +1620,11 @@ function (sender, params)
     end
     buildArcoMenu()
 
-	trigger.action.outTextForCoalition(2, 'Tanker (Drogue) is requested. Select spawn zone.', 10)
+	trigger.action.outTextForCoalition(2, '(Drogue) Tanker is unlocked. Select spawn zone.', 20)
     return
 end)
 
-bc:registerShopItem('dynamictexaco', 'Dynamic Tanker (Boom)', ShopPrices.dynamictexaco, function(sender)
+bc:registerShopItem('dynamictexaco', 'Unlock Tanker (Boom)', ShopPrices.dynamictexaco, function(sender)
     if TexacoActive then
         return 'Texaco is still airborne'
     end
@@ -1632,7 +1632,7 @@ bc:registerShopItem('dynamictexaco', 'Dynamic Tanker (Boom)', ShopPrices.dynamic
 		return 'Choose spawn zone from F10 menu'
 	end
     buildTexacoMenu()
-	trigger.action.outTextForCoalition(2, 'Tanker (Boom) is requested. Select spawn zone.', 10)
+	trigger.action.outTextForCoalition(2, '(Boom) Tanker is unlocked. Select spawn zone.', 20)
     return
 end,
 function (sender, params)
@@ -1641,7 +1641,7 @@ function (sender, params)
     end
     buildTexacoMenu()
 
-	trigger.action.outTextForCoalition(2, 'Tanker (Boom) is requested. Select spawn zone.', 10)
+	trigger.action.outTextForCoalition(2, '(Boom) Tanker is unlocked. Select spawn zone.', 20)
     return
 end)
 ---
@@ -2551,8 +2551,8 @@ local SHOP_PRICE_DEFAULTS = {
   flare         = 20,
   illum         = 100,
   dynamiccap    = 500,
-  dynamicarco   = 100,
-  dynamictexaco = 100,
+  dynamicarco   = 1000,
+  dynamictexaco = 1000,
   dynamiccas    = 1000,
   dynamicdecoy  = 300,
   dynamicsead   = 500,
@@ -3545,8 +3545,8 @@ ShopPrices = ShopPrices or {
 	flare         = 20,   -- Flare markers
 	illum         = 100,  -- Illumination bomb
 	dynamiccap    = 500,  -- Dynamic CAP
-	dynamicarco   = 100,  -- Dynamic Tanker (Drogue)
-	dynamictexaco = 100,  -- Dynamic Tanker (Boom)
+	dynamicarco   = 1000,  -- Dynamic Tanker (Drogue)
+	dynamictexaco = 1000,  -- Dynamic Tanker (Boom)
 	dynamiccas    = 1000, -- Dynamic CAS
 	dynamicdecoy  = 300,  -- Dynamic Decoy
 	dynamicsead   = 500,  -- Dynamic SEAD
@@ -3625,8 +3625,8 @@ bc:addShopItem(2, 'dynamicdecoy', -1, 6, ShopRankRequirements.dynamicdecoy) -- D
 if UseStatics == true then
 	bc:addShopItem(2, 'dynamicstatic', -1,7,ShopRankRequirements.dynamicstatic) -- Static buildings
 end
-bc:addShopItem(2, 'dynamicarco', -1, 8, ShopRankRequirements.dynamicarco) -- Navy tanker
-bc:addShopItem(2, 'dynamictexaco', -1, 9, ShopRankRequirements.dynamictexaco) -- Airforce tanker
+bc:addShopItem(2, 'dynamicarco', 1, 8, ShopRankRequirements.dynamicarco) -- Navy tanker
+bc:addShopItem(2, 'dynamictexaco', 1, 9, ShopRankRequirements.dynamictexaco) -- Airforce tanker
 bc:addShopItem(2, 'farphere', -1, 10, ShopRankRequirements.farphere) -- deploy FARP
 bc:addShopItem(2, 'capture', -1, 11, ShopRankRequirements.capture) -- emergency capture
 bc:addShopItem(2, 'smoke', -1, 12, ShopRankRequirements.smoke) -- smoke on target

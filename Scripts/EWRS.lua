@@ -986,8 +986,13 @@ function ewrs.buildF10Menu()
     for i = 1, #ewrs.activePlayers do
       local groupID = ewrs.activePlayers[i].groupID
       local stringGroupID = tostring(groupID)
+
       if ewrs.builtF10Menus[stringGroupID] == nil then
-        local rootPath = missionCommands.addSubMenuForGroup(groupID, "EWRS")
+        local desiredParent = nil
+        if EWRS_MENU_PARENT_BY_GROUP and EWRS_MENU_PARENT_BY_GROUP[stringGroupID] then
+          desiredParent = EWRS_MENU_PARENT_BY_GROUP[stringGroupID]
+        end
+        local rootPath = missionCommands.addSubMenuForGroup(groupID, "EWRS", desiredParent)
         
         if ewrs.allowBogeyDope then
           missionCommands.addCommandForGroup(groupID, "Request Bogey Dope",rootPath,ewrs.onDemandMessage,{groupID,true})
@@ -1046,7 +1051,7 @@ function ewrs.buildF10Menu()
           missionCommands.addCommandForGroup(groupID, "Message OFF", messageOnOffPath, ewrs.setGroupMessages, {groupID, false})
         end
 
-        ewrs.builtF10Menus[stringGroupID] = true
+        ewrs.builtF10Menus[stringGroupID] = rootPath
       end
     end
   end)

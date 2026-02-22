@@ -9944,38 +9944,79 @@ local function groupfireAtPoint(var)
             if AIEN.config.message_feed == true then
                 local zTgt = bc:getZoneOfPoint(vec3)
                 local zoneName = zTgt and zTgt.zone or ""
-                local fullName = group:getName()
-                local shortName = fullName:sub(1,18)
+                local coal = group:getCoalition()
+                local groupName = group:getName()
+                local unit = group:getUnit(1)
+                local shooterType = unit and unit:getTypeName() or groupName
+                local batchKey = zoneName ~= "" and (tostring(coal) .. ":" .. zoneName) or ("coal:" .. tostring(coal))
+                local batchWindow = AIEN.config.artyMessageBatchWindow or 1.6
+
                 AIEN._msgBatch = AIEN._msgBatch or {}
-                local b = AIEN._msgBatch[fullName]
+                local b = AIEN._msgBatch[batchKey]
                 if not b then
-                    b = {short=shortName, zone=zoneName, coal=group:getCoalition(), rounds=0, targets={}, scheduled=false}
-                    AIEN._msgBatch[fullName] = b
+                    b = {zone=zoneName, coal=coal, shooters={}, shooterGroups={}, targets={}, scheduled=false}
+                    AIEN._msgBatch[batchKey] = b
                 end
+
+                if not b.shooterGroups[groupName] then
+                    b.shooterGroups[groupName] = true
+                    b.shooters[shooterType] = (b.shooters[shooterType] or 0) + 1
+                end
+
+                local t = "Target"
                 if desc and type(desc) == "string" then
-                    local t = string.match(desc, "^Target is%s+(.+)$") or desc
-                    b.targets[t] = (b.targets[t] or 0) + 1
+                    t = string.match(desc, "^Target is%s+(.+)$") or desc
                 end
+                local tEntry = b.targets[t] or {count=0, rounds=0}
+                tEntry.count = tEntry.count + 1
                 if expd and qty and type(qty) == "number" then
-                    b.rounds = b.rounds + qty
+                    tEntry.rounds = tEntry.rounds + qty
                 end
+                b.targets[t] = tEntry
+
                 if b.scheduled == false then
                     b.scheduled = true
                     timer.scheduleFunction(function()
-                        local bb = AIEN._msgBatch[fullName]; if not bb then return end
-                        local txt = ""
-                        txt = txt .. "C2, " .. bb.short .. ", request fire mission, fire for Effect."
+                        local bb = AIEN._msgBatch[batchKey]; if not bb then return end
+                        local txt = "C2, Artillery, request fire mission, fire for Effect."
                         if bb.zone ~= "" then txt = txt .. "\nZone: " .. bb.zone end
-                        for t,c in pairs(bb.targets) do
-                            txt = txt .. "\nTarget is " .. tostring(c) .. " " .. tostring(t)
+
+                        local shooterList = {}
+                        for name, count in pairs(bb.shooters) do
+                            shooterList[#shooterList + 1] = {name = name, count = count}
                         end
-                        if bb.rounds > 0 then txt = txt .. "\n" .. tostring(bb.rounds) .. " rounds" end
+                        table.sort(shooterList, function(a,b) return a.name < b.name end)
+                        if #shooterList > 0 then
+                            local parts = {}
+                            for _, it in ipairs(shooterList) do
+                                parts[#parts + 1] = tostring(it.count) .. "x " .. tostring(it.name)
+                            end
+                            txt = txt .. "\nShooters: " .. table.concat(parts, ", ")
+                        end
+
+                        local targetList = {}
+                        for name, data in pairs(bb.targets) do
+                            targetList[#targetList + 1] = {name = name, count = data.count or 0, rounds = data.rounds or 0}
+                        end
+                        table.sort(targetList, function(a,b) return a.name < b.name end)
+                        if #targetList > 0 then
+                            local parts = {}
+                            for _, it in ipairs(targetList) do
+                                local seg = tostring(it.count) .. "x " .. tostring(it.name)
+                                if it.rounds and it.rounds > 0 then
+                                    seg = seg .. " (" .. tostring(it.rounds) .. " rounds)"
+                                end
+                                parts[#parts + 1] = seg
+                            end
+                            txt = txt .. "\nTargets: " .. table.concat(parts, ", ")
+                        end
+
                         txt = txt .. "\n" .. "Cleared for fire when ready"
                         local vars = {"text", txt, 20, nil, nil, nil, bb.coal}
                         multyTypeMessage(vars)
-                        AIEN._msgBatch[fullName] = nil
+                        AIEN._msgBatch[batchKey] = nil
                         return
-                    end, {}, timer.getTime() + 0.1)
+                    end, {}, timer.getTime() + batchWindow)
                 end
             end
 
@@ -13324,9 +13365,6 @@ function update_ISR() -- basically clean old ISR data
                 AIEN.changePhase()
                 scheduleNextPhaseCycle()
                 -- debug steps
-                if AIEN.config.AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
-                    dumpTableAIEN("intelDb.lua", intelDb, "int")
-                end
                 if AIEN.config.AIEN_debugProcessDetail then
                     env.info((tostring(ModuleName) .. ", update_ISR: fase B completed"))
                 end
@@ -13370,10 +13408,7 @@ function update_ISR() -- basically clean old ISR data
         else
             AIEN.changePhase()
             scheduleNextPhaseCycle()
-            -- debug steps
-            if AIEN.config.AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
-                dumpTableAIEN("intelDb.lua", intelDb, "int")
-            end
+
             if AIEN.config.AIEN_debugProcessDetail then
                 env.info((tostring(ModuleName) .. ", update_ISR: fase B skipped"))
             end            
@@ -14199,7 +14234,7 @@ end
                         if AI_consent == true then
 
                             if shooter:getCoalition() == group:getCoalition() then
-                                if AIEN.config.message_feed == true then
+--[[                                 if AIEN.config.message_feed == true then
                                     local z = bc:getZoneOfPoint(position)
                                     if z and z.zone then
                                         local vars = {"text", "C2, " .. tostring(z.zone) .. " reports friendly fire!", 30, nil, nil, nil, group:getCoalition()}
@@ -14208,7 +14243,7 @@ end
                                         local vars = {"text", "C2, " .. tostring(group:getName()) .. " reports friendly fire!", 30, nil, nil, nil, group:getCoalition()}
                                         multyTypeMessage(vars)
                                     end
-                                end
+                                end ]]
                                 return
                             end
     

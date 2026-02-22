@@ -34,6 +34,10 @@ end
 GlobalSettings = GlobalSettings or {}
 GlobalSettings.difficultyScaling = { [1]=1.0, [2]=1.0 }
 
+-- ============================================================================
+-- Difficulty Settings
+-- ============================================================================
+
 -- Valid values: "easy" | "medium" | "hard"
 -- Here, you can adjust how many cap should spawn. medium, is the default (Balanaced)
 CapDifficulty      = "medium" -- RED CAP amount.  This can be further custommized in the advance section.
@@ -51,6 +55,12 @@ AiGroundSkill = "Excellent"
 -- AI skill used for spawned non-airplane units Red and blue share the same config value (ground/ship/etc) (MOOSE SPAWN:InitSkill).
 -- Valid: "Average", "Good", "High", "Excellent", "Random" (case-insensitive). Unknown values become "High".
 
+-- Controls whether SAM groups are hidden on MFDs.
+-- Valid values only: false | true | "random"
+-- false    = always shown on MFD
+-- true     = always hidden on MFD (default)
+-- "random" = 50% chance hidden on each spawn
+HideSAMOnMFD = true -- if random, use "random" (string)
 
 -- ============================================================================
 -- Mission Rules
@@ -101,6 +111,10 @@ StoreLimit = true
 -- If false, CTLD crates/units are free.
 CTLDCost = true
 
+-- If true, engineers can capture/upgrade zones via CTLD troop flow (legacy behavior).
+-- If false, only regular troops can capture/upgrade zones.
+CaptureZoneWithEngineer = false
+
 -- If false, everyone can access the full shop.
 RankingSystem = true
 
@@ -127,6 +141,9 @@ AIDeliveryamount = 20
 
 -- Every 15 minutes, BLUE zones gain this many resources (covers AI usage).
 AutoFillResources = 5
+
+-- If the below is true, Blue AI will NOT deliver supplies, it will ONLY be done by the player.
+NoAIBlueSupplies = false
 
 -- This option is the legacy option. this won't be used if WarehouseLogistics = true
 
@@ -176,8 +193,8 @@ ShopPrices = {
     flare         = 20,   -- flare markers
 	illum         = 100,  -- Illumination bomb
 	dynamiccap    = 500,  -- Dynamic CAP
-	dynamicarco   = 100,  -- Dynamic Tanker (Drogue)
-	dynamictexaco = 100,  -- Dynamic Tanker (Boom)
+	dynamicarco   = 1000,  -- Dynamic Tanker (Drogue)
+	dynamictexaco = 1000,  -- Dynamic Tanker (Boom)
 	dynamiccas    = 1000, -- Dynamic CAS
 	dynamicdecoy  = 300,  -- Dynamic Decoy
 	dynamicsead   = 500,  -- Dynamic SEAD
@@ -470,6 +487,13 @@ RedCasCountIgnoreTypes = {
 	["CH-47Fbl1"] = true,
 }
 
+-- ============================================================================
+-- Tankers speed
+-- ============================================================================
+-- Airforce tanker speed (knots)
+TexacoSpeed = 286 -- orbit speed for texaco is hardcoded at 280, otherwise strange things happen.
+-- Navy tanker speed (knots)
+ArcoSpeed = 286 -- orbit speed for arco is hardcoded at 280, otherwise strange things happen.
 
 -- ============================================================================
 -- CAP / CAS / SEAD Scaling (Stage Tables)
@@ -651,7 +675,7 @@ phaseCycleTimerIdle = 0.5      -- Relaxed cadence when idle. Raise to 0.8-1.0 if
 -- ============================================================================
 
 -- In the coldwar era, you can add or remove what to restrict
--- if you add "--" before anything, it will be as if this line doesn't exist.
+-- Add "--" if you want to ALLOW a weapon, otherwise the weapon in the list below are removed from the warehouse.
 restrictedWeapons = {
     -- Apache Radar
     "weapons.containers.ah-64d_radar",
@@ -753,9 +777,10 @@ allowedPlanes = {
   "Mirage-F1EH","Mirage-F1CH","SA342Minigun","MiG-29A","Bronco-OV-10A","OH-6A", "Mirage-F1CG","F-5E-3","F-86F Sabre","F-14A","L-39C","C-101CC","SU22","A-4E-C",
   "SA342L","Mi-8MT","Mirage-F1EE","Mi-24P","CH-47Fbl1","FA-18C_hornet","F-16C_50", "MiG-29 Fulcrum","UH-60L_DAP","C-130J-30","F-14B","AH-64D_BLK_II","MH-6J","AH-6J","Mi-28NE"}
 
+-- This list is more or less mods that should be allowed in the warehouse. 
 restockAircraft = {
 "FA-18FT","EA-18G","F-22A","FA-18E","B-52H","FA-18F","FA-18ET","F15EX","A-29B","F-23A","Ka-50_3","Ka-50","Mi-28NE","SU22","AV8BNA","Su-30MKA","Su-30MKI","Su-30MKM","Su-30SM",
-"Bronco-OV-10A","JAS39Gripen_AG","MiG-31BM","JAS39Gripen","Su-35S","UH-60L","OH-6A","Su-35","JAS39Gripen_BVR","SK-60","T-45","UH-60L_DAP", "MiG-29 Fulcrum","MH-6J","AH-6J","A-4E-C",
+"Bronco-OV-10A","JAS39Gripen_AG","MiG-31BM","JAS39Gripen","Su-35S","UH-60L","OH-6A","Su-35","JAS39Gripen_BVR","SK-60","T-45","UH-60L_DAP","MH-6J","AH-6J","A-4E-C",
 "Bell-47","Eurofighter","EurofighterT","F16A","F16A_AA","F111C","Hercules","M2000D","PUCARA","Su-25SM3"}
 
 

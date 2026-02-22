@@ -341,8 +341,11 @@ local cwSwap = {
 	['Red SAM SHORAD Tor M2']  						= 'Red SAM SHORAD SA-8',
 	['Neustrashimy']  								= 'Molniya',
 	['blueArmor']  									= 'blueArmor-Coldwar',
-	['bluePD1']  									= 'bluePD1-Coldwar',
+	['bluePD1']  									= 'blueHAWK-Coldwar',
 	['blueHAWK']  									= 'blueHAWK-Coldwar',
+	['Red Arty 4']  								= 'Red Arty 3',
+	['Red Arty 2']  								= 'Red Arty 3',
+	['Red Arty']  									= 'Red Arty 3',
 	['Fixed Ammunitiondepo Armor']  				= 'Fixed Ammunitiondepo Armor Coldwar',
 	['MiningFacility Fixed Group 1']  				= 'MiningFacility Fixed Group Coldwar',
 	['MiningFacility Fixed Group 2']  				= 'MiningFacility Fixed Group 2 Coldwar',
@@ -447,6 +450,7 @@ RandomRedPool = {
 	"Red Arty",
 	"Red Arty 2",
 	"Red Arty 3",
+	"Red Arty 4",
 }
 
 RandomBluePool = {
@@ -1599,7 +1603,7 @@ function (sender, params)
     return
 end)
 
-bc:registerShopItem('dynamicarco', 'Dynamic Tanker (Drogue)', ShopPrices.dynamicarco, function(sender)
+bc:registerShopItem('dynamicarco', 'Unlock Tanker (Drogue)', ShopPrices.dynamicarco, function(sender)
     if ArcoActive then
         return 'Arco is still airborne'
     end
@@ -1607,7 +1611,7 @@ bc:registerShopItem('dynamicarco', 'Dynamic Tanker (Drogue)', ShopPrices.dynamic
 		return 'Choose spawn zone from F10 menu'
 	end
     buildArcoMenu()
-	trigger.action.outTextForCoalition(2, 'Tanker (Drogue) is requested. Select spawn zone.', 10)
+	trigger.action.outTextForCoalition(2, '(Drogue) Tanker is unlocked. Select spawn zone.', 20)
     return
 end,
 function (sender, params)
@@ -1616,11 +1620,11 @@ function (sender, params)
     end
     buildArcoMenu()
 
-	trigger.action.outTextForCoalition(2, 'Tanker (Drogue) is requested. Select spawn zone.', 10)
+	trigger.action.outTextForCoalition(2, '(Drogue) Tanker is unlocked. Select spawn zone.', 20)
     return
 end)
 
-bc:registerShopItem('dynamictexaco', 'Dynamic Tanker (Boom)', ShopPrices.dynamictexaco, function(sender)
+bc:registerShopItem('dynamictexaco', 'Unlock Tanker (Boom)', ShopPrices.dynamictexaco, function(sender)
     if TexacoActive then
         return 'Texaco is still airborne'
     end
@@ -1628,7 +1632,7 @@ bc:registerShopItem('dynamictexaco', 'Dynamic Tanker (Boom)', ShopPrices.dynamic
 		return 'Choose spawn zone from F10 menu'
 	end
     buildTexacoMenu()
-	trigger.action.outTextForCoalition(2, 'Tanker (Boom) is requested. Select spawn zone.', 10)
+	trigger.action.outTextForCoalition(2, '(Boom) Tanker is unlocked. Select spawn zone.', 20)
     return
 end,
 function (sender, params)
@@ -1637,7 +1641,7 @@ function (sender, params)
     end
     buildTexacoMenu()
 
-	trigger.action.outTextForCoalition(2, 'Tanker (Boom) is requested. Select spawn zone.', 10)
+	trigger.action.outTextForCoalition(2, '(Boom) Tanker is unlocked. Select spawn zone.', 20)
     return
 end)
 ---
@@ -2395,11 +2399,160 @@ local smoketargets = function(tz)
 	end
 end
 
+local flaretargets = function(tz)
+	if not tz or not tz.built then
+		env.info("flaretargets: no tz/built for zone "..tostring(tz and tz.zone or "nil"))
+		return
+	end
+	local units, statics, dangling, toRemove = {}, {}, {}, {}
+	for i,v in pairs(tz.built) do
+		local g = Group.getByName(v)
+		if g and g:isExist() then
+			local gUnits = g:getUnits()
+			if gUnits then
+				for i2,v2 in ipairs(gUnits) do
+					table.insert(units, v2)
+				end
+			end
+		else
+			local st = StaticObject.getByName(v)
+			if st and st:isExist() then
+				table.insert(statics, st)
+			else
+				table.insert(dangling, tostring(v))
+				table.insert(toRemove, i)
+			end
+		end
+	end
+	if #dangling > 0 then
+		trigger.action.outTextForCoalition(2, "(BUG) "..tz.zone.." error has unresolved entries: "..table.concat(dangling,", ")..". Please report to Leka.", 30)
+		for _,k in ipairs(toRemove) do tz.built[k] = nil end
+	end
+	local points = {}
+	for _,u in ipairs(units) do if u and u:isExist() then local p=u:getPosition().p; if p then table.insert(points,p) end end end
+	for _,s in ipairs(statics) do local p=s:getPoint(); if p then table.insert(points,p) end end
+	for i=1,3 do
+		if #points == 0 then break end
+		local idx = math.random(1,#points)
+		local az = math.random(0,359)
+		trigger.action.signalFlare(points[idx], trigger.flareColor.Red, az)
+		table.remove(points,idx)
+	end
+end
+
+local illumtargets = function(tz)
+	if not tz or not tz.built then
+		env.info("illumtargets: no tz/built for zone "..tostring(tz and tz.zone or "nil"))
+		return
+	end
+	local groups, units, statics, dangling, toRemove = {}, {}, {}, {}, {}
+	for i,v in pairs(tz.built) do
+		local g = Group.getByName(v)
+		if g and g:isExist() then
+			table.insert(groups, g)
+			local gUnits = g:getUnits()
+			if gUnits then
+				for i2,v2 in ipairs(gUnits) do
+					table.insert(units, v2)
+				end
+			end
+		else
+			local st = StaticObject.getByName(v)
+			if st and st:isExist() then
+				table.insert(statics, st)
+			else
+				table.insert(dangling, tostring(v))
+				table.insert(toRemove, i)
+			end
+		end
+	end
+	if #dangling > 0 then
+		trigger.action.outTextForCoalition(2, "(BUG) "..tz.zone.." error has unresolved entries: "..table.concat(dangling,", ")..". Please report to Leka.", 30)
+		for _,k in ipairs(toRemove) do tz.built[k] = nil end
+	end
+	local illumAltitude = 600
+	local illumPower = 400000
+
+	local targets = {}
+	local function addPos(p)
+		if p then table.insert(targets, p) end
+	end
+	local function addGroupLeaderPos(g)
+		if not g then return end
+		local u = g:getUnit(1)
+		if u and u:isExist() then
+			local p = u:getPosition().p
+			addPos(p)
+		end
+	end
+	local function addRandomUnitPos(pool)
+		if not pool or #pool == 0 then return end
+		local idx = math.random(1, #pool)
+		local u = pool[idx]
+		if u and u:isExist() then
+			local p = u:getPosition().p
+			addPos(p)
+		end
+		table.remove(pool, idx)
+	end
+
+	if #groups >= 3 then
+		local gpool = {}
+		for _,g in ipairs(groups) do table.insert(gpool, g) end
+		for i=1,3 do
+			local idx = math.random(1, #gpool)
+			addGroupLeaderPos(gpool[idx])
+			table.remove(gpool, idx)
+		end
+	elseif #groups == 2 then
+		addGroupLeaderPos(groups[1])
+		addGroupLeaderPos(groups[2])
+		local upool = {}
+		for _,u in ipairs(units) do table.insert(upool, u) end
+		if #upool > 0 then
+			addRandomUnitPos(upool)
+		elseif #statics > 0 then
+			local s = statics[math.random(1, #statics)]
+			addPos(s:getPoint())
+		end
+	elseif #groups == 1 then
+		local gUnits = groups[1]:getUnits() or {}
+		local upool = {}
+		for _,u in ipairs(gUnits) do table.insert(upool, u) end
+		if #upool == 0 then
+			for _,u in ipairs(units) do table.insert(upool, u) end
+		end
+		for i=1,3 do
+			if #upool == 0 then break end
+			addRandomUnitPos(upool)
+		end
+	else
+		local spoints = {}
+		for _,s in ipairs(statics) do
+			local p = s:getPoint()
+			if p then table.insert(spoints, p) end
+		end
+		for i=1,3 do
+			if #spoints == 0 then break end
+			local idx = math.random(1, #spoints)
+			addPos(spoints[idx])
+			table.remove(spoints, idx)
+		end
+	end
+
+	for _,p in ipairs(targets) do
+		local bombPoint = { x = p.x, y = p.y + illumAltitude, z = p.z }
+		trigger.action.illuminationBomb(bombPoint, illumPower)
+	end
+end
+
 local SHOP_PRICE_DEFAULTS = {
   smoke         = 20,
+  flare         = 20,
+  illum         = 100,
   dynamiccap    = 500,
-  dynamicarco   = 100,
-  dynamictexaco = 100,
+  dynamicarco   = 1000,
+  dynamictexaco = 1000,
   dynamiccas    = 1000,
   dynamicdecoy  = 300,
   dynamicsead   = 500,
@@ -2442,6 +2595,8 @@ local SHOP_RANK_DEFAULTS = {
   farphere       = 4,
   capture        = 1,
   smoke          = 1,
+  flare          = 1,
+  illum          = 1,
   intel          = 5,
   supplies2      = 1,
   supplies       = 6,
@@ -2501,8 +2656,61 @@ function(sender, params)
 	end
 end)
 
+local flareTargetMenu = nil
+bc:registerShopItem('flare', 'Flare markers', ShopPrices.flare, function(sender)
+	if flareTargetMenu then
+		return 'Choose target zone from F10 menu'
+	end
+	
+	local launchAttack = function(target)
+		if flareTargetMenu then
+			local tz = bc:getZoneByName(target)
+			flaretargets(tz)
+			flareTargetMenu = nil
+			trigger.action.outTextForCoalition(2, 'Targets marked with RED flare at '..target, 15)
+		end
+	end
+	
+	flareTargetMenu = bc:showTargetZoneMenu(2, 'Flare marker target', launchAttack, 1)
+	
+	trigger.action.outTextForCoalition(2, 'Choose target zone from F10 menu', 15)
+end,
+function(sender, params)
+	if params.zone and params.zone.side == 1 then
+		flaretargets(params.zone)
+		trigger.action.outTextForCoalition(2, 'Targets marked with RED flare at '..params.zone.zone, 15)
+	else
+		return 'Can only target enemy zone'
+	end
+end)
 
-
+local illumTargetMenu = nil
+bc:registerShopItem('illum', 'Illumination bomb', ShopPrices.illum, function(sender)
+	if illumTargetMenu then
+		return 'Choose target zone from F10 menu'
+	end
+	
+	local launchAttack = function(target)
+		if illumTargetMenu then
+			local tz = bc:getZoneByName(target)
+			illumtargets(tz)
+			illumTargetMenu = nil
+			trigger.action.outTextForCoalition(2, 'Targets illuminated at '..target, 15)
+		end
+	end
+	
+	illumTargetMenu = bc:showTargetZoneMenu(2, 'Illumination target', launchAttack, 1)
+	
+	trigger.action.outTextForCoalition(2, 'Choose target zone from F10 menu', 15)
+end,
+function(sender, params)
+	if params.zone and params.zone.side == 1 then
+		illumtargets(params.zone)
+		trigger.action.outTextForCoalition(2, 'Targets illuminated at '..params.zone.zone, 15)
+	else
+		return 'Can only target enemy zone'
+	end
+end)
 
 -- new menu
 local supplyMenu=nil
@@ -3334,9 +3542,11 @@ end)
 
 ShopPrices = ShopPrices or {
 	smoke         = 20,   -- Smoke markers
+	flare         = 20,   -- Flare markers
+	illum         = 100,  -- Illumination bomb
 	dynamiccap    = 500,  -- Dynamic CAP
-	dynamicarco   = 100,  -- Dynamic Tanker (Drogue)
-	dynamictexaco = 100,  -- Dynamic Tanker (Boom)
+	dynamicarco   = 1000,  -- Dynamic Tanker (Drogue)
+	dynamictexaco = 1000,  -- Dynamic Tanker (Boom)
 	dynamiccas    = 1000, -- Dynamic CAS
 	dynamicdecoy  = 300,  -- Dynamic Decoy
 	dynamicsead   = 500,  -- Dynamic SEAD
@@ -3379,6 +3589,8 @@ ShopRankRequirements = ShopRankRequirements or {
 	farphere       = 4,  -- Deploy FARP
 	capture        = 1,  -- Emergency capture zone
 	smoke          = 1,  -- Smoke markers
+	flare          = 1,  -- Flare markers
+	illum          = 1,  -- Illumination bomb
 	intel          = 5,  -- Intel on enemy zone
 	supplies2      = 1,  -- Resupply friendly Zone
 	supplies       = 6,  -- Fully Upgrade Friendly Zone
@@ -3413,31 +3625,33 @@ bc:addShopItem(2, 'dynamicdecoy', -1, 6, ShopRankRequirements.dynamicdecoy) -- D
 if UseStatics == true then
 	bc:addShopItem(2, 'dynamicstatic', -1,7,ShopRankRequirements.dynamicstatic) -- Static buildings
 end
-bc:addShopItem(2, 'dynamicarco', -1, 8, ShopRankRequirements.dynamicarco) -- Navy tanker
-bc:addShopItem(2, 'dynamictexaco', -1, 9, ShopRankRequirements.dynamictexaco) -- Airforce tanker
+bc:addShopItem(2, 'dynamicarco', 1, 8, ShopRankRequirements.dynamicarco) -- Navy tanker
+bc:addShopItem(2, 'dynamictexaco', 1, 9, ShopRankRequirements.dynamictexaco) -- Airforce tanker
 bc:addShopItem(2, 'farphere', -1, 10, ShopRankRequirements.farphere) -- deploy FARP
 bc:addShopItem(2, 'capture', -1, 11, ShopRankRequirements.capture) -- emergency capture
 bc:addShopItem(2, 'smoke', -1, 12, ShopRankRequirements.smoke) -- smoke on target
-bc:addShopItem(2, 'intel', -1, 13, ShopRankRequirements.intel) -- Intel
-bc:addShopItem(2, 'supplies2', -1, 14, ShopRankRequirements.supplies2) -- upgrade friendly zone
-bc:addShopItem(2, 'supplies', -1, 15, ShopRankRequirements.supplies) -- fully upgrade friendly zone
-bc:addShopItem(2, 'zlogc', -1, 16, ShopRankRequirements.zlogc) -- upgrade zone to logistic center
-bc:addShopItem(2, 'zwh50', -1, 17, ShopRankRequirements.zwh50) -- resupply warehouse with 50
-bc:addShopItem(2, 'zinf', -1, 18, ShopRankRequirements.zinf) -- add infantry to a zone
-bc:addShopItem(2, 'zarm', -1, 19, ShopRankRequirements.zarm) -- add armour group to a zone
-bc:addShopItem(2, 'zsam', -1, 20, ShopRankRequirements.zsam) -- add Nasams to a zone
-bc:addShopItem(2, 'zhimars', -1, 19, ShopRankRequirements.zhimars) -- add HIMARS to a zone
-bc:addShopItem(2, 'gslot', 1, 21, ShopRankRequirements.gslot) -- add another slot for upgrade
+bc:addShopItem(2, 'flare', -1, 13, ShopRankRequirements.flare) -- flare on target
+bc:addShopItem(2, 'illum', -1, 14, ShopRankRequirements.illum) -- illumination bomb
+bc:addShopItem(2, 'intel', -1, 15, ShopRankRequirements.intel) -- Intel
+bc:addShopItem(2, 'supplies2', -1, 16, ShopRankRequirements.supplies2) -- upgrade friendly zone
+bc:addShopItem(2, 'supplies', -1, 17, ShopRankRequirements.supplies) -- fully upgrade friendly zone
+bc:addShopItem(2, 'zlogc', -1, 18, ShopRankRequirements.zlogc) -- upgrade zone to logistic center
+bc:addShopItem(2, 'zwh50', -1, 19, ShopRankRequirements.zwh50) -- resupply warehouse with 50
+bc:addShopItem(2, 'zinf', -1, 20, ShopRankRequirements.zinf) -- add infantry to a zone
+bc:addShopItem(2, 'zarm', -1, 21, ShopRankRequirements.zarm) -- add armour group to a zone
+bc:addShopItem(2, 'zsam', -1, 22, ShopRankRequirements.zsam) -- add Nasams to a zone
+bc:addShopItem(2, 'zhimars', -1, 21, ShopRankRequirements.zhimars) -- add HIMARS to a zone
+bc:addShopItem(2, 'gslot', 1, 23, ShopRankRequirements.gslot) -- add another slot for upgrade
 if Era == 'Modern' then
-	bc:addShopItem(2, 'zpat', -1, 22, ShopRankRequirements.zpat) -- Patriot system.
+	bc:addShopItem(2, 'zpat', -1, 24, ShopRankRequirements.zpat) -- Patriot system.
 end
-bc:addShopItem(2, 'armor', -1, 23, ShopRankRequirements.armor) -- combined arms
-bc:addShopItem(2, 'artillery', -1, 24, ShopRankRequirements.artillery) -- combined arms
-bc:addShopItem(2, 'recon', -1, 25, ShopRankRequirements.recon) -- combined arms
-bc:addShopItem(2, 'airdef', -1, 26, ShopRankRequirements.airdef) -- combined arms
-bc:addShopItem(2, '9lineam', -1, 27, ShopRankRequirements["9lineam"]) -- free jtac
-bc:addShopItem(2, '9linefm', -1, 28, ShopRankRequirements["9linefm"]) -- free jtac
-bc:addShopItem(2, 'cruisemsl', 12, 29, ShopRankRequirements.cruisemsl) -- Cruise missiles
+bc:addShopItem(2, 'armor', -1, 25, ShopRankRequirements.armor) -- combined arms
+bc:addShopItem(2, 'artillery', -1, 26, ShopRankRequirements.artillery) -- combined arms
+bc:addShopItem(2, 'recon', -1, 27, ShopRankRequirements.recon) -- combined arms
+bc:addShopItem(2, 'airdef', -1, 28, ShopRankRequirements.airdef) -- combined arms
+bc:addShopItem(2, '9lineam', -1, 29, ShopRankRequirements["9lineam"]) -- free jtac
+bc:addShopItem(2, '9linefm', -1, 30, ShopRankRequirements["9linefm"]) -- free jtac
+bc:addShopItem(2, 'cruisemsl', 12, 31, ShopRankRequirements.cruisemsl) -- Cruise missiles
 
 
 supplyZones = {
@@ -3492,7 +3706,7 @@ end
 bc:init()
 budgetAI = BudgetCommander:new({ battleCommander = bc, side=1, decissionFrequency=20*60, decissionVariance=10*60, skipChance = 10})
 budgetAI:init()
-RewardContribution = RewardContribution or {infantry = 10, ground = 10, sam = 30, airplane = 50, ship = 200, helicopter=50, crate=100, rescue = 300, ['Zone upgrade'] = 100, ['Zone capture'] = 200}
+RewardContribution = RewardContribution or {infantry = 10, ground = 10, sam = 30, airplane = 50, ship = 200, helicopter=50, crate=100, rescue = 300, ['Zone upgrade'] = 100, ['Zone capture'] = 200, structure = 100}
 bc:startRewardPlayerContribution(15,RewardContribution)
 buildTemplateCache()
 bc:buildZoneDistanceCache()

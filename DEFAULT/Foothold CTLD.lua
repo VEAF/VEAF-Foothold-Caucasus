@@ -39,6 +39,10 @@ if UseC130LoadAndUnload then
 Foothold_ctld.UseC130LoadAndUnload = true
 end
 Foothold_ctld.returntroopstobase = false
+
+-- Config flag (default in Foothold Config.lua): false = engineers cannot capture/upgrade zones.
+CaptureZoneWithEngineer = CaptureZoneWithEngineer or false
+
 Foothold_ctld:__Start(2)
 
 ---------------------------------------------------------------------------
@@ -107,7 +111,7 @@ Foothold_ctld:AddTroopsCargo("Engineer soldier",{"CTLD_TROOPS_Engineers"},CTLD_C
 Foothold_ctld:AddCratesCargo("Mephisto",{"CTLD_CARGO_Mephisto"}, CTLD_CARGO.Enum.VEHICLE, 2, 1500,10, "ANTI TANK")
 Foothold_ctld:AddCratesCargo("Humvee",{"CTLD_CARGO_HMMWV"},CTLD_CARGO.Enum.VEHICLE,2,1000,10, "ANTI TANK")
 Foothold_ctld:AddCratesCargo("Bradly",{"CTLD_CARGO_Bradly"},CTLD_CARGO.Enum.VEHICLE,2,1500,10, "ANTI TANK")
-Foothold_ctld:AddCratesCargoNoMove("L118",{"CTLD_CARGO_L118"},CTLD_CARGO.Enum.VEHICLE,1,700,12, "Support",nil,nil,nil,"Cargos",nil,nil, "l118")
+Foothold_ctld:AddCratesCargoNoMove("L118",{"CTLD_CARGO_L118"},CTLD_CARGO.Enum.VEHICLE,1,700,12, "Support",nil,nil,nil,"Cargos",nil,nil, "iso_container_small")
 Foothold_ctld:AddCratesCargoNoMove("Ammo Truck",{"CTLD_CARGO_AmmoTruck"},CTLD_CARGO.Enum.VEHICLE,2,800,10, "Support")
 Foothold_ctld:AddCratesCargo("Humvee scout",{"CTLD_CARGO_Scout"},CTLD_CARGO.Enum.VEHICLE,2,1000,10, "Support")
 Foothold_ctld:AddCratesCargo("Linebacker",{"CTLD_CARGO_Linebacker"},CTLD_CARGO.Enum.VEHICLE,2,1500,10, "SAM/AAA")
@@ -132,42 +136,40 @@ Foothold_ctld:AddUnits("Humvee scout",{"CTLD_CARGO_Scout"}, CTLD_CARGO.Enum.VEHI
 Foothold_ctld:AddUnits("FV-107 Scimitar",{"CTLD_CARGO_Scimitar"}, CTLD_CARGO.Enum.VEHICLE, 10, "Support")
 Foothold_ctld:AddUnits("FV-101 Scorpion",{"CTLD_CARGO_Scorpion"}, CTLD_CARGO.Enum.VEHICLE, 10, "Support")
 
-Foothold_ctld:AddStaticsCargo("Zone supplies C-130J",5000,nil, "Zone supplies", true, nil, {"C-130J-30"})
+local function addStaticFromType(name, typeName, mass, subCategory, unitTypes, displayName) return Foothold_ctld:AddStaticsCargoFromType(name, typeName, mass, nil, subCategory, true, nil, unitTypes, nil, nil, nil, displayName) end
 
-Foothold_ctld:AddStaticsCargo("Zone supplies CH-47",4000,nil, "Zone supplies", true, nil,{"CH-47Fbl1"})
+addStaticFromType("Zone supplies C-130J", "iso_container_small", 5000, "Zone supplies", {"C-130J-30"}, "Zone supplies")
+addStaticFromType("Zone supplies CH-47", "cds_crate", 4000, "Zone supplies", {"CH-47Fbl1"}, "Zone supplies")
+addStaticFromType("Zone supplies UH-1H", "ammo_cargo", 500, "Zone supplies", {"UH-1H"}, "Zone supplies")
+addStaticFromType("Zone supplies MI-8", "ammo_cargo", 3000, "Zone supplies", {"Mi-8MT"}, "Zone supplies")
+addStaticFromType("Zone supplies Blackhawk", "ammo_cargo", 2000, "Zone supplies", {"UH-60L_DAP","UH-60L"}, "Zone supplies")
+addStaticFromType("Zone supplies Mi-24P", "ammo_cargo", 500, "Zone supplies", {"Mi-24P"}, "Zone supplies")
 
-Foothold_ctld:AddStaticsCargo("Zone supplies UH-1H",500,nil, "Zone supplies", true,nil, {"UH-1H"})
+addStaticFromType("10 of everything CH-47", "cds_crate", 4000, "Warehouse", {"CH-47Fbl1"}, "10 of everything")
+addStaticFromType("10 of everything MI-8", "cds_crate", 4000, "Warehouse", {"Mi-8MT"}, "10 of everything")
+addStaticFromType("10 A/A Missiles", "ammo_cargo", 1000, "Warehouse", {"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"}, "10 A/A Missiles")
+addStaticFromType("10 A/G Missiles", "ammo_cargo", 1000, "Warehouse", {"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"}, "10 A/G Missiles")
+addStaticFromType("10 A/G Rockets", "ammo_cargo", 500, "Warehouse", {"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"}, "10 A/G Rockets")
+addStaticFromType("10 A/G Bombs", "ammo_cargo", 1000, "Warehouse", {"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"}, "10 A/G Bombs")
+addStaticFromType("10 (Plane fuel tanks) and pylons", "ammo_cargo", 500, "Warehouse", {"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"}, "10 (Plane fuel tanks) and pylons")
 
-Foothold_ctld:AddStaticsCargo("Zone supplies MI-8",3000,nil, "Zone supplies", true,nil, {"Mi-8MT"})
-
-Foothold_ctld:AddStaticsCargo("Zone supplies Blackhawk",2000,nil, "Zone supplies", true,nil, {"UH-60L_DAP","UH-60L"})
-
-Foothold_ctld:AddStaticsCargo("Zone supplies Mi-24P",500,nil, "Zone supplies", true,nil, {"Mi-24P"})
-
-Foothold_ctld:AddStaticsCargo("10 of everything",4000,nil, "Warehouse", true, nil,{"CH-47Fbl1","Mi-8MT"})
-Foothold_ctld:AddStaticsCargo("10 A/A Missiles",1000,nil, "Warehouse", true, nil,{"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"})
-Foothold_ctld:AddStaticsCargo("10 A/G Missiles",1000,nil, "Warehouse", true, nil,{"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"})
-Foothold_ctld:AddStaticsCargo("10 A/G Rockets",500,nil, "Warehouse", true, nil,{"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"})
-Foothold_ctld:AddStaticsCargo("10 A/G Bombs",1000,nil, "Warehouse", true, nil,{"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"})
-Foothold_ctld:AddStaticsCargo("10 (Plane fuel tanks) and pylons",500,nil, "Warehouse", true, nil,{"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"})
-
-Foothold_ctld:AddStaticsCargo("50 of everything",10000,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("50 A/A Missiles",3000,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("50 A/G Missiles",2000,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("50 A/G Rockets",2000,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("50 A/G Bombs",3000,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("50 Plane fuel-tanks and pylons",2000,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("25 of everything",6000,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("25 A/A Missiles",1500,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("25 A/G Missiles",1000,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("25 A/G Rockets",1000,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("25 A/G Bombs",1500,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("25 Plane fuel-tanks and pylons",1000,nil, "Warehouse", true, nil, {"C-130J-30"})
+addStaticFromType("50 of everything", "iso_container", 10000, "Warehouse", {"C-130J-30"}, "50 of everything")
+addStaticFromType("50 A/A Missiles", "iso_container_small", 3000, "Warehouse", {"C-130J-30"}, "50 A/A Missiles")
+addStaticFromType("50 A/G Missiles", "iso_container_small", 2000, "Warehouse", {"C-130J-30"}, "50 A/G Missiles")
+addStaticFromType("50 A/G Rockets", "iso_container_small", 2000, "Warehouse", {"C-130J-30"}, "50 A/G Rockets")
+addStaticFromType("50 A/G Bombs", "iso_container_small", 3000, "Warehouse", {"C-130J-30"}, "50 A/G Bombs")
+addStaticFromType("50 Plane fuel-tanks and pylons", "iso_container_small", 2000, "Warehouse", {"C-130J-30"}, "50 Plane fuel-tanks and pylons")
+addStaticFromType("25 of everything", "iso_container_small", 6000, "Warehouse", {"C-130J-30"}, "25 of everything")
+addStaticFromType("25 A/A Missiles", "cds_crate", 1500, "Warehouse", {"C-130J-30"}, "25 A/A Missiles")
+addStaticFromType("25 A/G Missiles", "cds_crate", 1000, "Warehouse", {"C-130J-30"}, "25 A/G Missiles")
+addStaticFromType("25 A/G Rockets", "cds_crate", 1000, "Warehouse", {"C-130J-30"}, "25 A/G Rockets")
+addStaticFromType("25 A/G Bombs", "cds_crate", 1500, "Warehouse", {"C-130J-30"}, "25 A/G Bombs")
+addStaticFromType("25 Plane fuel-tanks and pylons", "cds_crate", 1000, "Warehouse", {"C-130J-30"}, "25 Plane fuel-tanks and pylons")
 
 if AllowMods and not Era=="Coldwar" then
-Foothold_ctld:AddStaticsCargo("25 Modded weapons",1500,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("50 Modded weapons",3000,nil, "Warehouse", true, nil, {"C-130J-30"})
-Foothold_ctld:AddStaticsCargo("10 Modded weapons",500,nil, "Warehouse", true, nil,{"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"})
+addStaticFromType("25 Modded weapons", "cds_crate", 1500, "Warehouse", {"C-130J-30"}, "25 Modded weapons")
+addStaticFromType("50 Modded weapons", "iso_container_small", 3000, "Warehouse", {"C-130J-30"}, "50 Modded weapons")
+addStaticFromType("10 Modded weapons", "ammo_cargo", 500, "Warehouse", {"CH-47Fbl1","UH-1H","Mi-8MT","Mi-24P","UH-60L_DAP","UH-60L"}, "10 Modded weapons")
 end
 ---------------------------------------------------------------------------
 -- Zone Supply: Cargo Types
@@ -175,7 +177,6 @@ end
 
 
 local ZONE_SUPPLY_TYPES = {
-  --["Zone supplies"] = true,
   ["Zone supplies C-130J"] = true,
   ["Zone supplies UH-1H"] = true,
   ["Zone supplies MI-8"] = true,
@@ -256,17 +257,18 @@ end
 
 -- ZONES
 
-Foothold_ctld:AddCTLDZone("Tarawa",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,240,20)
-Foothold_ctld:AddCTLDZone("Khasab Tarawa",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,240,20)
-Foothold_ctld:AddCTLDZone("HMS Invincible",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,240,20)
-Foothold_ctld:AddCTLDZone("CVN-72",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,240,20)
-Foothold_ctld:AddCTLDZone("CVN-73",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,240,20)
-Foothold_ctld:AddCTLDZone("CVN-74",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,240,20)
-Foothold_ctld:AddCTLDZone("CVN-59",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,240,20)
+Foothold_ctld:AddCTLDZone("Tarawa",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,250,25)
+Foothold_ctld:AddCTLDZone("Khasab Tarawa",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,250,25)
+Foothold_ctld:AddCTLDZone("HMS Invincible",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,210,24)
+Foothold_ctld:AddCTLDZone("CVN-72",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,330,35)
+Foothold_ctld:AddCTLDZone("CVN-73",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,330,35)
+Foothold_ctld:AddCTLDZone("CVN-74",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,330,35)
+Foothold_ctld:AddCTLDZone("CVN-59",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,325,35)
+Foothold_ctld:AddCTLDZone("FOB ALPHA",CTLD.CargoZoneType.SHIP,SMOKECOLOR.Blue,true,false,250,25)
 
 for _, zoneObj in ipairs(bc:getZones()) do
     local zoneName = zoneObj.zone
-    if not zoneName:lower():find("hidden") then
+    if not zoneName:lower():find("hidden") and not zoneName:lower():find("carrier") and not zoneName:lower():find("fob alpha") then
         Foothold_ctld:AddCTLDZone(zoneName, CTLD.CargoZoneType.LOAD, SMOKECOLOR.Green, false, false)
         Foothold_ctld:AddCTLDZone(zoneName, CTLD.CargoZoneType.MOVE, SMOKECOLOR.Green, true, false)
     end
@@ -275,7 +277,8 @@ end
 function addCTLDZonesForBlueControlled(zoneName)
     if zoneName then
         local zoneObj = bc:getZoneByName(zoneName)
-        if zoneObj and not zoneName:lower():find("hidden") and not zoneName:lower():find("dropzone") then
+        if zoneObj and not zoneName:lower():find("hidden") and not zoneName:lower():find("dropzone") and not 
+            zoneName:lower():find("carrier") and not zoneName:lower():find("fob alpha") then
             if zoneObj.wasBlue then
                 --env.info("Activating LOAD for zone: " .. tostring(zoneName))
                 Foothold_ctld:ActivateZone(zoneName, CTLD.CargoZoneType.LOAD)
@@ -289,7 +292,7 @@ function addCTLDZonesForBlueControlled(zoneName)
     else
         for _, zoneObj in ipairs(bc:getZones()) do
             local zName = zoneObj.zone
-            if not zName:lower():find("hidden") and not zName:lower():find("carrier") then
+            if not zName:lower():find("hidden") and not zName:lower():find("carrier") and not zName:lower():find("fob alpha") then
                 if zoneObj.wasBlue then
                     --BASE:I("Activating LOAD for zone: " .. tostring(zName))
                     Foothold_ctld:ActivateZone(zName, CTLD.CargoZoneType.LOAD)
@@ -319,6 +322,22 @@ zoneCaptureInfo = {}
 deployedTroops = {}
 local zoneSupplyCrates = {}
 
+local function cargoTypeCanCaptureZone(cargoType)
+    if cargoType == CTLD_CARGO.Enum.TROOPS then return true end
+    if CaptureZoneWithEngineer and cargoType == CTLD_CARGO.Enum.ENGINEERS then return true end
+    return false
+end
+
+local function getCargoTypeByName(cargoName)
+    if type(cargoName) ~= "string" then return nil end
+    for _, cargoData in pairs(Foothold_ctld.Cargo_Troops or {}) do
+        if cargoData and cargoData.GetName and cargoData:GetName() == cargoName then
+            return cargoData.CargoType
+        end
+    end
+    return nil
+end
+
 
 ---------------------------------------------------------------------------
 -- Warehouse: Supply Bundles
@@ -326,7 +345,8 @@ local zoneSupplyCrates = {}
 
 
 local WAREHOUSE_SUPPLY_TYPES = {
-  ["10 of everything"]                    = { categories = { "AG_MISSILES","AG_ROCKETS","AG_BOMBS","AG_GUIDED_BOMBS","AA_MISSILES","MISC","FUEL_TANKS"}, amount = 10, reward = 150, label = "10 of everything" },
+  ["10 of everything CH-47"]              = { categories = { "AG_MISSILES","AG_ROCKETS","AG_BOMBS","AG_GUIDED_BOMBS","AA_MISSILES","MISC","FUEL_TANKS"}, amount = 10, reward = 150, label = "10 of everything CH-47" },
+  ["10 of everything MI-8"]               = { categories = { "AG_MISSILES","AG_ROCKETS","AG_BOMBS","AG_GUIDED_BOMBS","AA_MISSILES","MISC","FUEL_TANKS"}, amount = 10, reward = 150, label = "10 of everything MI-8" },
   ["10 A/A Missiles"]                     = { categories = { "AA_MISSILES" },                 amount = 10, reward = 30, label = "10 A/A Missiles" },
   ["10 A/G Missiles"]                     = { categories = { "AG_MISSILES" },                 amount = 10, reward = 30, label = "10 A/G Missiles" },
   ["10 A/G Rockets"]                      = { categories = { "AG_ROCKETS" },                  amount = 10, reward = 30, label = "10 A/G Rockets" },
@@ -346,6 +366,9 @@ local WAREHOUSE_SUPPLY_TYPES = {
   ["25 A/G Rockets"]                      = { categories = { "AG_ROCKETS" },         amount = 25, reward = 15, label = "25 A/G Rockets" },
   ["25 A/G Bombs"]                        = { categories = { "AG_GUIDED_BOMBS", "AG_BOMBS" },    amount = 25, reward = 15, label = "25 A/G Bombs" },
   ["25 Plane fuel-tanks and pylons"]      = { categories = {"FUEL_TANKS", "MISC" },  amount = 25, reward = 15, label = "25 Plane fuel-tanks and pylons" },
+  ["10 Modded weapons"]                   = { categories = { "MODS" }, amount = 10, reward = 30, label = "10 Modded weapons" },
+  ["25 Modded weapons"]                   = { categories = { "MODS" }, amount = 25, reward = 15, label = "25 Modded weapons" },
+  ["50 Modded weapons"]                   = { categories = { "MODS" }, amount = 50, reward = 30, label = "50 Modded weapons" },
 }
 
 if AllowMods then
@@ -353,7 +376,8 @@ if AllowMods then
   WAREHOUSE_SUPPLY_TYPES["25 Mods"] = { categories = { "MODS" }, amount = 25, reward = 15, label = "25 Mods" }
   WAREHOUSE_SUPPLY_TYPES["50 Mods"] = { categories = { "MODS" }, amount = 50, reward = 30, label = "50 Mods" }
 
-  table.insert(WAREHOUSE_SUPPLY_TYPES["10 of everything"].categories, "MODS")
+  table.insert(WAREHOUSE_SUPPLY_TYPES["10 of everything CH-47"].categories, "MODS")
+  table.insert(WAREHOUSE_SUPPLY_TYPES["10 of everything MI-8"].categories, "MODS")
   table.insert(WAREHOUSE_SUPPLY_TYPES["25 of everything"].categories, "MODS")
   table.insert(WAREHOUSE_SUPPLY_TYPES["50 of everything"].categories, "MODS")
 end
@@ -546,16 +570,92 @@ local function registerC130AutoBuildSet(groupName, playerName, unitName, pickupZ
   end
 end
 
+local function destroyC130AutoBuildCrate(entry, key, setId)
+  if not entry then return false end
+  local primary = (entry.cargo and entry.cargo.GetPositionable and entry.cargo:GetPositionable()) or entry.static
+  local secondary = entry.static
+  local destroyCallIssued = false
+  local staticName = nil
+  local function nameOf(obj)
+    if not obj then return nil end
+    if obj.GetName then return obj:GetName() end
+    if obj.getName then return obj:getName() end
+    return nil
+  end
+  local function tryDestroy(obj)
+    if not obj then return false end
+    if not staticName then staticName = nameOf(obj) end
+    if obj.IsAlive and obj:IsAlive() then
+      obj:Destroy(false)
+      return true
+    end
+    return false
+  end
+
+  if tryDestroy(primary) then
+    destroyCallIssued = true
+  elseif tryDestroy(secondary) then
+    destroyCallIssued = true
+  else
+    if not staticName then staticName = nameOf(primary) or nameOf(secondary) end
+    if staticName and StaticObject and StaticObject.getByName then
+      local dcsStatic = StaticObject.getByName(staticName)
+      if dcsStatic and dcsStatic.destroy then
+        dcsStatic:destroy()
+        destroyCallIssued = true
+      end
+    end
+  end
+
+  local liveObj = (entry.cargo and entry.cargo.GetPositionable and entry.cargo:GetPositionable()) or entry.static
+  local cargoIsAlive = liveObj and liveObj.IsAlive and liveObj:IsAlive() or false
+  if (not cargoIsAlive) and staticName and StaticObject and StaticObject.getByName then
+    local dcsStatic = StaticObject.getByName(staticName)
+    if dcsStatic and dcsStatic.isExist and dcsStatic:isExist() then
+      cargoIsAlive = true
+    end
+  end
+
+  local outcome = "destroyed-now"
+  if destroyCallIssued and cargoIsAlive then
+    outcome = "destroy-requested-still-alive"
+  elseif (not destroyCallIssued) and (not cargoIsAlive) then
+    outcome = "already-removed"
+  elseif (not destroyCallIssued) and cargoIsAlive then
+    outcome = "still-alive"
+  end
+
+  env.info(string.format(
+    "[FH-AUTOBUILD] cleanup set=%s key=%s outcome=%s destroyCallIssued=%s finalCargoAlive=%s name=%s",
+    tostring(setId),
+    tostring(key),
+    tostring(outcome),
+    tostring(destroyCallIssued),
+    tostring(cargoIsAlive),
+    tostring(staticName)
+  ))
+  return outcome
+end
+
 local function processC130AutoBuild()
   if not next(c130AutoBuildSets) then return end
 
-  for key, entry in pairs(c130AutoBuildCrates) do
-    local staticObj = entry.static
-    if not staticObj or not staticObj:IsAlive() then
+for key, entry in pairs(c130AutoBuildCrates) do
+  local staticObj = (entry.cargo and entry.cargo.GetPositionable and entry.cargo:GetPositionable()) or entry.static
+  if staticObj then
+    entry.static = staticObj
+    entry._missingCount = 0
+  end
+  if not staticObj or not staticObj:IsAlive() then
+    entry._missingCount = (entry._missingCount or 0) + 1
+    if entry._missingCount >= 2 then
       c130AutoBuildCrates[key] = nil
       local set = c130AutoBuildSets[entry.setId]
-      if set then set.failed = true end
-    else
+      if set and not set.completed and not set.handoffStarted then
+        set.failed = true
+      end
+    end
+  else
       local coord = staticObj:GetCoordinate()
       local vec3 = coord and coord:GetVec3() or nil
       if vec3 then
@@ -674,11 +774,20 @@ local function processC130AutoBuild()
   end
 
   for setId, set in pairs(c130AutoBuildSets) do
-    if set.failed then
-      for _, key in ipairs(set.crates) do
-        c130AutoBuildCrates[key] = nil
+  if set.failed then
+    if set.handoffStarted then
+      env.info(string.format("[FH-AUTOBUILD] set retired after handoff set=%s required=%s", tostring(setId), tostring(set.required)))
+    else
+      if not set.failedNotified then
+        set.failedNotified = true
+        notifyC130Auto(set, "[CTLD] Auto-build failed: dropped cargo was destroyed before landing.")
       end
-      c130AutoBuildSets[setId] = nil
+      env.info(string.format("[FH-AUTOBUILD] set failed set=%s required=%s", tostring(setId), tostring(set.required)))
+    end
+    for _, key in ipairs(set.crates) do
+      c130AutoBuildCrates[key] = nil
+    end
+    c130AutoBuildSets[setId] = nil
     elseif not set.completed then
       local landedCount = 0
       local vecs = {}
@@ -746,15 +855,45 @@ local function processC130AutoBuild()
           end, {}, timer.getTime() + 2)
 
           notifyC130Auto(set, "[CTLD] Hercules drop auto-built nearby.")
+          set.handoffStarted = true
           set.completed = true
+          env.info(string.format("[FH-AUTOBUILD] set handoff set=%s required=%s", tostring(setId), tostring(set.required)))
           timer.scheduleFunction(function()
+            local total = 0
+            local destroyedNow = 0
+            local alreadyRemoved = 0
+            local destroyRequestedStillAlive = 0
+            local stillAlive = 0
             for _, key in ipairs(set.crates) do
               local entry = c130AutoBuildCrates[key]
-              if entry and entry.static and entry.static:IsAlive() then
-                entry.static:Destroy(false)
+              total = total + 1
+              if entry then
+                local outcome = destroyC130AutoBuildCrate(entry, key, setId)
+                if outcome == "destroyed-now" then
+                  destroyedNow = destroyedNow + 1
+                elseif outcome == "already-removed" then
+                  alreadyRemoved = alreadyRemoved + 1
+                elseif outcome == "destroy-requested-still-alive" then
+                  destroyRequestedStillAlive = destroyRequestedStillAlive + 1
+                elseif outcome == "still-alive" then
+                  stillAlive = stillAlive + 1
+                end
+              else
+                alreadyRemoved = alreadyRemoved + 1
               end
               c130AutoBuildCrates[key] = nil
             end
+            local status = ((destroyRequestedStillAlive + stillAlive) == 0) and "OK" or "CHECK"
+            env.info(string.format(
+              "[FH-AUTOBUILD] cleanup-summary set=%s total=%d destroyedNow=%d alreadyRemoved=%d destroyRequestedStillAlive=%d stillAlive=%d status=%s",
+              tostring(setId),
+              total,
+              destroyedNow,
+              alreadyRemoved,
+              destroyRequestedStillAlive,
+              stillAlive,
+              status
+            ))
             c130AutoBuildSets[setId] = nil
           end, {}, timer.getTime() + Foothold_ctld.buildtime + 5)
         end
@@ -903,7 +1042,7 @@ local function getWarehouseItemsForCategory(categoryKey)
 end
 
 local function grantZoneBundle(zoneName)
-  local bundle = WAREHOUSE_SUPPLY_TYPES["10 of everything"]
+  local bundle = WAREHOUSE_SUPPLY_TYPES["10 of everything CH-47"] or WAREHOUSE_SUPPLY_TYPES["10 of everything MI-8"]
   if not bundle then return end
   adjustWarehouseStockAtZone(zoneName, bundle.amount or 10, bundle.categories)
 end
@@ -913,6 +1052,31 @@ local function zoneSupplyDebug(msg)
   if not CTLD_Logging_DEEP then return end
   env.info("[ZoneSupply] " .. tostring(msg))
   trigger.action.outTextForCoalition(2, "[ZoneSupply] " .. tostring(msg), 10)
+end
+
+-- Always-on minimal C-130 logging for zone/warehouse supplies (independent of CTLD_Logging flags).
+local function c130SupplyLog(entry, key, event, extra)
+  if not entry or not entry._isC130 then return end
+  local dtype = entry.deliveryType
+  if dtype ~= "zone" and dtype ~= "warehouse" then return end
+  local msg = string.format(
+    "[ZoneSupply][C130][%s] key=%s type=%s group=%s unit=%s player=%s%s",
+    tostring(event),
+    tostring(key),
+    tostring(dtype),
+    tostring(entry.groupName or "nil"),
+    tostring(entry.unitName or "nil"),
+    tostring(entry.playerName or "nil"),
+    extra and (" "..extra) or ""
+  )
+  env.info(msg)
+end
+
+local function c130SupplyLogOnce(entry, key, flagField, event, extra)
+  if not entry or not entry._isC130 then return end
+  if entry[flagField] then return end
+  entry[flagField] = true
+  c130SupplyLog(entry, key, event, extra)
 end
 
 local function isZoneSupplyCargoItem(cargoItem)
@@ -1000,6 +1164,7 @@ local function zoneSupplyC130OneShotConfirm(arg, time)
 
   entry._wasUnloaded = true
   entry._c130AglConfirm = nil
+  c130SupplyLogOnce(entry, key, "_fhLogUnloaded", "UNLOADED", string.format("agl=%.2f", agl))
   if not entry._loggedC130Unloaded then
     if CTLD_Logging then
       trigger.action.outText(string.format("[ZoneSupply][C130] Unloaded key=%s unit=%s", tostring(key), tostring(entry.unitName)), 10)
@@ -1150,6 +1315,7 @@ end
 local function zoneSupplyDestroyNow(key, entry, zoneName, reason)
   local current = entry or zoneSupplyCrates[key]
   if not current then return end
+  c130SupplyLogOnce(current, key, "_fhLogDestroy", "DESTROY", string.format("zone=%s reason=%s", tostring(zoneName), tostring(reason)))
 
   local staticObj = (current.cargo and current.cargo.GetPositionable and current.cargo:GetPositionable()) or current.static
   local deleteName = current._deleteName
@@ -1188,7 +1354,8 @@ end
 
 
 local function finalizeZoneSupplyDelivery(key, entry, zoneName, verb, statLabel, reward)
-  sendZoneSupplyMessage(entry, string.format("[CTLD] Zone supplies %s %s.", verb, zoneName))
+  c130SupplyLogOnce(entry, key, "_fhLogDeliver", "DELIVER", string.format("zone=%s verb=%s", tostring(zoneName), tostring(verb)))
+  sendZoneSupplyMessage(entry, string.format("[Zone supplies %s %s.", verb, zoneName))
   local pname = resolveZoneSupplyPlayer(entry)
   if pname and bc.playerContributions[2][pname] ~= nil then
     bc:addContribution(pname, 2, reward)
@@ -1217,9 +1384,11 @@ processZoneSupplyDeliveries = function()
     local staticObj = (cargo and cargo.GetPositionable and cargo:GetPositionable()) or entry.static
     if not cargo and not staticObj then
       zoneSupplyDebug(string.format("Drop tracking for %s cleared: no cargo ref", tostring(key)))
+      c130SupplyLogOnce(entry, key, "_fhLogClear", "CLEAR", "reason=no cargo ref")
       zoneSupplyCrates[key] = nil
     elseif not staticObj or not staticObj:IsAlive() then
       zoneSupplyDebug(string.format("Drop tracking for %s cleared: static dead/missing", tostring(key)))
+      c130SupplyLogOnce(entry, key, "_fhLogClear", "CLEAR", "reason=static dead/missing")
       zoneSupplyCrates[key] = nil
     else
       local coord = staticObj:GetCoordinate()
@@ -1250,6 +1419,7 @@ processZoneSupplyDeliveries = function()
             entry._c130AglConfirm = nil
             if entry._isC130 then
               entry.attached = true
+              c130SupplyLogOnce(entry, key, "_fhLogAttach", "ATTACHED", "pickup="..tostring(entry.pickupZone))
               if not entry._loggedC130Attached then
                 if CTLD_Logging then
                   trigger.action.outText(string.format("[ZoneSupply][C130] Attached key=%s unit=%s", tostring(key), tostring(entry.unitName)), 10)
@@ -1294,6 +1464,9 @@ processZoneSupplyDeliveries = function()
                       elseif (not entry.detached) and delta3D > (dim.detach or dim.width) then
                         entry.detached = true
                       end
+                      if entry.detached and inAir then
+                        c130SupplyLogOnce(entry, key, "_fhLogDetach", "DETACHED")
+                      end
                     end
                   end
                 end
@@ -1321,6 +1494,7 @@ processZoneSupplyDeliveries = function()
             if entry.wasAirborne and not entry._wasUnloaded then
               if entry._isC130 then
                 entry.attached = true
+                c130SupplyLogOnce(entry, key, "_fhLogAttach", "ATTACHED", "pickup="..tostring(entry.pickupZone))
                 if not entry._loggedC130Attached then
                   if CTLD_Logging then
                     trigger.action.outText(string.format("[ZoneSupply][C130] Attached key=%s unit=%s", tostring(key), tostring(entry.unitName)), 10)
@@ -1363,6 +1537,9 @@ processZoneSupplyDeliveries = function()
                       elseif (not entry.detached) and delta3D > (dim.detach or dim.width) then
                         entry.detached = true
                       end
+                      if entry.detached and inAir then
+                        c130SupplyLogOnce(entry, key, "_fhLogDetach", "DETACHED")
+                      end
                     end
                   end
                 end
@@ -1382,6 +1559,7 @@ processZoneSupplyDeliveries = function()
                     if agl <= ZONE_SUPPLY_C130_LANDED_AGL then
                       entry._wasUnloaded = true
                       entry._c130AglConfirm = nil
+                      c130SupplyLogOnce(entry, key, "_fhLogUnloaded", "UNLOADED", string.format("agl=%.2f", agl))
                       if not entry._loggedC130Unloaded then
                         if CTLD_Logging then
                           trigger.action.outText(string.format("[ZoneSupply][C130] Unloaded key=%s unit=%s", tostring(key), tostring(entry.unitName)), 10)
@@ -1527,8 +1705,11 @@ processZoneSupplyDeliveries = function()
                 end
               end
 
-              if zoneContainer and zoneContainer.zone then
-                local zoneName = zoneContainer.zone
+              local zoneName = zoneContainer and zoneContainer.zone or nil
+              if entry._isC130 then
+                c130SupplyLogOnce(entry, key, "_fhLogGround", "GROUND", string.format("agl=%.2f zone=%s", agl, tostring(zoneName or "NONE")))
+              end
+              if zoneName then
                 local bcZone = bc:getZoneByName(zoneName)
                 local zoneObj = bcZone or zoneContainer
                 local zoneSide = zoneObj and zoneObj.side or "?"
@@ -1808,6 +1989,7 @@ zoneSupplyApplyOne = function(key)
       zoneSupplyEnqueueRemoval(staticObj,0)
     end
     sendZoneSupplyMessage(entry, string.format("%s delivered to %s (%s).", meta.label or "Supplies", zoneName, abName or "warehouse"))
+    c130SupplyLogOnce(entry, key, "_fhLogDeliver", "DELIVER", string.format("zone=%s verb=warehouse", tostring(zoneName)))
     if not isCtldZone and not (entry.pickupZone and zoneName == entry.pickupZone) then
       local pname = resolveZoneSupplyPlayer(entry)
       local reward = meta.reward or ((meta.categories and #meta.categories > 1) and 100 or 50)
@@ -2098,7 +2280,7 @@ function BuildAFARP(Coordinate, stamp)
   if Era=="Coldwar" then
       UTILS.SpawnFARPAndFunctionalStatics(FName, coord, ENUMS.FARPType.INVISIBLE, Foothold_ctld.coalition, country.id.USA, FarpNameNumber, FARPFreq, radio.modulation.AM, nil, nil, nil, 10000, 0,0,nil, true, true, 3, 80, 80)
   else
-      UTILS.SpawnFARPAndFunctionalStatics(FName, coord, ENUMS.FARPType.INVISIBLE, Foothold_ctld.coalition, country.id.USA, FarpNameNumber, FARPFreq, radio.modulation.AM, nil, nil, nil, 10000, 0,1073741823,nil, true, true, 3, 80, 80)
+      UTILS.SpawnFARPAndFunctionalStatics(FName, coord, ENUMS.FARPType.INVISIBLE, Foothold_ctld.coalition, country.id.USA, FarpNameNumber, FARPFreq, radio.modulation.AM, nil, nil, nil, 10000, 0,0,nil, true, true, 3, 80, 80)
   end
   Foothold_ctld:AddCTLDZone(FName, CTLD.CargoZoneType.LOAD, SMOKECOLOR.Blue, true, false)
   MESSAGE:New(string.format("%s in operation!", FName), 15):ToBlue()
@@ -3143,6 +3325,8 @@ function Foothold_ctld:OnAfterTroopsDeployed(From, Event, To, Group, Unit, Troop
         end
 
         local cargoName, stock = "unknown", 0
+        local cargoType = nil
+        local canCaptureZone = false
 
         for _, cargoData in pairs(self.Cargo_Troops) do
             if cargoData.Templates then
@@ -3150,10 +3334,10 @@ function Foothold_ctld:OnAfterTroopsDeployed(From, Event, To, Group, Unit, Troop
                                      and cargoData.Templates[1] 
                                      or cargoData.Templates
                 if string.find(troopGroupName, templateName, 1, true) then
-                    if cargoData.CargoType == CTLD_CARGO.Enum.TROOPS or cargoData.CargoType == CTLD_CARGO.Enum.ENGINEERS then
-                        cargoName = cargoData:GetName()
-                        stock = cargoData:GetStock()
-                    end
+                    cargoName = cargoData:GetName()
+                    stock = cargoData:GetStock()
+                    cargoType = cargoData.CargoType
+                    canCaptureZone = cargoTypeCanCaptureZone(cargoType)
                     break
                 end
             end
@@ -3233,7 +3417,7 @@ function Foothold_ctld:OnAfterTroopsDeployed(From, Event, To, Group, Unit, Troop
                 local zoneName    = zoneData.zoneName
 
                 if not currentZone then
-                    zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = zoneName, deployer = Group, cargoName = cargoName, pickupZoneName = Group and Group._lastPickupZone or nil }
+                    zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = zoneName, deployer = Group, cargoName = cargoName, cargoType = cargoType, canCaptureZone = canCaptureZone, pickupZoneName = Group and Group._lastPickupZone or nil }
                     return
                 end
                 if currentZone.side == 2 then
@@ -3254,27 +3438,34 @@ function Foothold_ctld:OnAfterTroopsDeployed(From, Event, To, Group, Unit, Troop
                                 scheduleRefundFlush()
                             end
                         end
+                        if canCaptureZone ~= true and cargoName and cargoName ~= "unknown" then
+                            local cargoObj = Foothold_ctld:_FindTroopsCargoObject(cargoName)
+                            if cargoObj then
+                                Foothold_ctld:AddStockTroops(cargoName, 1)
+                                Foothold_ctld:_SendMessage("Engineers have returned to base!", 10, false, Group)
+                            end
+                        end
                         troopGroup:Destroy()
                         deployedTroops[troopGroupName] = nil
                         deployedTroopsSet:RemoveGroupsByName(troopGroupName)
                         zoneCaptureInfo[troopGroupName] = nil
                         return
                     end
-                    zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = zoneName, deployer = Group, cargoName = cargoName, pickupZoneName = pickupZoneName }
+                    zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = zoneName, deployer = Group, cargoName = cargoName, cargoType = cargoType, canCaptureZone = canCaptureZone, pickupZoneName = pickupZoneName }
                     CaptureZoneIfNeutral()
                     return
                 end
                 if currentZone.side == 1 then
-                    zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = zoneName, deployer = Group, cargoName = cargoName, pickupZoneName = Group and Group._lastPickupZone or nil }
+                    zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = zoneName, deployer = Group, cargoName = cargoName, cargoType = cargoType, canCaptureZone = canCaptureZone, pickupZoneName = Group and Group._lastPickupZone or nil }
                     return
                 end
                 if currentZone.side == 0 then
-                    zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = zoneName, deployer = Group, cargoName = cargoName, pickupZoneName = Group and Group._lastPickupZone or nil }
+                    zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = zoneName, deployer = Group, cargoName = cargoName, cargoType = cargoType, canCaptureZone = canCaptureZone, pickupZoneName = Group and Group._lastPickupZone or nil }
                     CaptureZoneIfNeutral()
                 end
             end
         else
-            zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = nil, deployer = Group, cargoName = cargoName, pickupZoneName = Group and Group._lastPickupZone or nil }
+            zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = nil, deployer = Group, cargoName = cargoName, cargoType = cargoType, canCaptureZone = canCaptureZone, pickupZoneName = Group and Group._lastPickupZone or nil }
         end
     end
 end
@@ -3287,7 +3478,7 @@ function zoneSet:OnAfterEnteredZone(From, Event, To, EnteredGroup, Zone)
         local currentZone    = bc:getZoneByName(zoneName)
 
         if not zoneCaptureInfo[troopGroupName] then
-            zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = zoneName }
+            zoneCaptureInfo[troopGroupName] = { troopGroup = troopGroup, zoneName = zoneName, cargoType = nil, canCaptureZone = nil }
         else
             zoneCaptureInfo[troopGroupName].zoneName   = zoneName
             zoneCaptureInfo[troopGroupName].troopGroup = troopGroup
@@ -3299,6 +3490,12 @@ function zoneSet:OnAfterEnteredZone(From, Event, To, EnteredGroup, Zone)
             end
             zoneCaptureInfo[troopGroupName].cargoName = cname
         end
+        if zoneCaptureInfo[troopGroupName].cargoType == nil then
+            zoneCaptureInfo[troopGroupName].cargoType = getCargoTypeByName(zoneCaptureInfo[troopGroupName].cargoName)
+        end
+        if zoneCaptureInfo[troopGroupName].canCaptureZone == nil then
+            zoneCaptureInfo[troopGroupName].canCaptureZone = cargoTypeCanCaptureZone(zoneCaptureInfo[troopGroupName].cargoType)
+        end
         if zoneCaptureInfo[troopGroupName].pickupZoneName == nil then
             local dep = zoneCaptureInfo[troopGroupName].deployer
             if dep and dep._lastPickupZone then
@@ -3306,7 +3503,7 @@ function zoneSet:OnAfterEnteredZone(From, Event, To, EnteredGroup, Zone)
             end
         end
 
-        if currentZone and (currentZone.side == 2 or currentZone.side == 0) then
+        if zoneCaptureInfo[troopGroupName].canCaptureZone and currentZone and (currentZone.side == 2 or currentZone.side == 0) then
             timer.scheduleFunction(function() CaptureZoneIfNeutral() end, {}, timer.getTime() + 10)
         end
     end
@@ -3460,6 +3657,28 @@ function CaptureZoneIfNeutral()
             scheduleNext(5)
             return
         end
+        if data.canCaptureZone == nil then
+            data.cargoType = data.cargoType or getCargoTypeByName(data.cargoName)
+            data.canCaptureZone = cargoTypeCanCaptureZone(data.cargoType)
+        end
+        if data.canCaptureZone ~= true then
+            if currentZone.side == 2 then
+                local cargoName = data.cargoName
+                if cargoName and cargoName ~= "unknown" then
+                    local cargoObj = Foothold_ctld:_FindTroopsCargoObject(cargoName)
+                    if cargoObj then
+                        Foothold_ctld:AddStockTroops(cargoName, 1)
+                        Foothold_ctld:_SendMessage("Troops have returned to base!", 10, false, data.deployer)
+                    end
+                end
+                troopGroup:Destroy()
+                cleanupDeployment(troopGroupName)
+                scheduleNext(1)
+                return
+            end
+            scheduleNext(5)
+            return
+        end
 
         local pname
         if data.deployer and data.deployer:IsAlive() then
@@ -3517,22 +3736,24 @@ local function RefillMissingWithCountTable()
         return
     end
   local countTable = Foothold_ctld:_CountStockPlusInHeloPlusAliveGroups()
+  local unitsByName = {}
+  for _, cfg in pairs(Foothold_ctld.C130GetUnits or {}) do
+    if cfg and cfg.Name then
+      unitsByName[cfg.Name] = true
+    end
+  end
 
   for cargoName, info in pairs(countTable) do
     local stock0 = info.Stock0 or 0
     local sum    = info.Sum or 0
     local needed = stock0 - sum
+    local crateObj = nil
 
     if needed > 0 then
       local isTroop  = Foothold_ctld:_FindTroopsCargoObject(cargoName)  ~= nil
-      local isCrates = Foothold_ctld:_FindCratesCargoObject(cargoName) ~= nil
-      local isUnits  = false
-      for _,cfg in pairs(Foothold_ctld.C130GetUnits or {}) do
-        if cfg.Name == cargoName then
-          isUnits = true
-          break
-        end
-      end
+      crateObj = Foothold_ctld:_FindCratesCargoObject(cargoName)
+      local isCrates = crateObj ~= nil
+      local isUnits  = unitsByName[cargoName] == true
 
       if isTroop then
         Foothold_ctld:AddStockTroops(cargoName, needed)
@@ -3552,7 +3773,7 @@ local function RefillMissingWithCountTable()
     end
 
     if sum > stock0 then
-      local cargoObj = Foothold_ctld:_FindCratesCargoObject(cargoName)
+      local cargoObj = crateObj or Foothold_ctld:_FindCratesCargoObject(cargoName)
       if cargoObj then
         local oldStock = cargoObj.Stock or 0
         if oldStock > 0 then
@@ -3568,7 +3789,7 @@ local function RefillMissingWithCountTable()
   end
 end
 
-TIMER:New(RefillMissingWithCountTable):Start(15, 30)
+TIMER:New(RefillMissingWithCountTable):Start(60, 60)
 
 
 TIMER:New(tickZoneSupply):Start(15, 7)

@@ -313,7 +313,10 @@ local function collectSubZones(baseName)
 	local prefix = baseName .. "-"
 	for zname,_ in pairs(zoneByName or {}) do
 		if zname:sub(1, #prefix) == prefix then
-			zones[#zones + 1] = zname
+			local suffix = zname:sub(#prefix + 1)
+			if suffix:match("^%d+$") then
+				zones[#zones + 1] = zname
+			end
 		end
 	end
 	table.sort(zones)
@@ -567,6 +570,18 @@ do
 		return spawnZones[choice]
 	end
 
+	local function shouldHideSamOnMFD()
+		local mode = HideSAMOnMFD
+		if mode == true then return true end
+		if mode == false then return false end
+		if mode == "random" then return math.random(1, 2) == 1 end
+		return true
+	end
+
+	local function isSamMfdHiddenGroup(grname)
+		return grname and (grname:find("Red SAM") or grname:find("blueHAWK") or grname:find("bluePD") or grname:find("bluePATRIOT"))
+	end
+
 	function SpawnCustom(grname, zoneName)
 	spawnCounter[grname] = (spawnCounter[grname] or 0) + 1
 	local alias = string.format("%s # %d", grname, spawnCounter[grname])
@@ -592,7 +607,7 @@ do
 		if (not grname:find("Red SAM") or grname:find("Dog Ear")) and not grname:find("bluePD") and not grname:find("blueHAWK") and not grname:find("bluePATRIOT") then
 		spawn = isCarrierZone and spawn:InitRandomizeUnits(true, 1500, 1000) or spawn:InitRandomizeUnits(true, 100, 30):InitHeading(1, 359)
 		end
-		if grname:find("Red SAM") or grname:find("Dog Ear") or grname:find("blueHAWK") or grname:find("bluePD") or grname:find("bluePATRIOT") then
+		if isSamMfdHiddenGroup(grname) and shouldHideSamOnMFD() then
 		spawn = spawn:InitHiddenOnMFD()
 		end
 		if grname:find("IsNotShown") or grname:find("Red EWR") then
@@ -702,7 +717,11 @@ do
 			tpl = UTILS.DeepCopy(db.Template)
 		end
 		if grp and grp:IsAlive() then grp:Destroy() end
-		local g   = SPAWN:NewFromTemplate(tpl,grname,nil,true):InitHiddenOnMFD():Spawn()
+		local spawn = SPAWN:NewFromTemplate(tpl, grname, nil, true)
+		if isSamMfdHiddenGroup(grname) and shouldHideSamOnMFD() then
+			spawn = spawn:InitHiddenOnMFD()
+		end
+		local g = spawn:Spawn()
 		return g and { name = g:GetName() } or trigger.action.outText("Failed to spawn group: "..grname.." in zone "..self.name,10)
 	end
 
@@ -1485,6 +1504,42 @@ do
 				table.insert(self._smokeCmds, h)
 			end
 
+			missionCommands.addCommandForCoalition(self.side, 'Flare on target', self.jtacMenu, function(dr)
+				if Group.getByName(dr.name) then
+					local tgtunit = Unit.getByName(dr.target)
+					if not tgtunit then
+						tgtunit = StaticObject.getByName(dr.target)
+					end
+					if tgtunit then
+						local p = tgtunit:getPoint()
+						local distSteps = {20,35,40}
+						local dist = distSteps[math.random(#distSteps)]
+						local ang = math.random() * 2 * math.pi
+						local fx = p.x + dist * math.cos(ang)
+						local fz = p.z + dist * math.sin(ang)
+						local flarePoint = { x = fx, y = p.y, z = fz }
+						local az = math.random(0, 359)
+						trigger.action.signalFlare(flarePoint, trigger.flareColor.Red, az)
+						local bearing = Utils.getBearing({x=flarePoint.x,z=flarePoint.z},{x=p.x,z=p.z})
+						if bearing < 0 then bearing = bearing + 360 end
+						local dir
+						if bearing >= 337.5 or bearing < 22.5 then dir = 'north'
+						elseif bearing < 67.5 then dir = 'north east'
+						elseif bearing < 112.5 then dir = 'east'
+						elseif bearing < 157.5 then dir = 'south east'
+						elseif bearing < 202.5 then dir = 'south'
+						elseif bearing < 247.5 then dir = 'south west'
+						elseif bearing < 292.5 then dir = 'west'
+						else dir = 'north west' end
+						local dStr = tostring(dist) .. ' meters'
+						trigger.action.outTextForCoalition(dr.side,'Target is '..dStr..' '..dir..' of the red flare at '..dr.tgtzone.zone,15)
+					end
+				else
+					missionCommands.removeItemForCoalition(dr.side, dr.jtacMenu)
+					dr.jtacMenu = nil
+				end
+			end, self)
+
 			local priomenu = missionCommands.addSubMenuForCoalition(self.side, 'Set Priority', self.jtacMenu)
 			for i,v in pairs(JTAC.categories) do
 				missionCommands.addCommandForCoalition(self.side, i, priomenu, function(dr, cat)
@@ -2158,6 +2213,7 @@ do
 	GlobalSettings.frontlineDistanceLimitBlue = 30
 	GlobalSettings.frontlineDistanceLimitRed  = 60
 	GlobalSettings.proximityWakeNm = 30    			-- wake up zones within this nm of front
+	GlobalSettings.proximityWakeHoldSeconds = 10*60	-- keep player-proximity wakes alive for this many seconds
 	GlobalSettings.autoSuspendNmBlue = 80   		-- suspend blue zones deeper than this nm
 	GlobalSettings.autoSuspendNmRed = 120   		-- suspend red zones deeper than this nm
 	GlobalSettings.blockedDespawnTime = 12*60 		-- used to despawn aircraft that are stuck taxiing for some reason
@@ -3691,6 +3747,350 @@ do
 			end
 		end
 	end
+
+	function BattleCommander:_getGroupPlayerName(groupId, groupObj)
+		local pname = (self.playerNames and self.playerNames[groupId]) or nil
+		if (not pname) and groupObj and groupObj.isExist and groupObj:isExist() then
+			local u = groupObj:getUnit(1)
+			if u and u.getPlayerName then
+				pname = u:getPlayerName()
+			end
+		end
+		return pname
+	end
+
+	function BattleCommander:_getGroupRank(groupId, groupObj)
+		return self:getPlayerRank(self:_getGroupPlayerName(groupId, groupObj)) or 0
+	end
+
+	function BattleCommander:_getTankerRequiredRank(itemId)
+		if not RankingSystem then return 0 end
+		if type(ShopRankRequirements) == "table" then
+			local req = tonumber(ShopRankRequirements[itemId])
+			if req then return req end
+		end
+		return 0
+	end
+
+	function BattleCommander:_removeTankerMenuForGroup(groupId)
+		self.groupTankerMenus = self.groupTankerMenus or {}
+		self.groupTankerSignatures = self.groupTankerSignatures or {}
+		local handle = self.groupTankerMenus[groupId]
+		if handle then
+			missionCommands.removeItemForGroup(groupId, handle)
+		end
+		self.groupTankerMenus[groupId] = nil
+		self.groupTankerSignatures[groupId] = nil
+	end
+
+	function BattleCommander:_groupHasHumanPlayer(groupObj)
+		if not groupObj or not groupObj.isExist or not groupObj:isExist() then return false end
+		local sz = groupObj:getSize() or 0
+		for i=1,sz do
+			local u = groupObj:getUnit(i)
+			if u and u.getPlayerName and u:getPlayerName() then
+				return true
+			end
+		end
+		return false
+	end
+
+	function BattleCommander:_groupIsHelicopter(groupObj)
+		if not groupObj or not groupObj.isExist or not groupObj:isExist() then return false end
+		local sz = groupObj:getSize() or 0
+		for i=1,sz do
+			local u = groupObj:getUnit(i)
+			if u and (not u.isExist or u:isExist()) and u.getDesc then
+				local desc = u:getDesc()
+				local category = desc and desc.category
+				if category ~= nil and Unit and Unit.Category and Unit.Category.HELICOPTER ~= nil then
+					return category == Unit.Category.HELICOPTER
+				end
+				if desc and desc.attributes then
+					if desc.attributes.Helicopters or desc.attributes.Helicopter then
+						return true
+					else
+						return false
+					end
+				end
+			end
+		end
+		return false
+	end
+
+	function BattleCommander:refreshTankerControlMenusForBlue(force)
+		self.groupTankerMenus = self.groupTankerMenus or {}
+		self.groupTankerSignatures = self.groupTankerSignatures or {}
+		local seen = {}
+		local groups = coalition.getGroups(2) or {}
+		for _, g in pairs(groups) do
+			if g and g:isExist() then
+				local gid = g:getID()
+				seen[gid] = true
+				self:refreshTankerControlMenuForGroup(gid, g, force)
+			end
+		end
+		for gid, _ in pairs(self.groupTankerMenus) do
+			if not seen[gid] then
+				self:_removeTankerMenuForGroup(gid)
+			end
+		end
+	end
+
+	function BattleCommander:refreshTankerControlMenuForGroup(groupId, groupObj, force)
+		self.groupTankerMenus = self.groupTankerMenus or {}
+		self.groupTankerSignatures = self.groupTankerSignatures or {}
+
+		if not groupObj or not groupObj.isExist or not groupObj:isExist() then
+			self:_removeTankerMenuForGroup(groupId)
+			return
+		end
+		if groupObj:getCoalition() ~= 2 then
+			self:_removeTankerMenuForGroup(groupId)
+			return
+		end
+		if not self:_groupHasHumanPlayer(groupObj) then
+			self:_removeTankerMenuForGroup(groupId)
+			return
+		end
+		if self._groupIsHelicopter and self:_groupIsHelicopter(groupObj) then
+			self:_removeTankerMenuForGroup(groupId)
+			return
+		end
+
+		local rank = self:_getGroupRank(groupId, groupObj)
+		local reqArco = self:_getTankerRequiredRank("dynamicarco")
+		local reqTexaco = self:_getTankerRequiredRank("dynamictexaco")
+
+		local arcoUnlocked = _getTankerState("arco").unlocked == true
+		local texacoUnlocked = _getTankerState("texaco").unlocked == true
+		local arcoAltCurrent = _getTankerCurrentAltitude("arco")
+		local texacoAltCurrent = _getTankerCurrentAltitude("texaco")
+
+		local arcoEligible = (rank >= reqArco) and ArcoActive
+		local texacoEligible = (rank >= reqTexaco) and TexacoActive
+		if not (arcoEligible or texacoEligible) then
+			self:_removeTankerMenuForGroup(groupId)
+			return
+		end
+
+		local signature = table.concat({
+			tostring(rank),
+			tostring(reqArco), tostring(reqTexaco),
+			tostring(arcoUnlocked), tostring(texacoUnlocked),
+			tostring(ArcoActive), tostring(TexacoActive),
+			tostring(arcoAltCurrent), tostring(texacoAltCurrent),
+		}, "|")
+		if not force and self.groupTankerMenus[groupId] and self.groupTankerSignatures[groupId] == signature then
+			return
+		end
+
+		self:_removeTankerMenuForGroup(groupId)
+		if not capControlMenu then
+			return
+		end
+
+		local tankersMenu = missionCommands.addSubMenuForGroup(groupId, "Dynamic Tankers", capControlMenu)
+		self.groupTankerMenus[groupId] = tankersMenu
+		self.groupTankerSignatures[groupId] = signature
+
+		local orbitAndHeadings = {"Orbit","Hot 360","Hot 045","Hot 090","Hot 135","Hot 180","Hot 225","Hot 270","Hot 315"}
+		local legs = {"Orbit","10 NM Leg","20 NM Leg","30 NM Leg","40 NM Leg","50 NM Leg"}
+		local posDirs = {"Reposition 360", "Reposition 045", "Reposition 090", "Reposition 135", "Reposition 180", "Reposition 225", "Reposition 270", "Reposition 315"}
+		local posDists = {"0 NM", "10 NM", "20 NM", "30 NM", "40 NM", "50 NM", "60 NM", "70 NM", "80 NM", "90 NM", "100 NM"}
+		local spawnLegs = {"10 NM Leg", "20 NM Leg", "30 NM Leg", "40 NM Leg", "50 NM Leg"}
+		local function orderedBlueZones()
+			local zones = self:getZones() or {}
+			local c = {}
+			for _, v in ipairs(zones) do
+				if v.active and v.side == 2 and (not v.isHidden) and (not v.suspended) then
+					local suf = WaypointList and WaypointList[v.zone]
+					local wp = suf and tonumber(tostring(suf):match("%d+"))
+					c[#c+1] = { z = v, wp = wp, disp = (wp and (v.zone .. suf) or v.zone) }
+				end
+			end
+			table.sort(c, function(a, b)
+				if a.wp and b.wp then return a.wp < b.wp end
+				if a.wp then return true end
+				if b.wp then return false end
+				return a.z.zone < b.z.zone
+			end)
+			return c
+		end
+
+		local function addSpawnByZoneForGroup(title, spawnFn)
+			local root = missionCommands.addSubMenuForGroup(groupId, title, tankersMenu)
+			local count = 0
+			local sub1
+			for _, wrap in ipairs(orderedBlueZones()) do
+				local v = wrap.z
+				local zoneName = v.zone
+				local zoneDisplayName = wrap.disp
+				local zoneMenu
+				count = count + 1
+				if count < 10 then
+					zoneMenu = missionCommands.addSubMenuForGroup(groupId, zoneDisplayName, root)
+				elseif count == 10 then
+					sub1 = missionCommands.addSubMenuForGroup(groupId, "More", root)
+					zoneMenu = missionCommands.addSubMenuForGroup(groupId, zoneDisplayName, sub1)
+				elseif count % 9 == 1 then
+					sub1 = missionCommands.addSubMenuForGroup(groupId, "More", sub1)
+					zoneMenu = missionCommands.addSubMenuForGroup(groupId, zoneDisplayName, sub1)
+				else
+					zoneMenu = missionCommands.addSubMenuForGroup(groupId, zoneDisplayName, sub1)
+				end
+				for _, headingName in ipairs(orbitAndHeadings) do
+					if headingName == "Orbit" then
+						missionCommands.addCommandForGroup(groupId, headingName, zoneMenu, function()
+							spawnFn(zoneName, 45, 0)
+						end)
+					else
+						local headingVal = capHeadings[headingName]
+						local headingMenu = missionCommands.addSubMenuForGroup(groupId, headingName, zoneMenu)
+						for _, legName in ipairs(spawnLegs) do
+							local legVal = capLegs[legName]
+							missionCommands.addCommandForGroup(groupId, legName, headingMenu, function()
+								spawnFn(zoneName, headingVal, legVal)
+							end)
+						end
+					end
+				end
+			end
+		end
+
+		local function addRepositionMenusForGroup(prefix, zoneTitle, posTitle, groupGetter, setFn)
+			local zoneMenu = missionCommands.addSubMenuForGroup(groupId, zoneTitle, tankersMenu)
+			local count = 0
+			local sub1
+			for _, wrap in ipairs(orderedBlueZones()) do
+				local v = wrap.z
+				local zoneName = v.zone
+				local zoneSubMenu
+				count = count + 1
+				if count < 10 then
+					zoneSubMenu = missionCommands.addSubMenuForGroup(groupId, wrap.disp, zoneMenu)
+				elseif count == 10 then
+					sub1 = missionCommands.addSubMenuForGroup(groupId, "More", zoneMenu)
+					zoneSubMenu = missionCommands.addSubMenuForGroup(groupId, wrap.disp, sub1)
+				elseif count % 9 == 1 then
+					sub1 = missionCommands.addSubMenuForGroup(groupId, "More", sub1)
+					zoneSubMenu = missionCommands.addSubMenuForGroup(groupId, wrap.disp, sub1)
+				else
+					zoneSubMenu = missionCommands.addSubMenuForGroup(groupId, wrap.disp, sub1)
+				end
+				for _, headingName in ipairs(orbitAndHeadings) do
+					if headingName == "Orbit" then
+						missionCommands.addCommandForGroup(groupId, headingName, zoneSubMenu, function()
+							local zone = ZONE:FindByName(zoneName)
+							if not zone then return end
+							local coord = zone:GetCoordinate()
+							if setFn(coord, 45, 0, zoneName) then
+								MESSAGE:New(prefix .. " is en route to " .. zoneName .. ".", 20):ToAll()
+							end
+						end)
+					else
+						local headingVal = capHeadings[headingName]
+						local headingMenu = missionCommands.addSubMenuForGroup(groupId, headingName, zoneSubMenu)
+						for _, legName in ipairs(legs) do
+							local legVal = capLegs[legName]
+							missionCommands.addCommandForGroup(groupId, legName, headingMenu, function()
+								local zone = ZONE:FindByName(zoneName)
+								if not zone then return end
+								local coord = zone:GetCoordinate()
+								if setFn(coord, headingVal, legVal) then
+									MESSAGE:New(prefix .. " is repositioning to " .. zoneName .. " with a new racetrack, heading " .. headingVal .. " degrees, " .. tostring(legVal) .. " miles leg.", 20):ToAll()
+								end
+							end)
+						end
+					end
+				end
+			end
+
+			local posMenu = missionCommands.addSubMenuForGroup(groupId, posTitle, tankersMenu)
+			for _, dirName in ipairs(posDirs) do
+				local dirVal = capPositionDirections[dirName]
+				local dirMenu = missionCommands.addSubMenuForGroup(groupId, dirName, posMenu)
+				for _, distName in ipairs(posDists) do
+					local distVal = capPositionDistances[distName]
+					local distMenu = missionCommands.addSubMenuForGroup(groupId, distName, dirMenu)
+					for _, headingName in ipairs(orbitAndHeadings) do
+						if headingName == "Orbit" then
+							missionCommands.addCommandForGroup(groupId, headingName, distMenu, function()
+								local g = groupGetter()
+								if g then
+									local offsetCoord = g:GetCoordinate():Translate(UTILS.NMToMeters(distVal), dirVal, true)
+									if setFn(offsetCoord, 45, 0) then
+										MESSAGE:New(prefix .. " is about to " .. dirName .. " for " .. distName .. " and orbit.", 20):ToAll()
+									end
+								end
+							end)
+						else
+							local headingVal = capHeadings[headingName]
+							local headingMenu = missionCommands.addSubMenuForGroup(groupId, headingName, distMenu)
+							for _, legName in ipairs(legs) do
+								local legVal = capLegs[legName]
+								missionCommands.addCommandForGroup(groupId, legName, headingMenu, function()
+									local g = groupGetter()
+									if g then
+										local offsetCoord = g:GetCoordinate():Translate(UTILS.NMToMeters(distVal), dirVal, true)
+										if setFn(offsetCoord, headingVal, legVal) then
+											MESSAGE:New(prefix .. " is about to " .. dirName .. " " .. distName .. " with a new racetrack, heading " .. headingVal .. " degrees, " .. tostring(legVal) .. " miles leg.", 20):ToAll()
+										end
+									end
+								end)
+							end
+						end
+					end
+				end
+			end
+		end
+
+		local function addAltitudeMenuForGroup(prefix, title, kind, applyFn)
+			local altMenu = missionCommands.addSubMenuForGroup(groupId, title, tankersMenu)
+			local currentAlt = tonumber(_getTankerCurrentAltitude(kind)) or _getTankerDefaultAltitude(kind)
+			for _, altFt in ipairs(_getTankerAltitudeOptions(kind)) do
+				local label = _formatFeetMenuLabel(altFt)
+				if altFt == currentAlt then
+					label = label .. " (current)"
+				end
+				missionCommands.addCommandForGroup(groupId, label, altMenu, function()
+					local ok = applyFn(altFt)
+					if ok and self.refreshTankerControlMenusForBlue then
+						self:refreshTankerControlMenusForBlue(true)
+					end
+				end)
+			end
+		end
+
+		if arcoEligible then
+			if ArcoActive then
+				addRepositionMenusForGroup("Arco", "Arco (Drogue): Move to Zone", "Arco (Drogue): Move by Position", function() return ArcoGroup end, ArcoRepositionCheckAndSet)
+				addAltitudeMenuForGroup("Arco", "Arco (Drogue): Altitude", "arco", ArcoAltitudeCheckAndSet)
+			end
+		end
+
+		if texacoEligible then
+			if TexacoActive then
+				addRepositionMenusForGroup("Texaco", "Texaco (Boom): Move to Zone", "Texaco (Boom): Move by Position", function() return TexacoGroup end, TexacoRepositionCheckAndSet)
+				addAltitudeMenuForGroup("Texaco", "Texaco (Boom): Altitude", "texaco", TexacoAltitudeCheckAndSet)
+			end
+		end
+
+		local tankerInfoLines = {}
+		if arcoEligible and ArcoActive then
+			local arcoAlt = _formatFeetMenuLabel(_getTankerCurrentAltitude("arco"))
+			tankerInfoLines[#tankerInfoLines + 1] = "Arco (Drogue): TCN 101Y | BTN 14 | 260.00 | ALT " .. arcoAlt .. " ft"
+		end
+		if texacoEligible and TexacoActive then
+			local texacoAlt = _formatFeetMenuLabel(_getTankerCurrentAltitude("texaco"))
+			tankerInfoLines[#tankerInfoLines + 1] = "Texaco (Boom): TCN 102Y | BTN 20 | 266.00 | ALT " .. texacoAlt .. " ft"
+		end
+		if #tankerInfoLines > 0 then
+			missionCommands.addCommandForGroup(groupId, "Tanker Info", tankersMenu, function()
+				trigger.action.outTextForGroup(groupId, table.concat(tankerInfoLines, "\n"), 15)
+			end)
+		end
+	end
 	
 function BattleCommander:new(savepath, updateFrequency, saveFrequency, difficulty) -- difficulty = {start = 1.4, min = -0.5, max = 0.5, escalation = 0.1, fade = 0.1, fadeTime = 30*60, coalition=1} --coalition 1:red 2:blue
 		local obj = {}
@@ -4285,6 +4685,44 @@ function BattleCommander:buyShopItem(coalition,id,alternateParams,buyerGroupId,b
 			end
 			return
 		end
+		local isPersistentTankerItem = (coalition == 2) and (id == "dynamicarco" or id == "dynamictexaco")
+		if isPersistentTankerItem and _isTankerUnlockedById(id) then
+			if shop and shop[id] then
+				shop[id] = nil
+			end
+			local success = true
+			local sitem = self.shopItems[id]
+			if alternateParams ~= nil and type(sitem.altAction) == 'function' then
+				success = sitem:altAction(alternateParams)
+			elseif type(sitem.action) == 'function' then
+				success = sitem:action()
+			end
+
+			if success == true or success == nil then
+				local msg = "["..item.name.."] is already unlocked. No credits spent."
+				if buyerGroupId then
+					trigger.action.outTextForGroup(buyerGroupId, msg, 8)
+				else
+					trigger.action.outTextForCoalition(coalition, msg, 8)
+				end
+			elseif type(success) == 'string' then
+				if buyerGroupId then
+					trigger.action.outTextForGroup(buyerGroupId, success, 10)
+				else
+					trigger.action.outTextForCoalition(coalition, success, 10)
+				end
+			else
+				if buyerGroupId then
+					trigger.action.outTextForGroup(buyerGroupId, 'Not available at the current time', 10)
+				else
+					trigger.action.outTextForCoalition(coalition, 'Not available at the current time', 10)
+				end
+			end
+			if buildCapControlMenu then
+				buildCapControlMenu()
+			end
+			return success
+		end
 		if StoreLimit == true then
 			if item.cost > 250 and buyerGroupId and not exempt and earned < 100 then
 				trigger.action.outTextForGroup(buyerGroupId,"You need to earn at least 100 personal credits first, "..pname.." to increase in rank.",20)
@@ -4380,6 +4818,12 @@ function BattleCommander:buyShopItem(coalition,id,alternateParams,buyerGroupId,b
 
 		if success == true or success == nil then
 			self.accounts[coalition] = self.accounts[coalition] - item.cost
+			if isPersistentTankerItem then
+				_setTankerUnlockedById(id)
+				if self.shops[coalition] then
+					self.shops[coalition][id] = nil
+				end
+			end
 			if item.stock > 0 then
 				item.stock = item.stock - 1
 			end
@@ -4411,6 +4855,9 @@ function BattleCommander:buyShopItem(coalition,id,alternateParams,buyerGroupId,b
 				if item.stock == 0 then
 					trigger.action.outTextForCoalition(coalition, "["..item.name.."] went out of stock", 5)
 				end
+			end
+			if isPersistentTankerItem and buildCapControlMenu then
+				buildCapControlMenu()
 			end
 
 		else
@@ -4444,7 +4891,10 @@ function BattleCommander:refreshShopMenuForGroup(groupId, groupObj)
 	self.groupSupportMenus[groupId].items = {}
 	local track   = self.groupSupportMenus[groupId].items
 	local shopData = self.shops[coalition]
-	if not shopData then return end
+	if not shopData then
+		self:refreshTankerControlMenuForGroup(groupId, groupObj)
+		return
+	end
 
 	local pname = (self.playerNames and self.playerNames[groupId]) or nil
 	if (not pname) and groupObj and groupObj:isExist() then
@@ -4486,6 +4936,7 @@ function BattleCommander:refreshShopMenuForGroup(groupId, groupObj)
 			track[#track+1] = h
 		end
 	end
+	self:refreshTankerControlMenuForGroup(groupId, groupObj)
 end
 
 	
@@ -4834,7 +5285,7 @@ end
 		local cnt=group:getController()
 		cnt:popTask()
 		
-		local expCount = AI.Task.WeaponExpend.ONE
+		local expCount = AI.Task.WeaponExpend.TWO
 		if expendAmmount then
 			expCount = expendAmmount
 		end
@@ -4853,7 +5304,6 @@ end
 					groupId = g:getID(),
 					expend = expCount,
 					weaponType = wepType,
-					groupAttack = true
 				  } 
 				}
 				
@@ -5082,7 +5532,7 @@ end
 		end
 	end
 	
-function BattleCommander:getStateTable()
+	function BattleCommander:getStateTable()
     local states = {zones = {}, accounts = {}}
     for i,v in ipairs(self.zones) do
         local unitTable = {}
@@ -5160,7 +5610,7 @@ function BattleCommander:getStateTable()
     states.playerStats = {}
     if self.playerStats then
         for n,val in pairs(self.playerStats) do
-            local s = n:gsub("\\","\\\\"):gsub("'","\\'")
+            local s = n:gsub("\"","\\\""):gsub("'","\\'")
             states.playerStats[s] = val
         end
     end
@@ -5242,6 +5692,44 @@ function BattleCommander:getStateTable()
             table.insert(states.ejectedPilots, ejectedPilotTable)
             nbEjectedPilots = nbEjectedPilots + 1
         end
+    end
+
+    local normalizeFn = _normalizeTankerState
+    if type(normalizeFn) ~= "function" then
+        normalizeFn = function(raw, defaultHeading)
+            local out = {
+                unlocked = false,
+                x = nil,
+                y = nil,
+                z = nil,
+                heading = defaultHeading,
+                leg = 0,
+                zone = nil,
+            }
+            if type(raw) ~= "table" then return out end
+            out.unlocked = raw.unlocked == true
+            out.x = tonumber(raw.x)
+            out.y = tonumber(raw.y)
+            out.z = tonumber(raw.z)
+            out.heading = tonumber(raw.heading) or defaultHeading
+            out.leg = tonumber(raw.leg) or 0
+            out.zone = raw.zone
+            return out
+        end
+    end
+
+    local getFn = _getTankerState
+    if type(getFn) == "function" then
+        states.tankers = {
+            arco = normalizeFn(getFn("arco"), 45),
+            texaco = normalizeFn(getFn("texaco"), 45),
+        }
+    else
+        local saved = TANKER_PERSISTENCE or {}
+        states.tankers = {
+            arco = normalizeFn(saved.arco, 45),
+            texaco = normalizeFn(saved.texaco, 45),
+        }
     end
     return states
 end
@@ -5907,8 +6395,10 @@ end
 					toprint = toprint..'\ndebug:  - shows the status of the zone in the log.'
 					toprint = toprint..'\naddshop: - Add shop for the coalition and can be used from f10.'
 					toprint = toprint..'\nremoveshop: - remove shop for the coalition.'
+					toprint = toprint..'\nupgradera: - repair a zone and will add any missing units to the group.'
 					toprint = toprint..'\nupgradeallred: - upgrade all red zones to the max.'
 					toprint = toprint..'\nupgradeallblue: - upgrade all blue zones to the max.'
+					toprint = toprint..'\nspawnnow:<side> - fast-forward air spawns for side (1=red, 2=blue) while keeping limits/ranking.'
 					toprint = toprint..'\n-code: - This is a pure lua entry. Can be used to call function for example\n-code:zones.name:upgrade() to upgrade the zone'
 					if event.initiator then
 						trigger.action.outTextForGroup(event.initiator:getGroup():getID(), toprint, 30)
@@ -5935,9 +6425,7 @@ end
 					toprint = toprint..'\n'
 					local sorted = {}
 					for i,v in pairs(self.context.shops[event.coalition]) do
-						if not RankingSystem or not v.reqRank or myRank >= v.reqRank then
 						table.insert(sorted,{i,v})
-						end
 					end
 					table.sort(sorted, function(a,b) return a[2].name < b[2].name end)
 
@@ -6075,6 +6563,19 @@ end
 						end
 						trigger.action.removeMark(event.idx)
 					end
+				end
+				if event.text and event.text:lower():find('^spawnnow') then
+					local side = tonumber((event.text or ''):match("^[Ss][Pp][Aa][Ww][Nn][Nn][Oo][Ww]%s*:%s*(%d+)%s*$"))
+					if not side then side = event.coalition end
+					local ok, msg = self.context:spawnNowBySide(side)
+					local g = event.initiator and event.initiator.getGroup and event.initiator:getGroup() or nil
+					local gid = g and g:getID() or nil
+					if gid then
+						trigger.action.outTextForGroup(gid, msg, 15)
+					else
+						trigger.action.outTextForCoalition(event.coalition, msg, 15)
+					end
+					success = true
 				end
 				if event.text=='prepp' then
 					local z = bc:getZoneOfPoint(event.pos)
@@ -6424,7 +6925,7 @@ end
 		self:refreshShopMenuForCoalition(1)
 		--self:refreshShopMenuForCoalition(2)
 	SCHEDULER:New(self,function(o)o:_autoZoneSuspend()end,{},1,60)
-	SCHEDULER:New(self,function(o)o:_proximityWakeSuspendedZones()end,{},10,30)
+	SCHEDULER:New(self,function(o)o:_proximityWakeSuspendedZones()end,{},10,60)
 	SCHEDULER:New(self,function(o)o:update()end,{},2,self.updateFrequency)
 	SCHEDULER:New(self,function(o)o:saveToDisk()end,{},30,self.saveFrequency)
 end
@@ -6540,8 +7041,131 @@ function BattleCommander:buildCapSpawnBuckets()
         local cz=CustomZone:getByName(z.zone)
         if cz then CapAnchorRowByZoneName[z.zone]=ZONE_DISTANCES[z.zone] end
     end
+    self:buildCapActiveBuckets()
     self:restaggerCapHangarDelays()
     self:buildNonCapSpawnBuckets()
+end
+
+function BattleCommander:spawnNowBySide(side)
+	side = tonumber(side)
+	if side ~= 1 and side ~= 2 then
+		return false, "Usage: spawnnow:<side> where side is 1 (red) or 2 (blue)."
+	end
+
+	self:buildCapSpawnBuckets()
+	if not self._nonCapBucketsBuilt then
+		self:buildNonCapSpawnBuckets()
+	end
+
+	local ordered = {}
+	local seen = {}
+	local function addCandidate(gc)
+		if not gc then return end
+		if seen[gc] then return end
+		if gc.side ~= side then return end
+		if gc.type ~= 'air' and gc.type ~= 'carrier_air' then return end
+		seen[gc] = true
+		ordered[#ordered + 1] = gc
+	end
+
+	local capMissions = {'patrol', 'attack'}
+	for _, mission in ipairs(capMissions) do
+		local targetMap = CapTargets and CapTargets[side] and CapTargets[side][mission]
+		if targetMap then
+			local targetNames = {}
+			for targetZone, _ in pairs(targetMap) do
+				targetNames[#targetNames + 1] = targetZone
+			end
+			table.sort(targetNames)
+			for _, targetZone in ipairs(targetNames) do
+				local ctx = targetMap[targetZone]
+				local candidates = ctx and ctx.candidates or nil
+				if candidates then
+					for i = 1, #candidates do
+						local rec = candidates[i]
+						local gc = rec and CapRef and CapRef[rec.name] or nil
+						addCandidate(gc)
+					end
+				end
+			end
+		end
+	end
+
+	for _, zc in ipairs(self.zones or {}) do
+		for _, gc in ipairs(zc.groups or {}) do
+			if gc and gc.MissionType ~= 'CAP' then
+				addCandidate(gc)
+			end
+		end
+	end
+
+	for _, zc in ipairs(self.zones or {}) do
+		for _, gc in ipairs(zc.groups or {}) do
+			addCandidate(gc)
+		end
+	end
+
+	local updates = 0
+	local forcedDead = 0
+	local forcedHangar = 0
+	local forcedPreparing = 0
+	local spawnedNow = 0
+
+	local function countSpawn(beforeSpawned, gc)
+		local afterSpawned = gc.Spawned == true
+		if (not beforeSpawned) and afterSpawned then
+			spawnedNow = spawnedNow + 1
+		end
+	end
+
+	local function rushGroup(gc)
+		local loops = 0
+		while loops < 3 do
+			local st = gc.state
+			if st ~= 'dead' and st ~= 'inhangar' and st ~= 'preparing' then
+				break
+			end
+			if st == 'dead' then
+				forcedDead = forcedDead + 1
+			elseif st == 'inhangar' then
+				forcedHangar = forcedHangar + 1
+			elseif st == 'preparing' then
+				forcedPreparing = forcedPreparing + 1
+			end
+			local beforeSpawned = gc.Spawned == true
+			gc.lastStateTime = timer.getAbsTime() - 999999
+			gc:update()
+			updates = updates + 1
+			countSpawn(beforeSpawned, gc)
+			loops = loops + 1
+			if gc.state == st then
+				break
+			end
+		end
+	end
+
+	for i = 1, #ordered do
+		rushGroup(ordered[i])
+	end
+
+	for i = 1, #ordered do
+		local gc = ordered[i]
+		if gc.state == 'preparing' then
+			local beforeSpawned = gc.Spawned == true
+			forcedPreparing = forcedPreparing + 1
+			gc.lastStateTime = timer.getAbsTime() - 999999
+			gc:update()
+			updates = updates + 1
+			countSpawn(beforeSpawned, gc)
+		end
+	end
+
+	local msg = string.format(
+		"SpawnNow side=%d queued=%d updates=%d spawned=%d (dead=%d hangar=%d preparing=%d)",
+		side, #ordered, updates, spawnedNow, forcedDead, forcedHangar, forcedPreparing
+	)
+	env.info("[SPAWNNOW] "..msg)
+	return true, msg
 end
 
 function BattleCommander:updateBlueZoneCount()
@@ -7267,7 +7891,7 @@ end
 		local expCount = AI.Task.WeaponExpend.ALL
 		if expendAmmount then expCount = expendAmmount end
 
-		local altm = 4572
+		local altm = 6000
 		if altitude then altm = altitude/3.281 end
 
 		local attack = { id = 'ComboTask', params = { tasks = {} } }
@@ -7548,45 +8172,37 @@ end
 			end
 		end)
 
-		local limit = (GlobalSettings.proximityWakeNm or 30)
+		local limit = (GlobalSettings.proximityWakeNm or 40)
 		local blockLimit = 5
 		local changed = false
 		for _,z in ipairs(self.zones) do
 			if z.side == 1 then
 				z.BlueIsNear = nil
-			end
-			if z.suspended and z.side == 1 then
 				local cz = z._cz
 				if cz and cz.point then
 					local zp = cz.point
+					local nearWake = false
+					local nearBlock = false
 					for _,p in ipairs(players) do
 						local up = p.point
 						local dx = up.x - zp.x
 						local dz = up.z - zp.z
 						local dnm = math.sqrt(dx*dx + dz*dz) / 1852
-						if dnm <= limit then
-							z._proximityWakeUntil = timer.getTime() + (GlobalSettings.proximityWakeHoldSeconds or 120)
-							z:resume()
+						if dnm <= limit then nearWake = true end
+						if dnm <= blockLimit then nearBlock = true end
+						if nearWake and nearBlock then break end
+					end
 
+					if nearWake then
+						z._proximityWakeUntil = timer.getTime() + (GlobalSettings.proximityWakeHoldSeconds or 120)
+						if z.suspended then
+							z:resume()
 							changed = true
-							break
 						end
 					end
-				end
-			end
-			if z.side == 1 and z.active and not z.isHidden and not z.suspended and ZONE_CONNECTED_TO_BLUE[z.zone] then
-				local cz = z._cz
-				if cz and cz.point then
-					local zp = cz.point
-					for _,p in ipairs(players) do
-						local up = p.point
-						local dx = up.x - zp.x
-						local dz = up.z - zp.z
-						local dnm = math.sqrt(dx*dx + dz*dz) / 1852
-						if dnm <= blockLimit then
-							z.BlueIsNear = true
-							break
-						end
+
+					if nearBlock and z.active and not z.isHidden and not z.suspended and ZONE_CONNECTED_TO_BLUE[z.zone] then
+						z.BlueIsNear = true
 					end
 				end
 			end
@@ -7624,6 +8240,16 @@ function BattleCommander:_hasActiveAttackOrPatrolOnZone()
 		end
 	end
 	return self._activeAttackOrPatrol
+end
+
+function BattleCommander:_hasActiveJtacOnZone(zoneName)
+	if not zoneName then return false end
+	for _, dr in ipairs(jtacQueue or {}) do
+		if dr and dr.tgtzone and dr.tgtzone.zone == zoneName then
+			return true
+		end
+	end
+	return false
 end
 
 function BattleCommander:explainSuspendDecision(zoneName, groupId)
@@ -7744,9 +8370,10 @@ function BattleCommander:explainSuspendDecision(zoneName, groupId)
 
 	local combat = self._activeAttackOrPatrol and self._activeAttackOrPatrol[z.zone]
 	local originActive = self._activeOrigin and self._activeOrigin[z.zone]
+	local jtacHold = self:_hasActiveJtacOnZone(z.zone)
 	local now = timer.getTime()
 	local proximityHold = z._proximityWakeUntil and z._proximityWakeUntil > now
-	local shouldSuspend = (not proximityHold) and (not hasOppositeNeighbor) and (not hasNeutralNeighbor) and (not combat) and (not incoming) and (dist and dist > limit) and (not canReceive) and (not supplierHold)
+	local shouldSuspend = (not proximityHold) and (not jtacHold) and (not hasOppositeNeighbor) and (not hasNeutralNeighbor) and (not combat) and (not incoming) and (dist and dist > limit) and (not canReceive) and (not supplierHold)
 
 	local enemyLine = ""
 	if nearestEnemyName and dist and dist < limit then
@@ -7758,7 +8385,7 @@ function BattleCommander:explainSuspendDecision(zoneName, groupId)
 		and ("\noriginActive=true (allowSpawnWhileSuspended=true)\n - "..table.concat(originList, "\n - "))
 		or "\noriginActive=false (allowSpawnWhileSuspended=false)"
 	local supportersLine = (#supportersDetail>0) and ("\nsupplierHold=true supporters="..tostring(supportersOut).."\n - "..table.concat(supportersDetail, "\n - ")) or "\nsupplierHold=false supporters=0"
-	local combatLine = "\ncombat="..b(combat)..", originActive="..b(originActive)..", proximityHold="..b(proximityHold)
+	local combatLine = "\ncombat="..b(combat)..", originActive="..b(originActive)..", proximityHold="..b(proximityHold)..", jtacHold="..b(jtacHold)
 	local srcTarget = (self._activeAttackOrPatrolSources and self._activeAttackOrPatrolSources[z.zone]) or nil
 	local srcOrigin = (self._activeOriginSources and self._activeOriginSources[z.zone]) or nil
 	local srcLine = ""
@@ -7920,9 +8547,10 @@ function BattleCommander:_autoZoneSuspend()
 						if canReceive then
 							incoming = incomingActiveSupply[z.zone] == true
 						end
+						local jtacHold = self:_hasActiveJtacOnZone(z.zone)
 						local now = timer.getTime()
 						local proximityHold = z._proximityWakeUntil and z._proximityWakeUntil > now
-						local shouldSuspend = (not proximityHold) and (not hasOppositeNeighbor) and (not hasNeutralNeighbor) and (not combat) and (not incoming) and (dist > limit) and (not canReceive) and (not supplierHold[z])
+						local shouldSuspend = (not proximityHold) and (not jtacHold) and (not hasOppositeNeighbor) and (not hasNeutralNeighbor) and (not combat) and (not incoming) and (dist > limit) and (not canReceive) and (not supplierHold[z])
 
 						if shouldSuspend then
 							toSuspend[#toSuspend+1] = z
@@ -8004,12 +8632,13 @@ end
 						end
 						if dist and dist <= limit then hasOppositeNeighbor = true end
 						local combat2 = self._activeAttackOrPatrol and self._activeAttackOrPatrol[sz.zone]
+						local jtacHold2 = self:_hasActiveJtacOnZone(sz.zone)
 						local canReceive2 = sz:canRecieveSupply()
 						local incoming2 = false
 						if canReceive2 then
 							incoming2 = incomingActiveSupply[sz.zone] == true
 						end
-						local shouldSuspend2 = (not hasOppositeNeighbor) and (not combat2) and (not incoming2) and dist and (dist > limit) and (not canReceive2)
+						local shouldSuspend2 = (not hasOppositeNeighbor) and (not jtacHold2) and (not combat2) and (not incoming2) and dist and (dist > limit) and (not canReceive2)
 						if shouldSuspend2 then finalSuspend[#finalSuspend+1] = sz end
 					end
 				end
@@ -8826,6 +9455,7 @@ function BattleCommander:startRewardPlayerContribution(defaultReward, rewards)
 	self.playerRewardsOn = true
 	self.rewards = rewards
 	self.defaultReward = defaultReward
+	self.lossPenaltyArmByPlayer = self.lossPenaltyArmByPlayer or {}
 	local ev = {}
 	ev.context = self
 	ev.rewards = rewards
@@ -8951,6 +9581,7 @@ function BattleCommander:startRewardPlayerContribution(defaultReward, rewards)
 				if event.id == 15 then
 					local crew = self.context:getMulticrewPlayersNow(pname)
 					local resetPilot = (#crew == 0)
+					if pname then self.context.lossPenaltyArmByPlayer[pname] = nil end
 
 					if not resetPilot then
 						local didCrew = false
@@ -8965,6 +9596,7 @@ function BattleCommander:startRewardPlayerContribution(defaultReward, rewards)
 							end
 							if subslot > 0 then
 								didCrew = true
+								self.context.lossPenaltyArmByPlayer[n] = nil
 								self.context.playerContributions[side][n] = 0
 								for _,g in pairs(MissionGroups) do g.killers[n]=nil end
 								if self.context.flightTimeTakeoffByPlayer then self.context.flightTimeTakeoffByPlayer[n] = nil end
@@ -9468,23 +10100,28 @@ function BattleCommander:startRewardPlayerContribution(defaultReward, rewards)
 					end
 				end
 				if event.id == world.event.S_EVENT_UNIT_LOST then
-					if CreditLosewhenKilled == true then
-						local amount = CreditLosewhenKilledAmount or 100
-						self.context:addFunds(side,-amount)
-						trigger.action.outTextForCoalition(side,'['..pname..'] aircraft lost, -'..amount..' credits',10)
-					end
-					if RankingSystem == true and RankLoseWhenKilled == true then
-						local amount = RankLoseWhenKilledAmount or 100
-						local before = self.context:getPlayerRank(pname)
-						if amount > 0 then
-							self.context:addPlayerRankCredits(pname, -amount)
-							self.context:saveRanksToDisk()
-							local after = self.context:getPlayerRank(pname)
-							if after < before then
-								local name = self.context:getRankName(after)
-								trigger.action.outTextForCoalition(side, pname..' has been demoted to '..name..'.', 12)
-								local g = un and un.getGroup and un:getGroup()
-								if g and g:isExist() then self.context:refreshShopMenuForGroup(g:getID(), g) end
+					local armed = self.context.lossPenaltyArmByPlayer and self.context.lossPenaltyArmByPlayer[pname] == true
+					self.context.lossPenaltyArmByPlayer[pname] = nil
+					if armed then
+						if CreditLosewhenKilled == true then
+							local amount = CreditLosewhenKilledAmount or 100
+							self.context:addFunds(side,-amount)
+							trigger.action.outTextForCoalition(side,'['..pname..'] aircraft lost, -'..amount..' credits',10)
+						end
+						if RankingSystem == true and RankLoseWhenKilled == true then
+							local amount = RankLoseWhenKilledAmount or 100
+							local before = self.context:getPlayerRank(pname)
+							if amount > 0 then
+								self.context:addPlayerRankCredits(pname, -amount)
+								self.context:saveRanksToDisk()
+								trigger.action.outTextForCoalition(side, '['..pname..'] aircraft lost, -'..amount..' rank points', 10)
+								local after = self.context:getPlayerRank(pname)
+								if after < before then
+									local name = self.context:getRankName(after)
+									trigger.action.outTextForCoalition(side, pname..' has been demoted to '..name..'.', 12)
+									local g = un and un.getGroup and un:getGroup()
+									if g and g:isExist() then self.context:refreshShopMenuForGroup(g:getID(), g) end
+								end
 							end
 						end
 					end
@@ -9654,7 +10291,7 @@ end
 				else
 					earning = self.rewards.structure
 					message = 'Structure kill +'..earning..' credits'
-					statname = 'Structer'
+					statname = 'Structure'
 				end
 			end
 		else
@@ -9777,6 +10414,20 @@ function BattleCommander:addPlayerCredits(pname, amount)
 
 
 function BattleCommander:loadFromDisk()
+		local defaultShopDefs = {}
+		for side = 1, 2 do
+			defaultShopDefs[side] = {}
+			for id, def in pairs((self.shops and self.shops[side]) or {}) do
+				defaultShopDefs[side][id] = {
+					name = def.name,
+					cost = def.cost,
+					stock = def.stock,
+					prio = def.prio,
+					reqRank = def.reqRank,
+				}
+			end
+		end
+
 		if RankingSystem == true then
 		self:loadRanksFromDisk()
 		end
@@ -9841,6 +10492,46 @@ function BattleCommander:loadFromDisk()
 					end
 					return out, pruned
 				end
+				local function copyList(src)
+					local out = {}
+					for i, v in ipairs(src or {}) do
+						out[i] = v
+					end
+					return out
+				end
+				local function resolveMaxCount(v)
+					if type(v) == "table" then
+						local a = tonumber(v[1]) or 0
+						local b = tonumber(v[2]) or a
+						if b < a then a, b = b, a end
+						return b
+					end
+					return tonumber(v) or 0
+				end
+				local function getTemplateMaxTotal(zoneObj, isRed)
+					local zoneSize = getZoneSize(zoneObj)
+					local tpl = isRed
+						and (RandomUpgradeTemplates and RandomUpgradeTemplates[zoneSize])
+						or (RandomUpgradeTemplatesBlue and RandomUpgradeTemplatesBlue[zoneSize])
+					if type(tpl) ~= "table" then return nil end
+					local maxTotal = resolveMaxCount(tpl.total)
+					if maxTotal and maxTotal > 0 then return maxTotal end
+					local cats = isRed and {"sam","shorad","aaa","ground","armor","arty"} or {"sam","ground","armor"}
+					local sum = 0
+					for i = 1, #cats do
+						sum = sum + resolveMaxCount(tpl[cats[i]])
+					end
+					return (sum > 0) and sum or nil
+				end
+				local function clampToTemplateMax(zoneObj, list, isRed)
+					local maxTotal = getTemplateMaxTotal(zoneObj, isRed)
+					if not maxTotal or #list <= maxTotal then return list, false end
+					local out = {}
+					for i = 1, maxTotal do
+						out[i] = list[i]
+					end
+					return out, true
+				end
 				for i, v in pairs(zonePersistance.zones) do
 					local zn = self:getZoneByName(i)
 					if zn then
@@ -9863,18 +10554,22 @@ function BattleCommander:loadFromDisk()
 						if v.randomUpgradesRed and type(v.randomUpgradesRed) == "table" then
 							local original = v.randomUpgradesRed
 							local list, pruned = pruneAndTopUp(zn, original, true)
-							zn.randomUpgradesRed = list
-							zn.upgrades.red = zn.randomUpgradesRed
-							if pruned or not listEqual(original, list) then
+							local clipped = false
+							list, clipped = clampToTemplateMax(zn, list, true)
+							zn.randomUpgradesRed = copyList(list)
+							zn.upgrades.red = copyList(list)
+							if pruned or clipped or not listEqual(original, list) then
 								randomChanged = true
 							end
 						end
 						if v.randomUpgradesBlue and type(v.randomUpgradesBlue) == "table" then
 							local original = v.randomUpgradesBlue
 							local list, pruned = pruneAndTopUp(zn, original, false)
-							zn.randomUpgradesBlue = list
-							zn.upgrades.blue = zn.randomUpgradesBlue
-							if pruned or not listEqual(original, list) then
+							local clipped = false
+							list, clipped = clampToTemplateMax(zn, list, false)
+							zn.randomUpgradesBlue = copyList(list)
+							zn.upgrades.blue = copyList(list)
+							if pruned or clipped or not listEqual(original, list) then
 								randomChanged = true
 							end
 						end
@@ -10043,6 +10738,56 @@ function BattleCommander:loadFromDisk()
 				else
 					EWRS_PENDING_PLAYER_SETTINGS = zonePersistance.ewrsSettings
 				end
+			end
+
+			if zonePersistance.tankers and type(zonePersistance.tankers) == "table" then
+				local savedArco = zonePersistance.tankers.arco
+				local savedTexaco = zonePersistance.tankers.texaco
+				TANKER_PERSISTENCE = TANKER_PERSISTENCE or {}
+				TANKER_PERSISTENCE.arco = _normalizeTankerState(savedArco, 45)
+				TANKER_PERSISTENCE.texaco = _normalizeTankerState(savedTexaco, 45)
+			end
+			-- Reconcile tanker unlock items from persisted unlock state against setup defaults.
+			local function _addBackDefaultShopItem(side, id)
+				local def = defaultShopDefs and defaultShopDefs[side] and defaultShopDefs[side][id]
+				if not def then return end
+				self.shops = self.shops or {}
+				self.shops[side] = self.shops[side] or {}
+				if self.shops[side][id] then return end
+				self.shops[side][id] = {
+					name = def.name,
+					cost = def.cost,
+					stock = def.stock,
+					prio = def.prio,
+				}
+				if RankingSystem and def.reqRank then
+					self.shops[side][id].reqRank = def.reqRank
+				end
+			end
+
+			local function _removeShopItemIfPresent(side, id)
+				if self.shops and self.shops[side] and self.shops[side][id] then
+					self.shops[side][id] = nil
+				end
+			end
+
+			local arcoUnlocked = (TANKER_PERSISTENCE and TANKER_PERSISTENCE.arco and TANKER_PERSISTENCE.arco.unlocked) == true
+			local texacoUnlocked = (TANKER_PERSISTENCE and TANKER_PERSISTENCE.texaco and TANKER_PERSISTENCE.texaco.unlocked) == true
+
+			if arcoUnlocked then
+				_removeShopItemIfPresent(2, "dynamicarco")
+			else
+				_addBackDefaultShopItem(2, "dynamicarco")
+			end
+
+			if texacoUnlocked then
+				_removeShopItemIfPresent(2, "dynamictexaco")
+			else
+				_addBackDefaultShopItem(2, "dynamictexaco")
+			end
+
+			if schedulePersistentTankerRestore then
+				schedulePersistentTankerRestore()
 			end
 		end
 	end
@@ -10827,8 +11572,11 @@ function applyRandomRedUpgrades()
 		else
 			local list = buildRandomRedUpgrades(z)
 			if list and #list > 0 then
-				z.upgrades.red = list
-				z.randomUpgradesRed = list
+				local base = {}
+				for i, v in ipairs(list) do base[i] = v end
+				z.randomUpgradesRed = base
+				z.upgrades.red = {}
+				for i, v in ipairs(base) do z.upgrades.red[i] = v end
 			end
 		end
 	end
@@ -10841,8 +11589,11 @@ function applyRandomBlueUpgrades()
 		else
 			local list = buildRandomBlueUpgrades(z)
 			if list and #list > 0 then
-				z.upgrades.blue = list
-				z.randomUpgradesBlue = list
+				local base = {}
+				for i, v in ipairs(list) do base[i] = v end
+				z.randomUpgradesBlue = base
+				z.upgrades.blue = {}
+				for i, v in ipairs(base) do z.upgrades.blue[i] = v end
 			end
 		end
 	end
@@ -11886,6 +12637,72 @@ if WarehouseLogistics == true and AutoFillResources > 0 then
 	end, {}, 900, 900)
 end
 
+local _resourceMapCache = nil
+local function _getWarehouseResourceMap()
+	if _resourceMapCache ~= nil then
+		return _resourceMapCache or nil
+	end
+	if Warehouse and Warehouse.getResourceMap then
+		_resourceMapCache = Warehouse.getResourceMap()
+	else
+		_resourceMapCache = false
+	end
+	return _resourceMapCache or nil
+end
+
+local function _prefillLogisticCenterFromResourceMap(airbaseName, fillAmount)
+    if WarehouseLogistics ~= true then return end
+    if not airbaseName then return end
+    local resMap = _getWarehouseResourceMap()
+    if not resMap then return end
+    local storage = STORAGE and STORAGE.FindByName and STORAGE:FindByName(airbaseName) or nil
+    if not storage then return end
+
+    local fill = tonumber(fillAmount) or 1000
+    if fill < 1 then fill = 1 end
+
+    -- Build known set from WEAPONSLIST.Items
+    local known = {}
+    for _, list in pairs(WEAPONSLIST.Items or {}) do
+        for _, name in ipairs(list) do
+            known[name] = true
+        end
+    end
+
+    -- Build mods set
+    local mods = {}
+    for _, name in ipairs(WEAPONSLIST_MODS_ITEMS or {}) do
+        mods[name] = true
+    end
+
+    local allowModFill = (Era == "Modern" and AllowMods == true)
+    local addedCount = 0
+
+    for itemName, ws in pairs(resMap) do
+        if type(ws) == "table" and ws[1] == 4 then
+            if not (restrictedWeaponSet and restrictedWeaponSet[itemName]) then
+                if not known[itemName] then
+                    -- If mods are not allowed (Coldwar or AllowMods false), skip mod items
+                    if allowModFill or not mods[itemName] then
+                        local amt = storage:GetItemAmount(itemName)
+                        if not amt or amt == 0 then
+                            storage:SetItem(itemName, fill)
+                            addedCount = addedCount + 1
+							--env.info(string.format("[Warehouse] Pre-filling %s with %d of %s based on resource map." ,tostring(airbaseName), fill, tostring(itemName)))
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if addedCount > 0 then
+        env.info(string.format("[Warehouse] Prefill %s: added %d item(s) at %d each", tostring(airbaseName), addedCount, fill))
+    end
+end
+
+
+
 -------------------------------- maxxa --------------------------------------------------------
 
 
@@ -11973,31 +12790,42 @@ function ZoneCommander:init()
 
 	if self.airbaseName and self.airbaseName ~= 'CVN-72' and self.airbaseName ~= 'CVN-73' then
 
-		timer.scheduleFunction(function()
+		--timer.scheduleFunction(function()
 			local ab = getDcsAirbaseByName(self.airbaseName)
 			if ab then
 				if ab:autoCaptureIsOn() then ab:autoCapture(false) end
+ 				if self.side == 2 and self.LogisticCenter and WarehouseLogistics == true then
+					_prefillLogisticCenterFromResourceMap(self.airbaseName, 1000)
+				end
+
 				if self.side == 0 or (not self.active and not self.wasBlue) then
+				  timer.scheduleFunction(function()
 					if RespawnStaticsForAirbase then
 						RespawnStaticsForAirbase(self.airbaseName, 0)						
 					end
+				  end, {}, timer.getTime() +1)	
 					ab:setCoalition(1)
 					if WarehouseLogistics == true and not self.LogisticCenter then
 						WEAPONSLIST.ClearWeaponsAtAirbase(self.airbaseName)
 					end					
 				end
 				if self.side == 1 then
+				  timer.scheduleFunction(function()
 					if RespawnStaticsForAirbase then
 						RespawnStaticsForAirbase(self.airbaseName, 1)
 						if self.LogisticCenter then self.LogisticCenter = false
 						end
 					end
+				  end, {}, timer.getTime() +1)	
 					ab:setCoalition(1)
 				end
-				if self.wasBlue then
+				if self.side == 2 then
+					timer.scheduleFunction(function()
 					if RespawnStaticsForAirbase then
+
 						RespawnStaticsForAirbase(self.airbaseName, 2)
 					end
+				  end, {}, timer.getTime() +1)
 						ab:setCoalition(2)
 					if WarehouseLogistics == true and not self.LogisticCenter then
 						WEAPONSLIST.ClearWeaponsAtAirbase(self.airbaseName)
@@ -12006,7 +12834,7 @@ function ZoneCommander:init()
 			else
 				env.info("Airbase " .. self.airbaseName .. " not found")
 			end
-		end, {}, timer.getTime() +1)
+		--end, {}, timer.getTime() +1)
 	end
 
 	local upgrades = self:getFilteredUpgrades()
@@ -12399,7 +13227,7 @@ end
 						if RespawnStaticsForAirbase then
 						RespawnStaticsForAirbase(self.airbaseName, coalition.side.NEUTRAL)
 						end
-						ab:setCoalition(1)
+						ab:setCoalition(0)
 						if WarehouseLogistics == true and not self.LogisticCenter then
 							WEAPONSLIST.ClearWeaponsAtAirbase(self.airbaseName)
 						end
@@ -12461,10 +13289,10 @@ end
 				addCTLDZonesForBlueControlled(self.zone)
 			end
 			if SpawnFriendlyAssets then
-				SCHEDULER:New(nil,SpawnFriendlyAssets,{},2,0)
+				SCHEDULER:New(nil,SpawnFriendlyAssets,{},2)
 			end
 
-			SCHEDULER:New(nil,bc:buildCapSpawnBuckets(),{},5,0)
+			SCHEDULER:New(nil, function() bc:buildCapSpawnBuckets() end, {}, 5)
 
 
 			bc:_hasActiveAttackOrPatrolOnZone()
@@ -14124,6 +14952,73 @@ function BattleCommander:buildNonCapSpawnBuckets()
 	end
 end
 
+function BattleCommander:buildCapActiveBuckets()
+	self._activeCapCount = {
+		[1] = { _all = 0, patrol = 0, attack = 0 },
+		[2] = { _all = 0, patrol = 0, attack = 0 }
+	}
+	self._capBucketsBuilt = true
+	for _,zc in ipairs(self.zones or {}) do
+		for _,gc in ipairs(zc.groups or {}) do
+			if gc then
+				gc._capActiveSide = nil
+				gc._capActiveMission = nil
+				self:_syncCapSpawnBucketsForGroup(gc)
+			end
+		end
+	end
+end
+
+function BattleCommander:_capDelta(side, missionType, delta)
+	if side ~= 1 and side ~= 2 then return end
+	local bySide = self._activeCapCount and self._activeCapCount[side]
+	if not bySide then
+		bySide = { _all = 0, patrol = 0, attack = 0 }
+		self._activeCapCount = self._activeCapCount or {}
+		self._activeCapCount[side] = bySide
+	end
+	local total = (bySide._all or 0) + delta
+	if total < 0 then total = 0 end
+	bySide._all = total
+	if missionType then
+		local n = (bySide[missionType] or 0) + delta
+		if n < 0 then n = 0 end
+		bySide[missionType] = n
+	end
+end
+
+function BattleCommander:_syncCapSpawnBucketsForGroup(gc)
+	if not self._capBucketsBuilt then return end
+
+	local st = gc.state
+	local isCap = gc.MissionType == 'CAP'
+	local trackMission = (gc.mission == 'patrol' or gc.mission == 'attack') and gc.mission or nil
+	local capActive = isCap and (st == 'takeoff' or st == 'inair' or gc.Spawned)
+
+	if capActive then
+		local side = gc.side
+		local missionType = trackMission
+		if gc._capActiveSide then
+			if gc._capActiveSide ~= side or gc._capActiveMission ~= missionType then
+				self:_capDelta(gc._capActiveSide, gc._capActiveMission, -1)
+				self:_capDelta(side, missionType, 1)
+				gc._capActiveSide = side
+				gc._capActiveMission = missionType
+			end
+		else
+			self:_capDelta(side, missionType, 1)
+			gc._capActiveSide = side
+			gc._capActiveMission = missionType
+		end
+	else
+		if gc._capActiveSide then
+			self:_capDelta(gc._capActiveSide, gc._capActiveMission, -1)
+			gc._capActiveSide = nil
+			gc._capActiveMission = nil
+		end
+	end
+end
+
 function BattleCommander:_nonCapDeltaSupply(side, targetZone, delta)
 	local bySide = self._activeSupplyCount[side]
 	if not bySide then bySide={} self._activeSupplyCount[side]=bySide end
@@ -14321,6 +15216,17 @@ function BattleCommander:getActiveStrikeCount(side, missionType, missionRole, un
 end
 
 function BattleCommander:getActiveCAPCount(side, missionType)
+	if not self._capBucketsBuilt then
+		self:buildCapActiveBuckets()
+	end
+	if self._capBucketsBuilt then
+		local bySide = self._activeCapCount and self._activeCapCount[side]
+		if bySide then
+			if missionType then return bySide[missionType] or 0 end
+			return bySide._all or 0
+		end
+	end
+
     local count = 0
     for _, zoneCom in ipairs(self.zones) do
         for _, groupCom in ipairs(zoneCom.groups) do
@@ -14719,6 +15625,10 @@ function GroupCommander:shouldSpawn(ignore)
 		return false
 	end
 
+	if self.mission == 'supply' and self.side == 2 and NoAIBlueSupplies == true then
+		return false
+	end
+
 	if self.zoneCommander.suspended and not ignore and not force then
 		local allow = self.zoneCommander._suspendAllowSpawn
 		if not allow then
@@ -14766,6 +15676,22 @@ function GroupCommander:shouldSpawn(ignore)
 		return true
 	end
 
+	if self.template then
+        self:_ensureTemplateCache()
+        local zside = self.zoneCommander.side
+        if zside~=0 and self.side~=zside then
+            local lst=self._tplBySide[zside]
+            if lst and #lst>0 then self.side=zside else return false end
+        end
+        if self.side~=0 then
+            local lst=self._tplBySide[self.side]
+            if not lst or #lst==0 then return false end
+        end
+    end
+
+    if self.side ~= self.zoneCommander.side then
+		return false 
+	end
 	
 	if self.condition and self:condition() == false then return false end
 
@@ -14799,23 +15725,6 @@ function GroupCommander:shouldSpawn(ignore)
 	end
 		
 
-	if self.template then
-        self:_ensureTemplateCache()
-        local zside = self.zoneCommander.side
-        if zside~=0 and self.side~=zside then
-            local lst=self._tplBySide[zside]
-            if lst and #lst>0 then self.side=zside else return false end
-        end
-        if self.side~=0 then
-            local lst=self._tplBySide[self.side]
-            if not lst or #lst==0 then return false end
-        end
-    end
-
-    if self.side ~= self.zoneCommander.side then
-		return false 
-	end
-
 	if self.side==2 and self.MissionType=='CAP' then
 		if distNm and distNm < -(GlobalSettings.capRearlineNmBlue or 30) then return false end
 	end
@@ -14834,35 +15743,50 @@ function GroupCommander:shouldSpawn(ignore)
 					if self.MissionType=='SEAD' and not self.zoneCommander.battleCommander:HasSeadTargets(tg.zone) then
 						return false
 					end
-					if self.unitCategory ~= plane then return true end
 					local players = getRedCasPlayersCount() or 0
-					local limit = getRedCasLimit(players) or 0
-					if limit <= 0 then return false end
-					local active = self.zoneCommander.battleCommander:getActiveStrikeCount(1,'attack',self.MissionType,self.unitCategory)
-					if active >= limit then
-						return false
-					end
 					if self.MissionType ~='CAS' and players == 0 then
 						return false
 					end
-					return true
+					local planeLimit = getRedCasLimit(players) or 0
+					local heloBonus = 1
+					local totalLimit = math.max(0, planeLimit) + heloBonus
+					local activePlanes = self.zoneCommander.battleCommander:getActiveStrikeCount(1,'attack',self.MissionType,plane)
+					local activeHelos = self.zoneCommander.battleCommander:getActiveStrikeCount(1,'attack',self.MissionType,heli)
+					local activeTotal = self.zoneCommander.battleCommander:getActiveStrikeCount(1,'attack',self.MissionType,nil)
+
+					-- Hybrid cap: keep plane limit from config, but allow one extra helicopter slot.
+					if self.unitCategory == plane then
+						if planeLimit <= 0 then return false end
+						if activePlanes >= planeLimit then return false end
+						return true
+					elseif self.unitCategory == heli then
+						if activeHelos >= heloBonus then return false end
+						if activeTotal >= totalLimit then return false end
+						return true
+					end
+					return false
 				end
 				if self.side==2 then
 					if self.MissionType=='SEAD' and not self.zoneCommander.battleCommander:HasSeadTargets(tg.zone) then
 						return false
 					end
-					local players = getBlueCasPlayersCount() or 0
+					local bluePlayers = getBluePlayersCount() or 0
 					local playersCas = getBlueCasPlayersCount() or 0
-					if self.MissionType=='ANTISHIP' and players > 1 then return false end
-					local limit   = getBlueSeadLimit(players) or 0
-					if limit <= 0 then return false end
-					if self.MissionType=='CAS' and playersCas > 1 then return false end
-					local limit   = getBlueCasLimit(playersCas) or 0
-					if limit <= 0 then return false end
-					local active = self.zoneCommander.battleCommander:getActiveCasSeadCount(2,'attack')
-					if active >= limit then
-						return false
+					if self.MissionType=='ANTISHIP' and bluePlayers > 1 then return false end
+
+					local limit = 0
+					if self.MissionType=='CAS' then
+						limit = getBlueCasLimit(playersCas) or 0
+					elseif self.MissionType=='SEAD' then
+						limit = getBlueSeadLimit(bluePlayers) or 0
+					else
+						-- RUNWAYSTRIKE / ANTISHIP follow blue CAS support scale.
+						limit = getBlueCasLimit(playersCas) or 0
 					end
+					if limit <= 0 then return false end
+
+					local active = self.zoneCommander.battleCommander:getActiveStrikeCount(2,'attack',self.MissionType,nil)
+					if active >= limit then return false end
 					return true
 				end
 			end
@@ -14968,7 +15892,6 @@ function GroupCommander:shouldSpawn(ignore)
                 local limit = (self.side==2) and getBlueCapLimit(bluePlayers) or getCapLimit(bluePlayers)
                 local currentCap = bc:getActiveCAPCount(self.side, 'attack')
                 if self.side==2 and limit==0 then return false end
-                if self.side==1 and bluePlayers==0 then return false end
                 if currentCap >= limit then
                     if DebugIsOn then
                         env.info(string.format("[DEBUG] CAP attack limit reached: currentCap=%d, limit=%d, mission=%s", currentCap, limit, self.name))
@@ -15714,7 +16637,11 @@ end
 
 			local spawnedNow=self.Spawned and true or false
 			if prevState~=self.state or prevSpawned~=spawnedNow or prevSide~=self.side or prevMission~=self.mission or prevMissionType~=self.MissionType or prevUnitCategory~=self.unitCategory or prevTargetzone~=self.targetzone then
-				self.zoneCommander.battleCommander:_syncNonCapSpawnBucketsForGroup(self)
+				local bcRef = self.zoneCommander and self.zoneCommander.battleCommander
+				if bcRef then
+					bcRef:_syncNonCapSpawnBucketsForGroup(self)
+					bcRef:_syncCapSpawnBucketsForGroup(self)
+				end
 			end
 		elseif self.type == 'surface' then
 			self:processSurface()
@@ -17252,6 +18179,7 @@ end
 		self.csarPilotDataByObject = self.csarPilotDataByObject or {}
 		self.csarHoverStatus = self.csarHoverStatus or {}
 		self.csarNearStatus = self.csarNearStatus or {}
+		self.ejectedPilotPidByObj = self.ejectedPilotPidByObj or {}
 		local tocleanup = {}
 		self.ejectedPilotsState = self.ejectedPilotsState or {}
 		for i = #self.ejectedPilotsState, 1, -1 do
@@ -17272,6 +18200,7 @@ end
 						lostCredits = 0
 					}
 					local objectID = v:getObjectID()
+					self.ejectedPilotPidByObj[v] = objectID
 					local pilotData = (landedPilotOwners and landedPilotOwners[objectID]) or self.csarPilotDataByObject[objectID] or (ejectedPilotOwners and ejectedPilotOwners[objectID])
 					if pilotData then
 						ejectedPilotTable.playerName = pilotData.player or "Unknown"
@@ -17283,11 +18212,11 @@ end
 					end
 					table.insert(self.ejectedPilotsState, ejectedPilotTable)
 				end
-			else
-				local pid = v and v.getObjectID and v:getObjectID() or nil
-				table.insert(tocleanup, { index = i, kia = true, pid = pid })
+				else
+					local pid = self.ejectedPilotPidByObj[v] or nil
+					table.insert(tocleanup, { index = i, kia = true, pid = pid })
+				end
 			end
-		end
 
 		local function boardPilot(pilotObj, heliUnit, groupid, fromScheduler)
 			local pid = pilotObj:getObjectID()
@@ -17808,7 +18737,7 @@ end
 			local pilot = self.ejectedPilots[index]
 
 			if entry.kia then
-				local pid = entry.pid or (pilot and pilot.getObjectID and pilot:getObjectID()) or nil
+				local pid = entry.pid or (pilot and self.ejectedPilotPidByObj[pilot]) or nil
 				local pilotData = pid and (landedPilotOwners[pid] or self.csarPilotDataByObject[pid] or ejectedPilotOwners[pid]) or nil
 				local pname = pilotData and pilotData.player
 				local coal = pilotData and pilotData.coalition or 2
@@ -17853,6 +18782,7 @@ end
 					pilot:destroy()
 				end
 			end
+			if pilot then self.ejectedPilotPidByObj[pilot] = nil end
 			table.remove(self.ejectedPilots, index)
 		end
 	end
@@ -17976,6 +18906,11 @@ function LogisticCommander:init()
 				self.context.battleCommander.playerNames = self.context.battleCommander.playerNames or {}
                 self.context.battleCommander.playerNames[groupid] = player
 				self.context.battleCommander:refreshShopMenuForGroup(groupid, groupObj)
+				timer.scheduleFunction(function()
+					if buildCapControlMenu then
+						buildCapControlMenu()
+					end
+				end, {}, timer.getTime() + 1)
 
 				self.context.battleCommander.groupByPlayer = self.context.battleCommander.groupByPlayer or {}
 				self.context.battleCommander.groupNameByPlayer = self.context.battleCommander.groupNameByPlayer or {}
@@ -17983,9 +18918,9 @@ function LogisticCommander:init()
 				self.context.battleCommander.groupNameByPlayer[player] = groupname
 
 
-                if not self.context.statsMenus[groupid] then
+				if not self.context.statsMenus[groupid] then
 
-					local statsMenu = missionCommands.addSubMenuForGroup(groupid, 'Stats and Budget')
+					local statsMenu = missionCommands.addSubMenuForGroup(groupid, 'Stats and Others')
 					local statsSubMenu = missionCommands.addSubMenuForGroup(groupid, 'Stats', statsMenu)
 					missionCommands.addCommandForGroup(groupid, 'My Stats', statsSubMenu, self.context.battleCommander.printMyStats, self.context.battleCommander, event.initiator:getID(), player)
 					missionCommands.addCommandForGroup(groupid, 'All Stats', statsSubMenu, self.context.battleCommander.printStats, self.context.battleCommander, event.initiator:getID())
@@ -17995,6 +18930,21 @@ function LogisticCommander:init()
 					missionCommands.addCommandForGroup(groupid, 'Budget Overview', statsMenu, self.context.battleCommander.printShopStatus, self.context.battleCommander, groupid, event.initiator:getCoalition())
 					
 					self.context.statsMenus[groupid] = statsMenu
+				end
+				if ewrs then
+					EWRS_MENU_PARENT_BY_GROUP = EWRS_MENU_PARENT_BY_GROUP or {}
+					EWRS_MENU_PARENT_BY_GROUP[tostring(groupid)] = self.context.statsMenus[groupid]
+					if ewrs.builtF10Menus then
+						local ewrsMenu = ewrs.builtF10Menus[tostring(groupid)]
+						if ewrsMenu and ewrsMenu ~= true then
+							if type(ewrsMenu) == "table" and ewrsMenu.root then
+								missionCommands.removeItemForGroup(groupid, ewrsMenu.root)
+							else
+								missionCommands.removeItemForGroup(groupid, ewrsMenu)
+							end
+						end
+						ewrs.builtF10Menus[tostring(groupid)] = nil
+					end
 				end
 				MissionsRootMenus = MissionsRootMenus or {}
 				local missionsRoot = MissionsRootMenus[groupid] or missionCommands.addSubMenuForGroup(groupid, 'Missions')
@@ -18170,11 +19120,22 @@ function LogisticCommander:init()
 								local parentMenu = getPagedStaticMenu(cargoObj.Subcategory or "Statics")
                                 local needed = cargoObj:GetCratesNeeded() or 1
                                 local mass = cargoObj.PerCrateMass or 0
+                                local cargoLabel = cargoObj.Name
+                                if cargoObj.GetDisplayName then
+                                    local displayName = cargoObj:GetDisplayName()
+                                    if displayName and displayName ~= "" then
+                                        cargoLabel = displayName
+                                    end
+                                end
                                 local title
                                 if needed > 1 then
-                                    title = string.format("%d crate%s %s (%dkg)",needed,needed==1 and "" or "s",cargoObj.Name,mass)
+                                    -- Old behavior used cargoObj.Name directly (internal key when key/display split is enabled).
+                                    -- title = string.format("%d crate%s %s (%dkg)",needed,needed==1 and "" or "s",cargoObj.Name,mass)
+                                    title = string.format("%d crate%s %s (%dkg)",needed,needed==1 and "" or "s",cargoLabel,mass)
                                 else
-                                    title = string.format("%s (%dkg)",cargoObj.Name,mass)
+                                    -- Old behavior:
+                                    -- title = string.format("%s (%dkg)",cargoObj.Name,mass)
+                                    title = string.format("%s (%dkg)",cargoLabel,mass)
                                 end
                                 if cargoObj.Location then title = title.."[R]" end
                                 if Foothold_ctld.showstockinmenuitems then
@@ -18266,11 +19227,17 @@ function LogisticCommander:init()
             local unitType = event.initiator:getDesc()['typeName']
             local player = event.initiator:getPlayerName()
 			local bc = self.context.battleCommander
-            if player and RewardFlightTime and (RewardAllAircraft == true or LogisticCommander.AllowedFlightTimeReward[unitType]) then
-                bc.flightTimeTakeoffByPlayer = bc.flightTimeTakeoffByPlayer or {}
-                local ft = bc.flightTimeTakeoffByPlayer[player]
-                if not ft or ft.gid ~= groupid then
-                    bc.flightTimeTakeoffByPlayer[player] = { t = timer.getTime(), gid = groupid }
+			if player then
+				if CreditLosewhenKilled == true or RankLoseWhenKilled == true then
+					bc.lossPenaltyArmByPlayer = bc.lossPenaltyArmByPlayer or {}
+					bc.lossPenaltyArmByPlayer[player] = true
+				end
+                if RewardFlightTime and (RewardAllAircraft == true or LogisticCommander.AllowedFlightTimeReward[unitType]) then
+                    bc.flightTimeTakeoffByPlayer = bc.flightTimeTakeoffByPlayer or {}
+                    local ft = bc.flightTimeTakeoffByPlayer[player]
+                    if not ft or ft.gid ~= groupid then
+                        bc.flightTimeTakeoffByPlayer[player] = { t = timer.getTime(), gid = groupid }
+                    end
                 end
             end
 
@@ -18382,101 +19349,110 @@ function LogisticCommander:init()
 					local chance = LogisticCommander.csarHostileInfantryChance or 20
 					if chance > 0 and math.random(100) <= chance then
 						local coord = event.initiator:getPoint()
-						local range = 20*NM
-						local limitSq = range*range
-						local bc = self.context.battleCommander
-						local inRange = false
-						for _, z in ipairs(bc.zones) do
-							if z.active and z.side and z.side ~= 0 and z.side ~= downedCoalition and z.zone then
-								local c = getZoneCenter(z.zone)
-								if c then
-									local dx = coord.x - c.x
-									local dz = coord.z - c.y
-									if (dx*dx + dz*dz) <= limitSq then
-										inRange = true
-										break
+						local surfaceType = land.getSurfaceType({ x = coord.x, y = coord.z })
+						local overWater = (surfaceType == land.SurfaceType.WATER) or (surfaceType == land.SurfaceType.SHALLOW_WATER)
+						if not overWater then
+							local range = 20*NM
+							local limitSq = range*range
+							local bc = self.context.battleCommander
+							local inRange = false
+							for _, z in ipairs(bc.zones) do
+								if z.active and z.side and z.side ~= 0 and z.side ~= downedCoalition and z.zone then
+									local c = getZoneCenter(z.zone)
+									if c then
+										local dx = coord.x - c.x
+										local dz = coord.z - c.y
+										if (dx*dx + dz*dz) <= limitSq then
+											inRange = true
+											break
+										end
 									end
 								end
 							end
-						end
-						if inRange then
-							local pilotCoord = COORDINATE:NewFromVec3(coord)
-							local templateConfig = LogisticCommander.csarHostileInfantryDistanceByTemplate and LogisticCommander.csarHostileInfantryDistanceByTemplate[templateKey]
-							if type(templateConfig) == 'function' then
-								templateConfig = templateConfig(templateKey, pilotData, event)
-							end
-							local minDist = (LogisticCommander.csarHostileInfantryMinDistanceNM or 1) * NM
-							local maxDist = (LogisticCommander.csarHostileInfantryMaxDistanceNM or 2) * NM
-							local spawnCount = (LogisticCommander.csarHostileInfantrySpawnCount or 1)
-							if templateConfig then
-								if type(templateConfig) == 'number' then
-									minDist = templateConfig * NM
-									maxDist = minDist
-								else
-									if templateConfig.count ~= nil then
-										local c = templateConfig.count
-										if type(c) == 'function' then
-											c = c(templateKey, pilotData, event)
-										end
-										if type(c) == 'table' then
-											local cmin = c.min or c.minCount or c[1]
-											local cmax = c.max or c.maxCount or c[2]
-											if tonumber(cmin) and tonumber(cmax) then
-												local a = math.floor(tonumber(cmin))
-												local b = math.floor(tonumber(cmax))
-												if a > b then a, b = b, a end
-												spawnCount = math.max(1, math.random(a, b))
-											end
-										elseif tonumber(c) then
-											spawnCount = math.max(1, math.floor(tonumber(c)))
-										end
-									end
-									if templateConfig.nm then
-										minDist = templateConfig.nm * NM
+							if inRange then
+								local pilotCoord = COORDINATE:NewFromVec3(coord)
+								local templateConfig = LogisticCommander.csarHostileInfantryDistanceByTemplate and LogisticCommander.csarHostileInfantryDistanceByTemplate[templateKey]
+								if type(templateConfig) == 'function' then
+									templateConfig = templateConfig(templateKey, pilotData, event)
+								end
+								local minDist = (LogisticCommander.csarHostileInfantryMinDistanceNM or 1) * NM
+								local maxDist = (LogisticCommander.csarHostileInfantryMaxDistanceNM or 2) * NM
+								local spawnCount = (LogisticCommander.csarHostileInfantrySpawnCount or 1)
+								if templateConfig then
+									if type(templateConfig) == 'number' then
+										minDist = templateConfig * NM
 										maxDist = minDist
 									else
-										if templateConfig.minNM then minDist = templateConfig.minNM * NM end
-										if templateConfig.maxNM then maxDist = templateConfig.maxNM * NM else maxDist = minDist end
+										if templateConfig.count ~= nil then
+											local c = templateConfig.count
+											if type(c) == 'function' then
+												c = c(templateKey, pilotData, event)
+											end
+											if type(c) == 'table' then
+												local cmin = c.min or c.minCount or c[1]
+												local cmax = c.max or c.maxCount or c[2]
+												if tonumber(cmin) and tonumber(cmax) then
+													local a = math.floor(tonumber(cmin))
+													local b = math.floor(tonumber(cmax))
+													if a > b then a, b = b, a end
+													spawnCount = math.max(1, math.random(a, b))
+												end
+											elseif tonumber(c) then
+												spawnCount = math.max(1, math.floor(tonumber(c)))
+											end
+										end
+										if templateConfig.nm then
+											minDist = templateConfig.nm * NM
+											maxDist = minDist
+										else
+											if templateConfig.minNM then minDist = templateConfig.minNM * NM end
+											if templateConfig.maxNM then maxDist = templateConfig.maxNM * NM else maxDist = minDist end
+										end
 									end
 								end
-							end
 
-							local function pickTemplateName()
-								if type(templateConfig) == 'table' then
-									local list = templateConfig.templates or templateConfig.groups
-									if type(list) == 'table' and #list > 0 then
-										return list[math.random(#list)]
+								local function pickTemplateName()
+									if type(templateConfig) == 'table' then
+										local list = templateConfig.templates or templateConfig.groups
+										if type(list) == 'table' and #list > 0 then
+											return list[math.random(#list)]
+										end
+										if #templateConfig > 0 then
+											return templateConfig[math.random(#templateConfig)]
+										end
 									end
-									if #templateConfig > 0 then
-										return templateConfig[math.random(#templateConfig)]
-									end
+									return templateKey
 								end
-								return templateKey
-							end
 
-							local baseHeading = math.random(0, 359)
-							local stepDeg = (spawnCount > 0) and (360 / spawnCount) or 180
-							local aliasBase = "FOOTHOLD_CSAR_REDINF_"..tostring(aircraftID or math.random(1000,9999)).."_"..tostring(pilotObjectID or math.random(1000,9999))
-							local anySpawned = false
-							for i = 1, spawnCount do
-								local heading = (baseHeading + ((i - 1) * stepDeg)) % 360
-								local spawnDist = minDist + ((maxDist - minDist) * math.random())
-								local spawnCoord = pilotCoord:Translate(spawnDist, heading, true)
-								local templateName = pickTemplateName()
-								if templateName and templateName ~= '' then
-									local alias = aliasBase.."_"..tostring(i).."_"..tostring(math.random(1000,9999))
-									local spawned = SPAWN:NewWithAlias(templateName, alias):InitCoalition(coalition.side.RED):InitValidateAndRepositionGroundUnits(true):SpawnFromPointVec3(spawnCoord)
-									if spawned then
-										anySpawned = true
+								local baseHeading = math.random(0, 359)
+								local stepDeg = (spawnCount > 0) and (360 / spawnCount) or 180
+								local aliasBase = "FOOTHOLD_CSAR_REDINF_"..tostring(aircraftID or math.random(1000,9999)).."_"..tostring(pilotObjectID or math.random(1000,9999))
+								local anySpawned = false
+								for i = 1, spawnCount do
+									local heading = (baseHeading + ((i - 1) * stepDeg)) % 360
+									local spawnDist = minDist + ((maxDist - minDist) * math.random())
+									local spawnCoord = pilotCoord:Translate(spawnDist, heading, true)
+									local spawnVec2 = spawnCoord and spawnCoord.GetVec2 and spawnCoord:GetVec2() or nil
+									local spawnSurface = spawnVec2 and land.getSurfaceType(spawnVec2) or nil
+									local spawnOverWater = (spawnSurface == land.SurfaceType.WATER) or (spawnSurface == land.SurfaceType.SHALLOW_WATER)
+									if not spawnOverWater then
+										local templateName = pickTemplateName()
+										if templateName and templateName ~= '' then
+											local alias = aliasBase.."_"..tostring(i).."_"..tostring(math.random(1000,9999))
+											local spawned = SPAWN:NewWithAlias(templateName, alias):InitCoalition(coalition.side.RED):InitValidateAndRepositionGroundUnits(true):SpawnFromPointVec3(spawnCoord)
+											if spawned then
+												anySpawned = true
+											end
+										end
 									end
 								end
-							end
-							if anySpawned then
-								local msgAt = timer.getTime() + 120
-								if pilotData then
-									pilotData.hostileEnemyMessageAt = msgAt
-								else
-									hostileEnemyMessageAt = msgAt
+								if anySpawned then
+									local msgAt = timer.getTime() + 120
+									if pilotData then
+										pilotData.hostileEnemyMessageAt = msgAt
+									else
+										hostileEnemyMessageAt = msgAt
+									end
 								end
 							end
 						end
@@ -19659,6 +20635,131 @@ TexacoActive = false
 ArcoGroup = nil
 TexacoGroup = nil
 capGroup = nil
+
+ARCO_DEFAULT_ALTITUDE_FT = 18000
+TEXACO_DEFAULT_ALTITUDE_FT = 16000
+ArcoCurrentAltitudeFt = ARCO_DEFAULT_ALTITUDE_FT
+TexacoCurrentAltitudeFt = TEXACO_DEFAULT_ALTITUDE_FT
+
+-- Persisted tanker unlock + station state (saved in BattleCommander state table).
+TANKER_PERSISTENCE = TANKER_PERSISTENCE or {
+    arco = { unlocked = false, x = nil, y = nil, z = nil, heading = 45, leg = 0, zone = nil },
+    texaco = { unlocked = false, x = nil, y = nil, z = nil, heading = 45, leg = 0, zone = nil },
+}
+_tankerRestoreScheduled = _tankerRestoreScheduled or false
+
+_getTankerDefaultAltitude = function(kind)
+    if kind == "arco" then
+        return ARCO_DEFAULT_ALTITUDE_FT
+    end
+    return TEXACO_DEFAULT_ALTITUDE_FT
+end
+
+_getTankerCurrentAltitude = function(kind)
+    if kind == "arco" then
+        ArcoCurrentAltitudeFt = tonumber(ArcoCurrentAltitudeFt) or ARCO_DEFAULT_ALTITUDE_FT
+        return ArcoCurrentAltitudeFt
+    end
+    TexacoCurrentAltitudeFt = tonumber(TexacoCurrentAltitudeFt) or TEXACO_DEFAULT_ALTITUDE_FT
+    return TexacoCurrentAltitudeFt
+end
+
+_setTankerCurrentAltitude = function(kind, altitudeFt)
+    local alt = tonumber(altitudeFt)
+    if not alt then return nil end
+    alt = math.floor(alt + 0.5)
+    if kind == "arco" then
+        ArcoCurrentAltitudeFt = alt
+        return ArcoCurrentAltitudeFt
+    end
+    TexacoCurrentAltitudeFt = alt
+    return TexacoCurrentAltitudeFt
+end
+
+_getTankerAltitudeOptions = function(kind)
+    if kind == "arco" then
+        return {16000, 17000, 18000, 19000, 20000, 21000, 22000}
+    end
+    return {14000, 15000, 16000, 17000, 18000, 19000, 20000}
+end
+
+_formatFeetMenuLabel = function(feet)
+    local n = math.floor((tonumber(feet) or 0) + 0.5)
+    local s = tostring(n)
+    while true do
+        local formatted, k = s:gsub("^(-?%d+)(%d%d%d)", "%1,%2")
+        s = formatted
+        if k == 0 then break end
+    end
+    return s
+end
+
+_normalizeTankerState = function(raw, defaultHeading)
+    local out = {
+        unlocked = false,
+        x = nil,
+        y = nil,
+        z = nil,
+        heading = defaultHeading,
+        leg = 0,
+        zone = nil,
+    }
+    if type(raw) ~= "table" then return out end
+    out.unlocked = raw.unlocked == true
+    out.x = tonumber(raw.x)
+    out.y = tonumber(raw.y)
+    out.z = tonumber(raw.z)
+    out.heading = tonumber(raw.heading) or defaultHeading
+    out.leg = tonumber(raw.leg) or 0
+    out.zone = raw.zone
+    return out
+end
+
+_getTankerState = function(kind)
+    local key = (kind == "arco") and "arco" or "texaco"
+    local defHeading = (key == "arco") and 45 or 45
+    TANKER_PERSISTENCE = TANKER_PERSISTENCE or {}
+    TANKER_PERSISTENCE[key] = _normalizeTankerState(TANKER_PERSISTENCE[key], defHeading)
+    return TANKER_PERSISTENCE[key]
+end
+
+_isTankerUnlockedById = function(id)
+    if id == "dynamicarco" then
+        return _getTankerState("arco").unlocked == true
+    elseif id == "dynamictexaco" then
+        return _getTankerState("texaco").unlocked == true
+    end
+    return false
+end
+
+_setTankerUnlockedById = function(id)
+    if id == "dynamicarco" then
+        _getTankerState("arco").unlocked = true
+    elseif id == "dynamictexaco" then
+        _getTankerState("texaco").unlocked = true
+    end
+end
+
+_saveTankerStation = function(kind, coord, heading, leg, zone)
+    local st = _getTankerState(kind)
+    st.unlocked = true
+    st.heading = tonumber(heading) or st.heading or 45
+    st.leg = tonumber(leg) or 0
+    if zone then st.zone = zone end
+
+    local vec = nil
+    if coord and coord.GetVec3 then
+        vec = coord:GetVec3()
+    elseif type(coord) == "table" and coord.x and (coord.z or coord.y) then
+        vec = { x = coord.x, y = coord.y, z = coord.z or coord.y }
+    end
+    if vec and vec.x and vec.z then
+        st.x = vec.x
+        st.y = vec.y
+        st.z = vec.z
+    end
+end
+
 capTemplate = (Era == 'Coldwar') and 'CAP_Template_CW' or 'CAP_Template'
 capAltitude = 28000
 capSpeed = 380
@@ -19831,6 +20932,52 @@ function isTexacoRepositionAllowed()
     return not occupied
 end
 
+function ArcoAltitudeCheckAndSet(altFt)
+    if not ArcoGroup then return false end
+    if not isArcoRepositionAllowed() then
+        MESSAGE:New("Players currently near the tanker. Try again later.", 10):ToAll()
+        return false
+    end
+
+    local currentAlt = tonumber(_getTankerCurrentAltitude("arco")) or _getTankerDefaultAltitude("arco")
+    local targetAlt = _setTankerCurrentAltitude("arco", altFt)
+    if not targetAlt then return false end
+    if currentAlt == targetAlt then return false end
+
+    local st = _getTankerState("arco")
+    local heading = tonumber(st.heading) or 45
+    local leg = tonumber(st.leg) or 0
+    local coord = ArcoGroup:GetCoordinate()
+    if not coord then return false end
+
+    setArcoRacetrack(coord, heading, leg, st.zone)
+    MESSAGE:New("Arco altitude set to " .. _formatFeetMenuLabel(targetAlt) .. " ft.", 10):ToAll()
+    return true
+end
+
+function TexacoAltitudeCheckAndSet(altFt)
+    if not TexacoGroup then return false end
+    if not isTexacoRepositionAllowed() then
+        MESSAGE:New("Players currently near the tanker. Try again later.", 10):ToAll()
+        return false
+    end
+
+    local currentAlt = tonumber(_getTankerCurrentAltitude("texaco")) or _getTankerDefaultAltitude("texaco")
+    local targetAlt = _setTankerCurrentAltitude("texaco", altFt)
+    if not targetAlt then return false end
+    if currentAlt == targetAlt then return false end
+
+    local st = _getTankerState("texaco")
+    local heading = tonumber(st.heading) or 45
+    local leg = tonumber(st.leg) or 0
+    local coord = TexacoGroup:GetCoordinate()
+    if not coord then return false end
+
+    setTexacoRacetrack(coord, heading, leg, st.zone)
+    MESSAGE:New("Texaco altitude set to " .. _formatFeetMenuLabel(targetAlt) .. " ft.", 10):ToAll()
+    return true
+end
+
 function startArcoProximityWatch()
     if not ArcoGroup then return end
     local u = ArcoGroup:GetUnit(1)
@@ -19872,11 +21019,13 @@ function setTexacoRacetrack(coord, heading, leg, zone)
     if currentMission then
         currentMission:__Cancel(5)
     end
-    local TexacoTanker2 = AUFTRAG:NewTANKER(coord, 16000, 280, heading, leg)
+    local texacoAltFt = _getTankerCurrentAltitude("texaco")
+    local TexacoTanker2 = AUFTRAG:NewTANKER(coord, texacoAltFt, TexacoSpeed or 286, heading, leg)
     
 	TexacoTanker2:SetMissionSpeed(361)
-	TexacoTanker2:SetMissionAltitude(16000)
+	TexacoTanker2:SetMissionAltitude(texacoAltFt)
 	TexacoGroup:AddMission(TexacoTanker2)
+	_saveTankerStation("texaco", coord, heading, leg, zone)
 
 
 	function TexacoTanker2:OnAfterStarted(From, Event, To)
@@ -19910,10 +21059,12 @@ function setArcoRacetrack(coord, heading, leg, zone)
     if currentMission then
         currentMission:__Cancel(5)
     end
-    local ArcoTanker2 = AUFTRAG:NewTANKER(coord, 18000, 280, heading, leg)
+    local arcoAltFt = _getTankerCurrentAltitude("arco")
+    local ArcoTanker2 = AUFTRAG:NewTANKER(coord, arcoAltFt, ArcoSpeed or 286, heading, leg)
 	ArcoTanker2:SetMissionSpeed(371)
-	ArcoTanker2:SetMissionAltitude(18000)
+	ArcoTanker2:SetMissionAltitude(arcoAltFt)
     ArcoGroup:AddMission(ArcoTanker2)
+	_saveTankerStation("arco", coord, heading, leg, zone)
 
 	function ArcoTanker2:OnAfterExecuting(From, Event, To)
 		if leg == 0 then
@@ -19930,8 +21081,64 @@ function setArcoRacetrack(coord, heading, leg, zone)
 			end
 		end
 	end
-end
 
+end
+function schedulePersistentTankerRestore()
+	if _tankerRestoreScheduled then return end
+	local arcoState = _getTankerState("arco")
+	local texacoState = _getTankerState("texaco")
+	if not (arcoState.unlocked or texacoState.unlocked) then return end
+	_tankerRestoreScheduled = true
+		timer.scheduleFunction(function()
+			_tankerRestoreScheduled = false
+			local needArcoSelection = false
+			local needTexacoSelection = false
+
+			local arco = _getTankerState("arco")
+			if arco.unlocked and not ArcoActive then
+				local heading = tonumber(arco.heading) or 45
+				local leg = tonumber(arco.leg) or 0
+				local triedArcoSpawn = false
+				if arco.x and arco.z then
+					triedArcoSpawn = true
+					spawnArcoAt(COORDINATE:New(arco.x, UTILS.FeetToMeters(18000), arco.z), heading, leg, arco.zone or "saved position", true)
+				elseif arco.zone and ZONE:FindByName(arco.zone) then
+					triedArcoSpawn = true
+					spawnArcoAt(arco.zone, heading, leg, nil, true)
+				end
+				if (not triedArcoSpawn) or (not ArcoActive) then
+					needArcoSelection = true
+				end
+			end
+
+		local texaco = _getTankerState("texaco")
+			if texaco.unlocked and not TexacoActive then
+				local heading = tonumber(texaco.heading) or 45
+				local leg = tonumber(texaco.leg) or 0
+				local triedTexacoSpawn = false
+				if texaco.x and texaco.z then
+					triedTexacoSpawn = true
+					spawnTexacoAt(COORDINATE:New(texaco.x, UTILS.FeetToMeters(16000), texaco.z), heading, leg, texaco.zone or "saved position", true)
+				elseif texaco.zone and ZONE:FindByName(texaco.zone) then
+					triedTexacoSpawn = true
+					spawnTexacoAt(texaco.zone, heading, leg, nil, true)
+				end
+				if (not triedTexacoSpawn) or (not TexacoActive) then
+					needTexacoSelection = true
+				end
+		end
+
+		if needArcoSelection and not ArcoActive then
+			buildArcoMenu()
+			trigger.action.outTextForCoalition(2, '(Drogue) Tanker is unlocked. Select spawn zone.', 20)
+		end
+		if needTexacoSelection and not TexacoActive then
+			buildTexacoMenu()
+			trigger.action.outTextForCoalition(2, '(Boom) Tanker is unlocked. Select spawn zone.', 20)
+		end
+		return nil
+	end, {}, timer.getTime() + 2)
+end
 capPositionDirections = {["Reposition 360"] = 360, ["Reposition 045"] = 45, ["Reposition 090"] = 90, ["Reposition 135"] = 135, ["Reposition 180"] = 180, ["Reposition 225"] = 225, ["Reposition 270"] = 270, ["Reposition 315"] = 315}
 capPositionDistances = {["0 NM"] = 0,["10 NM"] = 10, ["20 NM"] = 20, ["30 NM"] = 30, ["40 NM"] = 40, ["50 NM"] = 50, ["60 NM"] = 60, ["70 NM"] = 70, ["80 NM"] = 80, ["90 NM"] = 90, ["100 NM"] = 100}
 
@@ -19985,13 +21192,37 @@ function buildCapControlMenu()
         missionCommands.removeItemForCoalition(2, capControlMenu)
         capControlMenu = nil
     end
-    capControlMenu = missionCommands.addSubMenuForCoalition(2, "Dynamic Control")
 
-    if not (capActive or casActive or seadActive or decoyActive or bomberActive or StructureActive or ArcoActive or TexacoActive) then
+	local hasNonTankerDynamic = capActive or casActive or seadActive or decoyActive or bomberActive or StructureActive
+	local hasEligibleTankerController = false
+	if bc and (ArcoActive or TexacoActive) then
+		local reqArco = (bc._getTankerRequiredRank and bc:_getTankerRequiredRank("dynamicarco")) or 0
+		local reqTexaco = (bc._getTankerRequiredRank and bc:_getTankerRequiredRank("dynamictexaco")) or 0
+		local groups = coalition.getGroups(2) or {}
+		for _, g in pairs(groups) do
+			if g and g:isExist() and bc._groupHasHumanPlayer and bc:_groupHasHumanPlayer(g) then
+				local isHeloGroup = (bc._groupIsHelicopter and bc:_groupIsHelicopter(g)) or false
+				if not isHeloGroup then
+					local gid = g:getID()
+					local rank = (bc._getGroupRank and bc:_getGroupRank(gid, g)) or 0
+					if (ArcoActive and rank >= reqArco) or (TexacoActive and rank >= reqTexaco) then
+						hasEligibleTankerController = true
+						break
+					end
+				end
+			end
+		end
+	end
+
+    capControlMenu = missionCommands.addSubMenuForCoalition(2, "Dynamic Control")
+    if not (hasNonTankerDynamic or hasEligibleTankerController) then
         if capControlMenu then
             missionCommands.removeItemForCoalition(2, capControlMenu)
             capControlMenu = nil
         end
+		if bc and bc.refreshTankerControlMenusForBlue then
+			bc:refreshTankerControlMenusForBlue(true)
+		end
         return
     end
 
@@ -20129,12 +21360,31 @@ function buildCapControlMenu()
             end
         end
     end
+	if false then -- legacy coalition tanker menu; replaced by rank-gated group menus
 	local tankersMenu
-	if ArcoActive or TexacoActive then
+	if ArcoActive or TexacoActive or arcoUnlocked or texacoUnlocked then
 		tankersMenu = missionCommands.addSubMenuForCoalition(2, "Dynamic Tankers", capControlMenu)
 	end
+	if arcoUnlocked and not ArcoActive then
+		missionCommands.addCommandForCoalition(2, "Arco: Spawn at Saved Station", tankersMenu, function()
+			local st = _getTankerState("arco")
+			local heading = tonumber(st.heading) or 45
+			local leg = tonumber(st.leg) or 0
+			local zone = st.zone or "saved position"
+			if st.x and st.z then
+				local coord = COORDINATE:New(st.x, UTILS.FeetToMeters(18000), st.z)
+				spawnArcoAt(coord, heading, leg, zone)
+			elseif zone and ZONE:FindByName(zone) then
+				spawnArcoAt(zone, heading, leg)
+			else
+				buildArcoMenu()
+				MESSAGE:New("Arco has no saved station yet. Select a spawn zone.", 15):ToAll()
+			end
+		end)
+		missionCommands.addCommandForCoalition(2, "Arco: Spawn by Zone", tankersMenu, buildArcoMenu)
+	end
 	if ArcoActive then
-		local zoneMenu = missionCommands.addSubMenuForCoalition(2, "Arco (Drogue): Reposition by Zone", tankersMenu)
+		local zoneMenu = missionCommands.addSubMenuForCoalition(2, "Arco (Drogue): Move to Zone", tankersMenu)
 		local count = 0
 		local sub1
 		for _, wrap in ipairs(orderedZones(2, nil, false)) do
@@ -20180,7 +21430,7 @@ function buildCapControlMenu()
 			end
 		end
 
-		local posMenu = missionCommands.addSubMenuForCoalition(2, "Arco (Drogue): Reposition by Position", tankersMenu)
+		local posMenu = missionCommands.addSubMenuForCoalition(2, "Arco (Drogue): Move by Position", tankersMenu)
 		for _, dirName in ipairs({"Reposition 360", "Reposition 045", "Reposition 090", "Reposition 135", "Reposition 180", "Reposition 225", "Reposition 270", "Reposition 315"}) do
 			local dirVal = capPositionDirections[dirName]
 			local dirMenu = missionCommands.addSubMenuForCoalition(2, dirName, posMenu)
@@ -20216,10 +21466,28 @@ function buildCapControlMenu()
 				end
 			end
 		end
-		missionCommands.addCommandForCoalition(2, "Arco: Destroy", tankersMenu, despawnArco)
+		--missionCommands.addCommandForCoalition(2, "Arco: Destroy", tankersMenu, despawnArco)
+	end
+	if texacoUnlocked and not TexacoActive then
+		missionCommands.addCommandForCoalition(2, "Texaco: Spawn at Saved Station", tankersMenu, function()
+			local st = _getTankerState("texaco")
+			local heading = tonumber(st.heading) or 45
+			local leg = tonumber(st.leg) or 0
+			local zone = st.zone or "saved position"
+			if st.x and st.z then
+				local coord = COORDINATE:New(st.x, UTILS.FeetToMeters(16000), st.z)
+				spawnTexacoAt(coord, heading, leg, zone)
+			elseif zone and ZONE:FindByName(zone) then
+				spawnTexacoAt(zone, heading, leg)
+			else
+				buildTexacoMenu()
+				MESSAGE:New("Texaco has no saved station yet. Select a spawn zone.", 15):ToAll()
+			end
+		end)
+		missionCommands.addCommandForCoalition(2, "Texaco: Spawn by Zone", tankersMenu, buildTexacoMenu)
 	end
 	if TexacoActive then
-		local zoneMenu = missionCommands.addSubMenuForCoalition(2, "Texaco (Boom): Reposition by Zone", tankersMenu)
+		local zoneMenu = missionCommands.addSubMenuForCoalition(2, "Texaco (Boom): Move to Zone", tankersMenu)
 		local count = 0
 		local sub1
 		for _, wrap in ipairs(orderedZones(2, nil, false)) do
@@ -20265,7 +21533,7 @@ function buildCapControlMenu()
 			end
 		end
 
-		local posMenu = missionCommands.addSubMenuForCoalition(2, "Texaco (Boom): Reposition by Position", tankersMenu)
+		local posMenu = missionCommands.addSubMenuForCoalition(2, "Texaco (Boom): Move by Position", tankersMenu)
 		for _, dirName in ipairs({"Reposition 360", "Reposition 045", "Reposition 090", "Reposition 135", "Reposition 180", "Reposition 225", "Reposition 270", "Reposition 315"}) do
 			local dirVal = capPositionDirections[dirName]
 			local dirMenu = missionCommands.addSubMenuForCoalition(2, dirName, posMenu)
@@ -20300,7 +21568,12 @@ function buildCapControlMenu()
 				end
 			end
 		end
-		missionCommands.addCommandForCoalition(2, "Texaco: Destroy", tankersMenu, despawnTexaco)
+		--missionCommands.addCommandForCoalition(2, "Texaco: Destroy", tankersMenu, despawnTexaco)
+	end
+	end
+
+	if bc and bc.refreshTankerControlMenusForBlue then
+		bc:refreshTankerControlMenusForBlue(true)
 	end
 end
 
@@ -20438,43 +21711,67 @@ end
 -------------------------------------------------------- Dynamic Tankers -----------------------------------------------------
 --Arco
 
-function spawnArcoAt(zoneName, heading, leg)
+local function _resolveTankerSpawnInput(input, heading, fallbackZoneLabel)
+	local zoneName = nil
+	local sourceCoord = nil
+	if type(input) == "string" then
+		local zone = ZONE:FindByName(input)
+		if not zone then return nil end
+		zoneName = input
+		sourceCoord = zone:GetCoordinate()
+	elseif input and type(input) == "table" and input.GetVec3 then
+		sourceCoord = input
+	elseif type(input) == "table" and input.x and (input.z or input.y) then
+		sourceCoord = COORDINATE:New(input.x, input.y or 0, input.z or input.y)
+	end
+	if not sourceCoord then return nil end
+	local spawnHeading = tonumber(heading) or 45
+	local coord = COORDINATE:NewFromVec3(sourceCoord:GetVec3(), spawnHeading)
+	local label = zoneName or fallbackZoneLabel or "saved position"
+	return {
+		coord = coord,
+		spawnCoord = sourceCoord,
+		zoneName = zoneName,
+		label = label,
+		heading = spawnHeading,
+	}
+end
+function spawnArcoAt(zoneOrCoord, heading, leg, zoneLabel, fromRestore)
     if ArcoActive then return end
-    local zone = ZONE:FindByName(zoneName)
-    if not zone then return end
-    local coordVec3 = zone:GetCoordinate():GetVec3()
-	local SpawnCords = zone:GetCoordinate()
-	local coord = COORDINATE:NewFromVec3(coordVec3, heading)
-		local g = Respawn.SpawnAtPoint( 'Arco', coord, heading, 2, 18000, 286 )
-				if not g then return end
+	_setTankerCurrentAltitude("arco", _getTankerDefaultAltitude("arco"))
+	local arcoAltFt = _getTankerCurrentAltitude("arco")
+	local spawn = _resolveTankerSpawnInput(zoneOrCoord, heading, zoneLabel)
+	if not spawn then return end
+	local spawnLeg = tonumber(leg) or 0
+	local g = Respawn.SpawnAtPoint('Arco', spawn.coord, spawn.heading, 2, arcoAltFt, 286)
+	if not g then return end
+	local zoneToSave = spawn.zoneName or ((zoneLabel and zoneLabel ~= "saved position") and zoneLabel or nil)
+	_saveTankerStation("arco", spawn.coord, spawn.heading, spawnLeg, zoneToSave)
 	timer.scheduleFunction(function(group, time)
 		local spawnedGroup = GROUP:FindByName(group:getName())
         ArcoGroup = FLIGHTGROUP:New(spawnedGroup)
 		ArcoGroup:SwitchInvisible(true):SwitchImmortal(true):GetGroup():CommandSetUnlimitedFuel(true)
 		ArcoGroup:SetDefaultTACAN("101", "ARC", "Arco", "Y")
-		local homebase, distance = SpawnCords:GetClosestAirbase(0, 2)
+		local homebase = nil
+		if spawn.spawnCoord and spawn.spawnCoord.GetClosestAirbase then
+			homebase = select(1, spawn.spawnCoord:GetClosestAirbase(0, 2))
+		end
 		if homebase then
 			ArcoGroup:SetHomebase(homebase)
 		end
-		local speed
-		if leg == 0 then 
-		speed = 280
-		else
-		speed = 286
-		end
+		local speed = (spawnLeg == 0) and 280 or ArcoSpeed or 286
 		function ArcoGroup:OnAfterFuelLow(From, Event, To)
 			trigger.action.outText("Arco is low on fuel, returning to base", 20)
 		end
-		ArcoTanker = AUFTRAG:NewTANKER(coord, 18000, speed, heading, leg)
+		ArcoTanker = AUFTRAG:NewTANKER(spawn.coord, arcoAltFt, speed, spawn.heading, spawnLeg)
+		ArcoTanker:SetMissionAltitude(arcoAltFt)
 		--ArcoTanker:SetTACAN(101, "ARCO", "Arco", "Y")
 		ArcoGroup:AddMission(ArcoTanker)
 		ArcoGroup:MissionStart(ArcoTanker)
 		startArcoProximityWatch()
-
 		function ArcoGroup:OnAfterLanded(From, Event, To)
     	self:ScheduleOnce(5, function() self:Destroy() end)
 		end
-	
 		function ArcoGroup:OnAfterDead(From, Event, To)
 			stopArcoProximityWatch()
 			local landed = (From=="Landed") or (From=="Arrived")
@@ -20488,12 +21785,17 @@ function spawnArcoAt(zoneName, heading, leg)
 				trigger.action.outText("Arco have been killed", 20)
 			end
 		end
-
-		local msg = (leg == 0)
-            and ("Arco (BTN-14, 260.00, TCN 101Y)\nOn station orbiting at " .. zoneName .. ".")
-            or  ("Arco (BTN-14, 260.00, TCN 101Y)\nOn station at " .. zoneName .. ", setting up racetrack " .. heading .. "°, " .. tostring(leg) .. " miles leg.")
+		local msg
+		if fromRestore then
+			msg = (spawnLeg == 0)
+				and ("Arco (BTN-14, 260.00, TCN 101Y)\nOn station orbiting.")
+				or  ("Arco (BTN-14, 260.00, TCN 101Y)\nOn station, setting up racetrack " .. spawn.heading .. " deg, " .. tostring(spawnLeg) .. " miles leg.")
+		else
+			msg = (spawnLeg == 0)
+				and ("Arco (BTN-14, 260.00, TCN 101Y)\nOn station orbiting at " .. spawn.label .. ".")
+				or  ("Arco (BTN-14, 260.00, TCN 101Y)\nOn station at " .. spawn.label .. ", setting up racetrack " .. spawn.heading .. " deg, " .. tostring(spawnLeg) .. " miles leg.")
+		end
 		MESSAGE:New(msg, 20):ToAll()
-
 		if ArcoParentMenu then
 		missionCommands.removeItemForCoalition(2, ArcoParentMenu)
 		ArcoParentMenu = nil
@@ -20501,12 +21803,8 @@ function spawnArcoAt(zoneName, heading, leg)
 	end, g, timer.getTime() + 1)
     ArcoActive = true
 	buildCapControlMenu()
-
 	ArcoSpawnIndex = ArcoSpawnIndex + 1
 end
-
-
-
 	function buildArcoMenu()
 		if ArcoParentMenu then
 			missionCommands.removeItemForCoalition(2, ArcoParentMenu)
@@ -20554,15 +21852,17 @@ end
 
 -- Texaco
 
-function spawnTexacoAt(zoneName, heading, leg)
+function spawnTexacoAt(zoneOrCoord, heading, leg, zoneLabel, fromRestore)
     if TexacoActive then return end
-    local zone = ZONE:FindByName(zoneName)
-    if not zone then return end
-    local coordVec3 = zone:GetCoordinate():GetVec3()
-	local SpawnCords = zone:GetCoordinate()
-	local coord = COORDINATE:NewFromVec3(coordVec3, heading)
-		local g = Respawn.SpawnAtPoint( 'Texaco', coord, heading, 2, 16000, 286 )
-				if not g then return end
+	_setTankerCurrentAltitude("texaco", _getTankerDefaultAltitude("texaco"))
+	local texacoAltFt = _getTankerCurrentAltitude("texaco")
+	local spawn = _resolveTankerSpawnInput(zoneOrCoord, heading, zoneLabel)
+	if not spawn then return end
+	local spawnLeg = tonumber(leg) or 0
+	local g = Respawn.SpawnAtPoint('Texaco', spawn.coord, spawn.heading, 2, texacoAltFt, 286)
+	if not g then return end
+	local zoneToSave = spawn.zoneName or ((zoneLabel and zoneLabel ~= "saved position") and zoneLabel or nil)
+	_saveTankerStation("texaco", spawn.coord, spawn.heading, spawnLeg, zoneToSave)
 	timer.scheduleFunction(function(group, time)
 		local spawnedGroup = GROUP:FindByName(group:getName())
         TexacoGroup = FLIGHTGROUP:New(spawnedGroup)
@@ -20570,29 +21870,26 @@ function spawnTexacoAt(zoneName, heading, leg)
 		TexacoGroup:SwitchInvisible(true):SwitchImmortal(true):GetGroup():CommandSetUnlimitedFuel(true)
 		--TexacoGroup:GetGroup():CommandSetImmortal(true):CommandSetInvisible(true)
 		TexacoGroup:SetDefaultTACAN("102", "TEX", "Texaco", "Y")
-		local homebase, distance = SpawnCords:GetClosestAirbase(0, 2)
+		local homebase = nil
+		if spawn.spawnCoord and spawn.spawnCoord.GetClosestAirbase then
+			homebase = select(1, spawn.spawnCoord:GetClosestAirbase(0, 2))
+		end
 		if homebase then
 			TexacoGroup:SetHomebase(homebase)
 		end
 		function TexacoGroup:OnAfterFuelLow(From, Event, To)
 			trigger.action.outText("Texaco is low on fuel, returning to base", 20)
 		end
-		local speed
-		if leg == 0 then 
-		speed = 280
-		else
-		speed = 286
-		end
-		TexacoTanker = AUFTRAG:NewTANKER(coord, 16000, speed, heading, leg)
+		local speed = (spawnLeg == 0) and 280 or TexacoSpeed or 286
+		TexacoTanker = AUFTRAG:NewTANKER(spawn.coord, texacoAltFt, speed, spawn.heading, spawnLeg)
+		TexacoTanker:SetMissionAltitude(texacoAltFt)
 		--TexacoTanker:SetTACAN(102, "TEX", "Texaco", "Y")
 		TexacoGroup:AddMission(TexacoTanker)
 		TexacoGroup:MissionStart(TexacoTanker)
 		startTexacoProximityWatch()
-
 		function TexacoGroup:OnAfterLanded(From, Event, To)
     	self:ScheduleOnce(5, function() self:Destroy() end)
 		end
-
 		function TexacoGroup:OnAfterDead(From, Event, To)
 			stopTexacoProximityWatch()
 			local landed = (From=="Landed") or (From=="Arrived")
@@ -20606,12 +21903,17 @@ function spawnTexacoAt(zoneName, heading, leg)
 				trigger.action.outText("Texaco have been killed", 20)
 			end
 		end
-
-		local msg = (leg == 0)
-            and ("Texaco (BTN-20, 266.00, TCN 102Y)\non station orbiting at " .. zoneName .. ".")
-            or  ("Texaco (BTN-20, 266.00, TCN 102Y)\non station at " .. zoneName .. ", setting up racetrack " .. heading .. "°, " .. tostring(leg) .. " miles leg.")
+		local msg
+		if fromRestore then
+			msg = (spawnLeg == 0)
+				and ("Texaco (BTN-20, 266.00, TCN 102Y)\non station orbiting.")
+				or  ("Texaco (BTN-20, 266.00, TCN 102Y)\non station, setting up racetrack " .. spawn.heading .. " deg, " .. tostring(spawnLeg) .. " miles leg.")
+		else
+			msg = (spawnLeg == 0)
+				and ("Texaco (BTN-20, 266.00, TCN 102Y)\non station orbiting at " .. spawn.label .. ".")
+				or  ("Texaco (BTN-20, 266.00, TCN 102Y)\non station at " .. spawn.label .. ", setting up racetrack " .. spawn.heading .. " deg, " .. tostring(spawnLeg) .. " miles leg.")
+		end
 		MESSAGE:New(msg, 20):ToAll()
-
 		if TexacoParentMenu then
 		missionCommands.removeItemForCoalition(2, TexacoParentMenu)
 		TexacoParentMenu = nil
@@ -20619,11 +21921,7 @@ function spawnTexacoAt(zoneName, heading, leg)
 	end, g, timer.getTime() + 1)
     TexacoActive = true
 	buildCapControlMenu()
-
 end
-
-
-
 	function buildTexacoMenu()
 		if TexacoParentMenu then
 			missionCommands.removeItemForCoalition(2, TexacoParentMenu)
@@ -20853,13 +22151,10 @@ function spawnDecoyAt(zoneName, targetZoneName, offsetNM, altitude)
 	local missionAlt = altitude - 1000
 	--local DecoyMission = AUFTRAG:NewCASENHANCED(targetZone,27000,550,35,nil,"Air Defence")
 	local DecoyMission = AUFTRAG:NewBAI(decoyTargets, missionAlt)
-	local offsetNM = 33
+	local offsetNM = 35
 	for _, u in pairs(decoyTargets:GetSet()) do
-		if string.find(u:GetTypeName(), "40B6M") then
+		if string.find(u:GetTypeName(), "RPC_5N62V") then
 			offsetNM = 35
-			break
-		elseif string.find(u:GetTypeName(), "RPC_5N62V") then
-			offsetNM = 60
 			break
 		end
 	end
@@ -21242,10 +22537,10 @@ function spawnStructureAt(zoneName, targetZoneName,offsetNM)
     end
 	if setStaticBomber:Count() > 0 then
 		local auftragstatic = AUFTRAG:NewBAI(setStaticBomber, 25000)
-		auftragstatic.missionWaypointOffsetNM = 14
-		auftragstatic:SetWeaponExpend(AI.Task.WeaponExpend.ONE)
-		auftragstatic:SetEngageAsGroup(false)
-		auftragstatic:SetMissionSpeed(600)
+		auftragstatic.missionWaypointOffsetNM = 9
+		auftragstatic:SetWeaponExpend(AI.Task.WeaponExpend.TWO)
+		auftragstatic:SetEngageAsGroup(true)
+		auftragstatic:SetMissionSpeed(700)
 		StructureGroup:AddMission(auftragstatic)
 		function auftragstatic:OnAfterExecuting(From, Event, To)
 		StructureGroup:SwitchROE(2)
@@ -21458,7 +22753,7 @@ do
 				if type(wp) == 'table' then
 					for item, qty in pairs(wp) do
 						qty = tonumber(qty) or 0
-						if qty < 0 then
+						if qty < 0 or qty == 1073741823 then
 							hasUnlimited = true
 						else
 							if qty > 0 then
@@ -21466,7 +22761,7 @@ do
 								countQty = countQty + 1
 							end
 						end
-						if qty ~= 0 then
+						if qty ~= 0 and qty ~= 1073741823 then
 							nonZeroEntries = nonZeroEntries + 1
 							out[#out + 1] = string.format('%s;W;%s;%d', ab, tostring(item), qty)
 						end
@@ -21476,7 +22771,7 @@ do
 					for i = 1, #wsItems do
 						local w = wsItems[i]
 						local qty = tonumber(st:GetItemAmount(w)) or 0
-						if qty < 0 then
+						if qty < 0 or qty == 1073741823 then
 							hasUnlimited = true
 						else
 							if qty > 0 then
@@ -21484,7 +22779,7 @@ do
 								countQty = countQty + 1
 							end
 						end
-						if qty ~= 0 then
+						if qty ~= 0 and qty ~= 1073741823 then
 							nonZeroEntries = nonZeroEntries + 1
 							out[#out + 1] = string.format('%s;W;{%d,%d,%d,%d};%d', ab, tonumber(w[1]) or 0, tonumber(w[2]) or 0, tonumber(w[3]) or 0, tonumber(w[4]) or 0, qty)
 						end
@@ -21686,325 +22981,311 @@ WEAPONSLIST.CategoryOrder = {
 
 end
 
-
-
 WEAPONSLIST.Items = {
 [WEAPONSLIST.ItemCategory.AA_MISSILES] = {
     -- AA MISSILES
+         'weapons.missiles.AIM-7E',
+         'weapons.missiles.AIM-7E-2',
+         'weapons.missiles.AIM-7F',
+         'weapons.missiles.AIM-7MH',
+         'weapons.missiles.AIM-7P',
+         'weapons.missiles.AIM-9E',
+         'weapons.missiles.AIM-9J',
+         'weapons.missiles.AIM-9JULI',
+         'weapons.missiles.AIM-9L',
+         'weapons.missiles.AIM-9P',
+         'weapons.missiles.AIM-9P3',
+         'weapons.missiles.AIM-9P5',
+         'weapons.missiles.AIM_120',
+         'weapons.missiles.AIM_120C',
+         'weapons.missiles.AIM_54',
+         'weapons.missiles.AIM_54A_Mk47',
+         'weapons.missiles.AIM_54A_Mk60',
+         'weapons.missiles.AIM_54C_Mk47',
+         'weapons.missiles.AIM_54C_Mk60',
+         'weapons.missiles.AIM_7',
+         'weapons.missiles.AIM_9',
+         'weapons.missiles.AIM_9X',
          'weapons.missiles.CATM_9M',
-        'weapons.missiles.Mistral',
-        'weapons.missiles.Igla_1E',
-        'weapons.missiles.R_550',
-        'weapons.missiles.P_60',
-        'weapons.missiles.AIM_120C',
-        'weapons.missiles.AIM_120',
-        'weapons.missiles.P_33E',
-        'weapons.missiles.Rb 24',
-        'weapons.missiles.Rb 24J',
-        'weapons.missiles.Rb 74',
-        'weapons.missiles.P_27P',
-        'weapons.missiles.AIM-9P',
-        'weapons.missiles.AIM_9X',
-        'weapons.missiles.P_27PE',
-        'weapons.missiles.P_27T',
-        'weapons.missiles.P_27TE',
-        'weapons.missiles.P_73',
-        'weapons.missiles.P_77',
-        'weapons.missiles.MICA_T',
-        'weapons.missiles.AIM_7',
-        'weapons.missiles.AIM_9',
-        'weapons.missiles.AIM_54',
-        'weapons.missiles.P_24T',
-        'weapons.missiles.GAR-8',
-        'weapons.missiles.AIM-9P5',
-        'weapons.missiles.AIM-9L',
-        'weapons.missiles.AIM-7E',
-        'weapons.missiles.AIM-7F',
-        'weapons.missiles.P_40T',
-        'weapons.missiles.AIM-7MH',
-        'weapons.missiles.MICA_R',
-        'weapons.missiles.PL-5EII',
-        'weapons.missiles.SD-10',
-        'weapons.missiles.PL-12',
-        'weapons.missiles.PL-8B',
-        'weapons.missiles.PL-8A',
-        'weapons.missiles.AIM_54A_Mk47',
-        'weapons.missiles.AIM_54A_Mk60',
-        'weapons.missiles.AIM_54C_Mk47',
-        'weapons.missiles.MMagicII',
-        'weapons.missiles.R-13M',
-        'weapons.missiles.R-13M1',
-        'weapons.missiles.R-3S',
-        'weapons.missiles.R-3R',
-        'weapons.missiles.RS2US',
-        'weapons.missiles.R-55',
-        'weapons.missiles.R-60',
-        'weapons.missiles.Matra Super 530D',
-        'weapons.missiles.AIM-9J',
-        'weapons.missiles.AIM-9JULI',
-        'weapons.missiles.R_530F_EM',
-        'weapons.missiles.R_530F_IR',
-        'weapons.missiles.AIM-7P',
-        'weapons.missiles.Super_530D',
-        'weapons.missiles.R_550_M1',
-        'weapons.missiles.AIM_54C_Mk60',
-        'weapons.missiles.Super_530F',
-        'weapons.missiles.AIM-7E-2',
-        'weapons.missiles.AIM-9P3',
-        'weapons.missiles.HB-AIM-7E',
-        'weapons.missiles.HB-AIM-7E-2',
-        'weapons.missiles.AIM-9E',
-        'weapons.missiles.OH58D_FIM_92',
-        -- new
-        'weapons.missiles.OH_6_FIM_92',
-        'weapons.missiles.P_40R',
-        'weapons.missiles.P_24R',
+         'weapons.missiles.GAR-8',
+         'weapons.missiles.HB-AIM-7E',
+         'weapons.missiles.HB-AIM-7E-2',
+         'weapons.missiles.Igla_1E',
+         'weapons.missiles.MICA_R',
+         'weapons.missiles.MICA_T',
+         'weapons.missiles.MMagicII',
+         'weapons.missiles.Matra Super 530D',
+         'weapons.missiles.Mistral',
+         'weapons.missiles.OH58D_FIM_92',
+         'weapons.missiles.OH_6_FIM_92',
+         'weapons.missiles.PL-12',
+         'weapons.missiles.PL-5EII',
+         'weapons.missiles.PL-8A',
+         'weapons.missiles.PL-8B',
+         'weapons.missiles.P_24R',
+         'weapons.missiles.P_24T',
+         'weapons.missiles.P_27P',
+         'weapons.missiles.P_27PE',
+         'weapons.missiles.P_27T',
+         'weapons.missiles.P_27TE',
+         'weapons.missiles.P_33E',
+         'weapons.missiles.P_40R',
+         'weapons.missiles.P_40T',
+         'weapons.missiles.P_60',
+         'weapons.missiles.P_73',
+         'weapons.missiles.P_77',
+         'weapons.missiles.R-13M',
+         'weapons.missiles.R-13M1',
+         'weapons.missiles.R-3R',
+         'weapons.missiles.R-3S',
+         'weapons.missiles.R-55',
+         'weapons.missiles.R-60',
+         'weapons.missiles.RS2US',
+         'weapons.missiles.R_530F_EM',
+         'weapons.missiles.R_530F_IR',
+         'weapons.missiles.R_550',
+         'weapons.missiles.R_550_M1',
+         'weapons.missiles.Rb 24',
+         'weapons.missiles.Rb 24J',
+         'weapons.missiles.Rb 74',
+         'weapons.missiles.SD-10',
+         'weapons.missiles.Super_530D',
+         'weapons.missiles.Super_530F',
     },
 
 [WEAPONSLIST.ItemCategory.AG_MISSILES] = {
     -- AG MISSILES
-        'weapons.missiles.TGM_65G',
-        'weapons.missiles.HB_AGM_78',
-        'weapons.missiles.TGM_65G',
-        'weapons.missiles.TGM_65D',
-        'weapons.missiles.CATM_65K',
-        'weapons.missiles.TGM_65H',
-        'weapons.missiles.BK90_MJ1_MJ2',
-        'weapons.missiles.Rb 05A',
-        'weapons.missiles.Rb_04',
-        'weapons.missiles.RB75',
-        'weapons.missiles.RB75T',
-        'weapons.missiles.RB75B',
-        'weapons.missiles.BK90_MJ1',
-        'weapons.missiles.BK90_MJ2',
-        'weapons.missiles.Rb 04E',
-        'weapons.missiles.Rb 15F',
-        'weapons.missiles.TOW',
-        'weapons.missiles.AGM_154',
-        'weapons.missiles.S_25L',
-        'weapons.missiles.AGM_65H',
-        'weapons.missiles.AGM_65G',
-        'weapons.missiles.Rb 15F (for A.I.)',
-        'weapons.missiles.Rb 04E (for A.I.)',
-        'weapons.missiles.AGM_65F',
-        'weapons.missiles.AGM_65L',
-        'weapons.missiles.AGM_65A',
-        'weapons.missiles.AGM_65B',
-        'weapons.missiles.AGM_84D',
-        'weapons.missiles.AGM_84H',
-        'weapons.missiles.AGM_154A',
-        'weapons.missiles.AGM_154B',
-        'weapons.missiles.DWS39_MJ1',
-        'weapons.missiles.DWS39_MJ2',
-        'weapons.missiles.DWS39_MJ1_MJ2',
-        'weapons.missiles.Kh25MP_PRGS1VP',
         'weapons.missiles.ADM_141A',
         'weapons.missiles.ADM_141B',
-        'weapons.missiles.AGR_20A',
-        'weapons.missiles.AGR_20_M282',
-        'weapons.missiles.GB-6',
-        'weapons.missiles.GB-6-SFW',
-        'weapons.missiles.GB-6-HE',
-        'weapons.missiles.BRM-1_90MM',
-        'weapons.missiles.YJ-83K',
-        'weapons.missiles.CM-802AKG',
-        'weapons.missiles.LD-10',
-        'weapons.missiles.AKD-10',
-        'weapons.missiles.Kh-66_Grom',
-        'weapons.missiles.Ataka_9M220',
-        'weapons.missiles.Ataka_9M120',
-        'weapons.missiles.Ataka_9M120F',
-        'weapons.missiles.YJ-12',
-        'weapons.missiles.C_802AK',
-        'weapons.missiles.CM_802AKG',
-        'weapons.missiles.AGM_86C',
+        'weapons.missiles.AGM_114',
         'weapons.missiles.AGM_114K',
         'weapons.missiles.AGM_119',
-        'weapons.missiles.HOT3_MBDA',
-        'weapons.missiles.X_22',
-        'weapons.missiles.KD_20',
-        'weapons.missiles.C_701T',
-        'weapons.missiles.AGM_12B',
+        'weapons.missiles.AGM_122',
         'weapons.missiles.AGM_12A',
+        'weapons.missiles.AGM_12B',
+        'weapons.missiles.AGM_12C_ED',
+        'weapons.missiles.AGM_130',
+        'weapons.missiles.AGM_154',
+        'weapons.missiles.AGM_154A',
+        'weapons.missiles.AGM_154B',
+        'weapons.missiles.AGM_45A',
+        'weapons.missiles.AGM_45B',
+        'weapons.missiles.AGM_65A',
+        'weapons.missiles.AGM_65B',
+        'weapons.missiles.AGM_65D',
+        'weapons.missiles.AGM_65E',
+        'weapons.missiles.AGM_65F',
+        'weapons.missiles.AGM_65G',
+        'weapons.missiles.AGM_65H',
+        'weapons.missiles.AGM_65K',
+        'weapons.missiles.AGM_65L',
+        'weapons.missiles.AGM_78A',
+        'weapons.missiles.AGM_78B',
+        'weapons.missiles.AGM_84A',
+        'weapons.missiles.AGM_84D',
+        'weapons.missiles.AGM_84E',
+        'weapons.missiles.AGM_84H',
+        'weapons.missiles.AGM_86',
+        'weapons.missiles.AGM_86C',
+        'weapons.missiles.AGM_88',
+        'weapons.missiles.AGR_20A',
+        'weapons.missiles.AGR_20_M282',
+        'weapons.missiles.AKD-10',
+        'weapons.missiles.ALARM',
+        'weapons.missiles.ASM_N_2',
+        'weapons.missiles.AT_6',
+        'weapons.missiles.Ataka_9M120',
+        'weapons.missiles.Ataka_9M120F',
+        'weapons.missiles.Ataka_9M220',
+        'weapons.missiles.BK90_MJ1',
+        'weapons.missiles.BK90_MJ1_MJ2',
+        'weapons.missiles.BK90_MJ2',
+        'weapons.missiles.BRM-1_90MM',
+        'weapons.missiles.CATM_65K',
+        'weapons.missiles.CM-400AKG',
+        'weapons.missiles.CM-802AKG',
+        'weapons.missiles.CM_802AKG',
+        'weapons.missiles.C_701IR',
+        'weapons.missiles.C_701T',
+        'weapons.missiles.C_802AK',
+        'weapons.missiles.DWS39_MJ1',
+        'weapons.missiles.DWS39_MJ1_MJ2',
+        'weapons.missiles.DWS39_MJ2',
+        'weapons.missiles.GB-6',
+        'weapons.missiles.GB-6-HE',
+        'weapons.missiles.GB-6-SFW',
+        'weapons.missiles.HB_AGM_78',
+        'weapons.missiles.HJ-12',
+        'weapons.missiles.HOT3_MBDA',
+        'weapons.missiles.KD_20',
         'weapons.missiles.KD_63',
         'weapons.missiles.KD_63B',
+        'weapons.missiles.Kh-66_Grom',
+        'weapons.missiles.Kh25MP_PRGS1VP',
+        'weapons.missiles.Kormoran',
+        'weapons.missiles.LD-10',
         'weapons.missiles.LS_6',
         'weapons.missiles.LS_6_500',
-        'weapons.missiles.AGM_45B',
-        'weapons.missiles.AGM_78B',
-        'weapons.missiles.AGM_78A',
-        'weapons.missiles.AGM_12C_ED',
-        'weapons.missiles.X_28',
+        'weapons.missiles.RB75',
+        'weapons.missiles.RB75B',
+        'weapons.missiles.RB75T',
+        'weapons.missiles.Rb 04E',
+        'weapons.missiles.Rb 04E (for A.I.)',
+        'weapons.missiles.Rb 05A',
+        'weapons.missiles.Rb 15F',
+        'weapons.missiles.Rb 15F (for A.I.)',
+        'weapons.missiles.Rb_04',
         'weapons.missiles.SPIKE_ER',
         'weapons.missiles.SPIKE_ER2',
-        'weapons.missiles.HJ-12',
-        'weapons.missiles.CM-400AKG',
-        'weapons.missiles.X_25ML',
-        'weapons.missiles.X_58',
-        'weapons.missiles.X_555',
+        'weapons.missiles.S_25L',
+        'weapons.missiles.Sea_Eagle',
+        'weapons.missiles.TGM_65D',
+        'weapons.missiles.TGM_65G',
+        'weapons.missiles.TGM_65G',
+        'weapons.missiles.TGM_65H',
+        'weapons.missiles.TOW',
+        'weapons.missiles.V-1',
+        'weapons.missiles.Vikhr_M',
         'weapons.missiles.X_101',
-        'weapons.missiles.C_701IR',
-        'weapons.missiles.ASM_N_2',
+        'weapons.missiles.X_22',
+        'weapons.missiles.X_25ML',
         'weapons.missiles.X_25MP',
-        'weapons.missiles.AT_6',
+        'weapons.missiles.X_25MR',
+        'weapons.missiles.X_28',
         'weapons.missiles.X_29L',
-        'weapons.missiles.X_65',
+        'weapons.missiles.X_29T',
         'weapons.missiles.X_31A',
-        'weapons.missiles.X_59M',
+        'weapons.missiles.X_31P',
         'weapons.missiles.X_35',
         'weapons.missiles.X_41',
-        'weapons.missiles.Vikhr_M',
-        'weapons.missiles.AGM_114',
-        'weapons.missiles.AGM_45A',
-        'weapons.missiles.AGM_65K',
-        'weapons.missiles.AGM_84A',
-        'weapons.missiles.AGM_84E',
-        'weapons.missiles.AGM_86',
-        'weapons.missiles.AGM_88',
-        'weapons.missiles.Sea_Eagle',
-        'weapons.missiles.AGM_122',
-        'weapons.missiles.AGM_65E',
-        'weapons.missiles.AGM_130',
-        'weapons.missiles.ALARM',
-        'weapons.missiles.X_25MR',
-        'weapons.missiles.X_29T',
-        'weapons.missiles.X_31P',
-        'weapons.missiles.AGM_65D',
-        'weapons.missiles.Kormoran',
-        -- new
-        'weapons.missiles.V-1',
+        'weapons.missiles.X_555',
+        'weapons.missiles.X_58',
+        'weapons.missiles.X_59M',
+        'weapons.missiles.X_65',
+        'weapons.missiles.YJ-12',
+        'weapons.missiles.YJ-83K',
     },
 
 
 [WEAPONSLIST.ItemCategory.AG_ROCKETS] = {
     -- AG ROCKETS
+       'weapons.nurs.ARAKM70BAP',
+       'weapons.nurs.ARAKM70BAPPX',
        'weapons.nurs.ARAKM70BHE',
-        'weapons.nurs.ARAKM70BAP',
-        'weapons.nurs.ARAKM70BAPPX',
-        'weapons.nurs.HYDRA_70_MK1',
-        'weapons.nurs.HYDRA_70_MK5',
-        'weapons.nurs.HYDRA_70_MK61',
-        'weapons.nurs.HYDRA_70_M151',
-        'weapons.nurs.HYDRA_70_M156',
-        'weapons.nurs.HYDRA_70_WTU1B',
-        'weapons.nurs.HYDRA_70_M274',
-        'weapons.nurs.HYDRA_70_M257',
-        'weapons.nurs.C_8OFP2',
-        'weapons.nurs.C_8OM',
-        'weapons.nurs.HVAR',
-        'weapons.nurs.C_8CM_GN',
-        'weapons.nurs.C_8CM_RD',
-        'weapons.nurs.C_8CM_WH',
-        'weapons.nurs.C_8CM_BU',
-        'weapons.nurs.C_8CM_YE',
-        'weapons.nurs.C_8CM_VT',
-        'weapons.nurs.R4M',
-        'weapons.nurs.WGr21',
-        'weapons.nurs.M8rocket',
-        'weapons.nurs.FFAR Mk1 HE',
-        'weapons.nurs.FFAR Mk5 HEAT',
-        'weapons.nurs.FFAR M156 WP',
-        'weapons.nurs.C_8CM',
-        'weapons.nurs.C_5',
-        'weapons.nurs.C_8',
-        'weapons.nurs.RS-82',
-        'weapons.nurs.S5M1_HEFRAG_FFAR',
-        'weapons.nurs.C_13',
-        'weapons.nurs.S5MO_HEFRAG_FFAR',
-        'weapons.nurs.C_24',
-        'weapons.nurs.S-5M',
-        'weapons.nurs.S-24A',
-        'weapons.nurs.S-24B',
-        'weapons.nurs.C_25',
-        'weapons.nurs.HYDRA_70_M282',
-        'weapons.nurs.British_HE_60LBFNo1_3INCHNo1',
-        'weapons.nurs.British_HE_60LBSAPNo2_3INCHNo1',
-        'weapons.nurs.British_AP_25LBNo1_3INCHNo1',
-        'weapons.nurs.ARF8M3HEI',
-        'weapons.nurs.ARF8M3API',
-        'weapons.nurs.ARF8M3TPSM',
-        'weapons.nurs.S-25-O',
-        'weapons.nurs.Zuni_127',
-        'weapons.nurs.HYDRA_70_M229',
-        'weapons.nurs.SNEB_TYPE250_F1B',
-        'weapons.nurs.SNEB_TYPE251_F1B',
-        'weapons.nurs.SNEB_TYPE251_H1',
-        'weapons.nurs.SNEB_TYPE252_F1B',
-        'weapons.nurs.SNEB_TYPE252_H1',
-        'weapons.nurs.SNEB_TYPE253_F1B',
-        'weapons.nurs.SNEB_TYPE253_H1',
-        'weapons.nurs.SNEB_TYPE254_F1B_RED',
-        'weapons.nurs.SNEB_TYPE254_H1_RED',
-        'weapons.nurs.SNEB_TYPE254_F1B_YELLOW',
-        'weapons.nurs.SNEB_TYPE254_H1_YELLOW',
-        'weapons.nurs.SNEB_TYPE254_F1B_GREEN',
-        'weapons.nurs.SNEB_TYPE254_H1_GREEN',
-        'weapons.nurs.SNEB_TYPE256_F1B',
-        'weapons.nurs.SNEB_TYPE256_H1',
-        'weapons.nurs.SNEB_TYPE257_F1B',
-        'weapons.nurs.SNEB_TYPE257_H1',
-        'weapons.nurs.SNEB_TYPE259E_F1B',
-        'weapons.nurs.SNEB_TYPE259E_H1',
-        'weapons.nurs.HYDRA_70_M259',
-        'weapons.nurs.HYDRA_70_M151_M433',
-        'weapons.nurs.FFAR_Mk61',
-        'weapons.nurs.S_5KP',
-        'weapons.nurs.S_5M',
-        'weapons.nurs.Tiny Tim',
-        'weapons.nurs.HVAR USN Mk28 Mod4',
-        'weapons.nurs.Rkt_90-1_HE',
-		'weapons.nurs.Mi28NE_BL13L',
+       'weapons.nurs.ARF8M3API',
+       'weapons.nurs.ARF8M3HEI',
+       'weapons.nurs.ARF8M3TPSM',
+       'weapons.nurs.British_AP_25LBNo1_3INCHNo1',
+       'weapons.nurs.British_HE_60LBFNo1_3INCHNo1',
+       'weapons.nurs.British_HE_60LBSAPNo2_3INCHNo1',
+       'weapons.nurs.C_13',
+       'weapons.nurs.C_24',
+       'weapons.nurs.C_25',
+       'weapons.nurs.C_5',
+       'weapons.nurs.C_8',
+       'weapons.nurs.C_8CM',
+       'weapons.nurs.C_8CM_BU',
+       'weapons.nurs.C_8CM_GN',
+       'weapons.nurs.C_8CM_RD',
+       'weapons.nurs.C_8CM_VT',
+       'weapons.nurs.C_8CM_WH',
+       'weapons.nurs.C_8CM_YE',
+       'weapons.nurs.C_8OFP2',
+       'weapons.nurs.C_8OM',
+       'weapons.nurs.FFAR M156 WP',
+       'weapons.nurs.FFAR Mk1 HE',
+       'weapons.nurs.FFAR Mk5 HEAT',
+       'weapons.nurs.FFAR_Mk61',
+       'weapons.nurs.HVAR',
+       'weapons.nurs.HVAR USN Mk28 Mod4',
+       'weapons.nurs.HYDRA_70_M151',
+       'weapons.nurs.HYDRA_70_M151_M433',
+       'weapons.nurs.HYDRA_70_M156',
+       'weapons.nurs.HYDRA_70_M229',
+       'weapons.nurs.HYDRA_70_M257',
+       'weapons.nurs.HYDRA_70_M259',
+       'weapons.nurs.HYDRA_70_M274',
+       'weapons.nurs.HYDRA_70_M282',
+       'weapons.nurs.HYDRA_70_MK1',
+       'weapons.nurs.HYDRA_70_MK5',
+       'weapons.nurs.HYDRA_70_MK61',
+       'weapons.nurs.HYDRA_70_WTU1B',
+       'weapons.nurs.M8rocket',
+       'weapons.nurs.Mi28NE_BL13L',
+       'weapons.nurs.R4M',
+       'weapons.nurs.RS-82',
+       'weapons.nurs.Rkt_90-1_HE',
+       'weapons.nurs.S-24A',
+       'weapons.nurs.S-24B',
+       'weapons.nurs.S-25-O',
+       'weapons.nurs.S-5M',
+       'weapons.nurs.S5M1_HEFRAG_FFAR',
+       'weapons.nurs.S5MO_HEFRAG_FFAR',
+       'weapons.nurs.SNEB_TYPE250_F1B',
+       'weapons.nurs.SNEB_TYPE251_F1B',
+       'weapons.nurs.SNEB_TYPE251_H1',
+       'weapons.nurs.SNEB_TYPE252_F1B',
+       'weapons.nurs.SNEB_TYPE252_H1',
+       'weapons.nurs.SNEB_TYPE253_F1B',
+       'weapons.nurs.SNEB_TYPE253_H1',
+       'weapons.nurs.SNEB_TYPE254_F1B_GREEN',
+       'weapons.nurs.SNEB_TYPE254_F1B_RED',
+       'weapons.nurs.SNEB_TYPE254_F1B_YELLOW',
+       'weapons.nurs.SNEB_TYPE254_H1_GREEN',
+       'weapons.nurs.SNEB_TYPE254_H1_RED',
+       'weapons.nurs.SNEB_TYPE254_H1_YELLOW',
+       'weapons.nurs.SNEB_TYPE256_F1B',
+       'weapons.nurs.SNEB_TYPE256_H1',
+       'weapons.nurs.SNEB_TYPE257_F1B',
+       'weapons.nurs.SNEB_TYPE257_H1',
+       'weapons.nurs.SNEB_TYPE259E_F1B',
+       'weapons.nurs.SNEB_TYPE259E_H1',
+       'weapons.nurs.S_5KP',
+       'weapons.nurs.S_5M',
+       'weapons.nurs.Tiny Tim',
+       'weapons.nurs.WGr21',
+       'weapons.nurs.Zuni_127',
     },
 
 [WEAPONSLIST.ItemCategory.AG_BOMBS] = {
     -- AG BOMBS (UNGUIDED / CLUSTER / GENERAL)
-        'weapons.containers.BRD-4-250',
-        'weapons.bombs.BetAB_500',
-        'weapons.bombs.BETAB-500S',
-        'weapons.bombs.BAP_100',
-        'weapons.bombs.BAP-100',
-        'weapons.bombs.BetAB_500ShP',
-        'weapons.bombs.Type_200A',
-		'weapons.adapters.KMGU-2',
-        'weapons.bombs.Durandal',
-        'weapons.bombs.RBK_250',
-        'weapons.bombs.RBK_500AO',
-        'weapons.bombs.BL_755',
-        'weapons.bombs.AB_250_2_SD_2',
+        
+        
+        'weapons.bombs.250-2',
+        'weapons.bombs.250-3',
         'weapons.bombs.AB_250_2_SD_10A',
+        'weapons.bombs.AB_250_2_SD_2',
         'weapons.bombs.AB_500_1_SD_10A',
+        'weapons.bombs.AN_M30A1',
+        'weapons.bombs.AN_M57',
+        'weapons.bombs.AN_M64',
+        'weapons.bombs.AN_M65',
+        'weapons.bombs.AN_M66',
+        'weapons.bombs.BAP-100',
+        'weapons.bombs.BAP_100',
+        'weapons.bombs.BAT-120',
+        'weapons.bombs.BDU_33',
+        'weapons.bombs.BDU_45',
+        'weapons.bombs.BDU_45B',
+        'weapons.bombs.BDU_50HD',
+        'weapons.bombs.BDU_50LD',
+        'weapons.bombs.BEER_BOMB',
+        'weapons.bombs.BETAB-500M',
+        'weapons.bombs.BETAB-500S',
+        'weapons.bombs.BIN_200',
+        'weapons.bombs.BKF_AO2_5RT',
+        'weapons.bombs.BKF_PTAB2_5KO',
         'weapons.bombs.BLG66',
-        'weapons.bombs.RBK_250_275_AO_1SCH',
-        'weapons.bombs.RBK_500U_OAB_2_5RT',
-        'weapons.bombs.CBU_99',
         'weapons.bombs.BLG66_BELOUGA',
-        'weapons.bombs.CBU_97',
-        'weapons.bombs.ROCKEYE',
         'weapons.bombs.BLG66_EG',
-        'weapons.bombs.BLU-3_GROUP',
         'weapons.bombs.BLU-3B_GROUP',
+        'weapons.bombs.BLU-3_GROUP',
         'weapons.bombs.BLU-4B_GROUP',
-        'weapons.bombs.CBU_87',
-        'weapons.bombs.CBU_105',
-        'weapons.bombs.CBU_103',
-        'weapons.bombs.RBK_500U',
-        'weapons.bombs.CBU_52B',
-        'weapons.bombs.LYSBOMB 11086',
-        'weapons.bombs.LYSBOMB 11087',
-        'weapons.bombs.LYSBOMB 11088',
-        'weapons.bombs.LYSBOMB 11089',
-        'weapons.bombs.SAB_250_200',
-        'weapons.bombs.SAB_100MN',
-        'weapons.bombs.LUU_2B',
-        'weapons.bombs.HEBOMB',
-        'weapons.bombs.HEBOMBD',
-        'weapons.bombs.SC_50',
-        'weapons.bombs.SC_250_T1_L2',
-        'weapons.bombs.SC_250_T3_J',
-        'weapons.bombs.SC_500_J',
-        'weapons.bombs.SC_500_L2',
-        'weapons.bombs.SD_250_Stg',
-        'weapons.bombs.SD_500_A',
+        'weapons.bombs.BL_755',
+        'weapons.bombs.BR_250',
+        'weapons.bombs.BR_500',
+        'weapons.bombs.BetAB_500',
+        'weapons.bombs.BetAB_500ShP',
         'weapons.bombs.British_GP_250LB_Bomb_Mk1',
         'weapons.bombs.British_GP_250LB_Bomb_Mk4',
         'weapons.bombs.British_GP_250LB_Bomb_Mk5',
@@ -22018,1414 +23299,395 @@ WEAPONSLIST.Items = {
         'weapons.bombs.British_MC_500LB_Bomb_Mk2',
         'weapons.bombs.British_SAP_250LB_Bomb_Mk5',
         'weapons.bombs.British_SAP_500LB_Bomb_Mk5',
-        'weapons.bombs.AN_M30A1',
-        'weapons.bombs.AN_M57',
-        'weapons.bombs.AN_M65',
-        'weapons.bombs.AN_M66',
-        'weapons.bombs.BEER_BOMB',
+        'weapons.bombs.CBU_103',
+        'weapons.bombs.CBU_105',
+        'weapons.bombs.CBU_52B',
+        'weapons.bombs.CBU_87',
+        'weapons.bombs.CBU_97',
+        'weapons.bombs.CBU_99',
+        'weapons.bombs.Durandal',
+        'weapons.bombs.FAB-250-M62',
+        'weapons.bombs.FAB-250M54',
+        'weapons.bombs.FAB-250M54TU',
+        'weapons.bombs.FAB-500M54',
+        'weapons.bombs.FAB-500M54TU',
+        'weapons.bombs.FAB-500SL',
+        'weapons.bombs.FAB-500TA',
+        'weapons.bombs.FAB_100',
+        'weapons.bombs.FAB_100M',
+        'weapons.bombs.FAB_100SV',
+        'weapons.bombs.FAB_1500',
+        'weapons.bombs.FAB_250',
+        'weapons.bombs.FAB_50',
+        'weapons.bombs.FAB_500',
+        'weapons.bombs.HB_F4E_GBU15V1',
+        'weapons.bombs.HEBOMB',
+        'weapons.bombs.HEBOMBD',
+        'weapons.bombs.IAB-500',
+        'weapons.bombs.LUU_2B',
+        'weapons.bombs.LYSBOMB 11086',
+        'weapons.bombs.LYSBOMB 11087',
+        'weapons.bombs.LYSBOMB 11088',
+        'weapons.bombs.LYSBOMB 11089',
+        'weapons.bombs.MK106',
+        'weapons.bombs.MK76',
+        'weapons.bombs.MK_82AIR',
+        'weapons.bombs.MK_82SNAKEYE',
+        'weapons.bombs.M_117',
         'weapons.bombs.Mk_81',
         'weapons.bombs.Mk_82',
         'weapons.bombs.Mk_82Y',
-        'weapons.bombs.Mk_83CT',
-        'weapons.bombs.BDU_45',
-        'weapons.bombs.BDU_45B',
-        'weapons.bombs.BIN_200',
-        'weapons.bombs.BR_250',
-        'weapons.bombs.BR_500',
         'weapons.bombs.Mk_83',
-        'weapons.bombs.FAB_100SV',
-        'weapons.bombs.P-50T',
-        'weapons.bombs.OFAB-100 Jupiter',
-        'weapons.bombs.FAB_50',
-        'weapons.bombs.FAB_100M',
-        'weapons.bombs.IAB-500',
-        'weapons.bombs.RN-24',
-        'weapons.bombs.RN-28',
+        'weapons.bombs.Mk_83AIR',
+        'weapons.bombs.Mk_83CT',
         'weapons.bombs.Mk_84',
-        'weapons.bombs.ODAB-500PM',
-        'weapons.bombs.FAB-500M54',
-        'weapons.bombs.FAB-500TA',
-        'weapons.bombs.FAB-500SL',
-        'weapons.bombs.FAB-500M54TU',
-        'weapons.bombs.OFAB-100-120TU',
-        'weapons.bombs.FAB-250M54TU',
-        'weapons.bombs.FAB-250M54',
-        'weapons.bombs.BETAB-500M',
-        'weapons.bombs.M_117',
-        'weapons.bombs.250-2',
-        'weapons.bombs.250-3',
-        'weapons.bombs.FAB-250-M62',
-        'weapons.bombs.BAT-120',
-        'weapons.bombs.MK76',
-        'weapons.bombs.MK106',
-        'weapons.bombs.SAMP125LD',
-        'weapons.bombs.SAMP250LD',
-        'weapons.bombs.SAMP250HD',
-        'weapons.bombs.SAMP400LD',
-        'weapons.bombs.SAMP400HD',
         'weapons.bombs.Mk_84AIR_GP',
         'weapons.bombs.Mk_84AIR_TP',
-        'weapons.bombs.HB_F4E_GBU15V1',
-        'weapons.bombs.OH58D_Red_Smoke_Grenade',
+        'weapons.bombs.ODAB-500PM',
+        'weapons.bombs.OFAB-100 Jupiter',
+        'weapons.bombs.OFAB-100-120TU',
         'weapons.bombs.OH58D_Blue_Smoke_Grenade',
         'weapons.bombs.OH58D_Green_Smoke_Grenade',
+        'weapons.bombs.OH58D_Red_Smoke_Grenade',
         'weapons.bombs.OH58D_Violet_Smoke_Grenade',
-        'weapons.bombs.OH58D_Yellow_Smoke_Grenade',
         'weapons.bombs.OH58D_White_Smoke_Grenade',
-        'weapons.bombs.FAB_100',
-        'weapons.bombs.Mk_83AIR',
-        'weapons.bombs.FAB_250',
-        'weapons.bombs.BDU_33',
-        'weapons.bombs.FAB_500',
-        'weapons.bombs.BDU_50LD',
-        'weapons.bombs.BDU_50HD',
-        'weapons.bombs.MK_82AIR',
-        'weapons.bombs.MK_82SNAKEYE',
-        'weapons.bombs.FAB_1500',
-        'weapons.bombs.AN_M64',
-		'weapons.bombs.BKF_PTAB2_5KO',
-
-		'weapons.bombs.BKF_AO2_5RT',
+        'weapons.bombs.OH58D_Yellow_Smoke_Grenade',
+        'weapons.bombs.P-50T',
+        'weapons.bombs.RBK_250',
+        'weapons.bombs.RBK_250_275_AO_1SCH',
+        'weapons.bombs.RBK_500AO',
+        'weapons.bombs.RBK_500U',
+        'weapons.bombs.RBK_500U_OAB_2_5RT',
+        'weapons.bombs.RN-24',
+        'weapons.bombs.RN-28',
+        'weapons.bombs.ROCKEYE',
+        'weapons.bombs.SAB_100MN',
+        'weapons.bombs.SAB_250_200',
+        'weapons.bombs.SAMP125LD',
+        'weapons.bombs.SAMP250HD',
+        'weapons.bombs.SAMP250LD',
+        'weapons.bombs.SAMP400HD',
+        'weapons.bombs.SAMP400LD',
+        'weapons.bombs.SC_250_T1_L2',
+        'weapons.bombs.SC_250_T3_J',
+        'weapons.bombs.SC_50',
+        'weapons.bombs.SC_500_J',
+        'weapons.bombs.SC_500_L2',
+        'weapons.bombs.SD_250_Stg',
+        'weapons.bombs.SD_500_A',
+        'weapons.bombs.Type_200A',
+		'weapons.bombs.PTAB_2_5KO',
     },
 
 [WEAPONSLIST.ItemCategory.AG_GUIDED_BOMBS] = {
     -- AG GUIDED BOMBS
-        'weapons.bombs.KAB_500',
-        'weapons.bombs.KAB_500Kr',
-        'weapons.bombs.KAB_1500Kr',
-        'weapons.bombs.KAB_1500T',
-        'weapons.bombs.KAB_1500LG',
-        'weapons.bombs.KAB_500S',
-		'weapons.bombs.KAB_500KrOD',
-        'weapons.bombs.GBU_31_V_2B',
-        'weapons.bombs.GBU_31_V_4B',
-        'weapons.bombs.GBU_32_V_2B',
-        'weapons.bombs.GBU_54_V_1B',
+        'weapons.bombs.AGM_62',
+        'weapons.bombs.AGM_62_I',
         'weapons.bombs.BDU_45LGB',
+        'weapons.bombs.BDU_50LGB',
         'weapons.bombs.GBU_10',
         'weapons.bombs.GBU_12',
+        'weapons.bombs.GBU_15_V_1_B',
+        'weapons.bombs.GBU_15_V_31_B',
         'weapons.bombs.GBU_16',
         'weapons.bombs.GBU_24',
-        'weapons.bombs.GBU_15_V_31_B',
         'weapons.bombs.GBU_27',
-        'weapons.bombs.AGM_62_I',
-        'weapons.bombs.LS_6_100',
-        'weapons.bombs.AGM_62',
-        'weapons.bombs.GBU_39',
-        'weapons.bombs.GBU_8_B',
         'weapons.bombs.GBU_28',
-        'weapons.bombs.GBU_15_V_1_B',
-        'weapons.bombs.BDU_50LGB',
         'weapons.bombs.GBU_31',
-        'weapons.bombs.GBU_38',
+        'weapons.bombs.GBU_31_V_2B',
         'weapons.bombs.GBU_31_V_3B',
-        'weapons.bombs.GBU_43', -- MOAB
+        'weapons.bombs.GBU_31_V_4B',
+        'weapons.bombs.GBU_32_V_2B',
+        'weapons.bombs.GBU_38',
+        'weapons.bombs.GBU_39',
+        'weapons.bombs.GBU_43',
+        'weapons.bombs.GBU_54_V_1B',
+        'weapons.bombs.GBU_8_B',
+        'weapons.bombs.KAB_1500Kr',
+        'weapons.bombs.KAB_1500LG',
+        'weapons.bombs.KAB_1500T',
+        'weapons.bombs.KAB_500',
+        'weapons.bombs.KAB_500Kr',
+        'weapons.bombs.KAB_500KrOD',
+        'weapons.bombs.KAB_500S',
+        'weapons.bombs.LS_6_100',
     },
 
 [WEAPONSLIST.ItemCategory.FUEL_TANKS] = {
     -- FUEL TANKS
-        'weapons.droptanks.fuel_tank_230',
-		'weapons.droptanks.{IAFS_ComboPak_100}',
-        'weapons.droptanks.HB_A6E_AERO1D_EMPTY',
-        'weapons.droptanks.HB_A6E_D704',
-        'weapons.droptanks.HB_A6E_AERO1D',
-        'weapons.droptanks.PTB_1200_F1',
-        'weapons.droptanks.PTB_580G_F1',
-        'weapons.droptanks.oiltank',
-        'weapons.droptanks.MB339_FT330',
-        'weapons.droptanks.MB339_TT500_L',
-        'weapons.droptanks.MB339_TT500_R',
-        'weapons.droptanks.MB339_TT320_L',
-        'weapons.droptanks.MB339_TT320_R',
+        'weapons.droptanks.1100L Tank',
+        'weapons.droptanks.1100L Tank Empty',
+        'weapons.droptanks.800L Tank',
+        'weapons.droptanks.800L Tank Empty',
         'weapons.droptanks.AV8BNA_AERO1D',
         'weapons.droptanks.AV8BNA_AERO1D_EMPTY',
-        'weapons.droptanks.M2KC_02_RPL541_EMPTY',
-        'weapons.droptanks.M2KC_08_RPL541_EMPTY',
-        'weapons.droptanks.M2KC_RPL_522_EMPTY',
-        'weapons.droptanks.',
+        'weapons.droptanks.Bidon',
+        'weapons.droptanks.C130J_Ext_Tank_L',
+        'weapons.droptanks.C130J_Ext_Tank_R',
+        'weapons.droptanks.Drop tank 75gal',
+        'weapons.droptanks.Drop_Tank_300_Liter',
         'weapons.droptanks.F-15E_Drop_Tank',
         'weapons.droptanks.F-15E_Drop_Tank_Empty',
-        'weapons.droptanks.HB_F-4E_EXT_WingTank',
-        'weapons.droptanks.HB_F-4E_EXT_WingTank_R',
-        'weapons.droptanks.HB_F-4E_EXT_Center_Fuel_Tank',
-        'weapons.droptanks.HB_HIGH_PERFORMANCE_CENTERLINE_600_GAL',
-        'weapons.droptanks.HB_F-4E_EXT_WingTank_EMPTY',
-        'weapons.droptanks.HB_F-4E_EXT_WingTank_R_EMPTY',
-        'weapons.droptanks.HB_F-4E_EXT_Center_Fuel_Tank_EMPTY',
-        'weapons.droptanks.Drop_Tank_300_Liter',
-        'weapons.droptanks.FW-190_Fuel-Tank',
-        'weapons.droptanks.droptank_108_gal',
-        'weapons.droptanks.droptank_110_gal',
-        'weapons.droptanks.droptank_150_gal',
-        'weapons.droptanks.Spitfire_slipper_tank',
-        'weapons.droptanks.Spitfire_tank_1',
+        'weapons.droptanks.F-16-PTB-N2',
+        'weapons.droptanks.F15-PTB',
+        'weapons.droptanks.F4-BAK-C',
+        'weapons.droptanks.F4-BAK-L',
         'weapons.droptanks.F4U-1D_Drop_Tank_Aux',
         'weapons.droptanks.F4U-1D_Drop_Tank_Mk5',
         'weapons.droptanks.F4U-1D_Drop_Tank_Mk6',
-        'weapons.droptanks.PTB_1500_MIG29A',
-        'weapons.droptanks.LNS_VIG_XTANK',
-        'weapons.droptanks.800L Tank',
-        'weapons.droptanks.1100L Tank',
-        'weapons.droptanks.PTB_200_F86F35',
-        'weapons.droptanks.PTB_120_F86F35',
-        'weapons.droptanks.HB_F14_EXT_DROPTANK_EMPTY',
-        'weapons.droptanks.HB_F14_EXT_DROPTANK',
         'weapons.droptanks.FPU_8A',
-        'weapons.droptanks.i16_eft',
+        'weapons.droptanks.FT600',
+        'weapons.droptanks.FW-190_Fuel-Tank',
         'weapons.droptanks.FuelTank_150L',
         'weapons.droptanks.FuelTank_350L',
+        'weapons.droptanks.HB_A6E_AERO1D',
+        'weapons.droptanks.HB_A6E_AERO1D_EMPTY',
+        'weapons.droptanks.HB_A6E_D704',
+        'weapons.droptanks.HB_F-4E_EXT_Center_Fuel_Tank',
+        'weapons.droptanks.HB_F-4E_EXT_Center_Fuel_Tank_EMPTY',
+        'weapons.droptanks.HB_F-4E_EXT_WingTank',
+        'weapons.droptanks.HB_F-4E_EXT_WingTank_EMPTY',
+        'weapons.droptanks.HB_F-4E_EXT_WingTank_R',
+        'weapons.droptanks.HB_F-4E_EXT_WingTank_R_EMPTY',
+        'weapons.droptanks.HB_F14_EXT_DROPTANK',
+        'weapons.droptanks.HB_F14_EXT_DROPTANK_EMPTY',
+        'weapons.droptanks.HB_HIGH_PERFORMANCE_CENTERLINE_600_GAL',
+        'weapons.droptanks.LNS_VIG_XTANK',
+        'weapons.droptanks.M2000-PTB',
         'weapons.droptanks.M2KC_02_RPL541',
+        'weapons.droptanks.M2KC_02_RPL541_EMPTY',
         'weapons.droptanks.M2KC_08_RPL541',
+        'weapons.droptanks.M2KC_08_RPL541_EMPTY',
         'weapons.droptanks.M2KC_RPL_522',
-        'weapons.droptanks.PTB400_MIG15',
-        'weapons.droptanks.PTB600_MIG15',
-        'weapons.droptanks.PTB300_MIG15',
-        'weapons.droptanks.PTB400_MIG19',
-        'weapons.droptanks.PTB760_MIG19',
+        'weapons.droptanks.M2KC_RPL_522_EMPTY',
+        'weapons.droptanks.MB339_FT330',
+        'weapons.droptanks.MB339_TT320_L',
+        'weapons.droptanks.MB339_TT320_R',
+        'weapons.droptanks.MB339_TT500_L',
+        'weapons.droptanks.MB339_TT500_R',
+        'weapons.droptanks.MIG-23-PTB',
+        'weapons.droptanks.MIG-25-PTB',
+        'weapons.droptanks.Mosquito_Drop_Tank_100gal',
+        'weapons.droptanks.Mosquito_Drop_Tank_50gal',
+        'weapons.droptanks.PTB-1150',
+        'weapons.droptanks.PTB-1150-29',
+        'weapons.droptanks.PTB-150',
+        'weapons.droptanks.PTB-1500',
+        'weapons.droptanks.PTB-2000',
+        'weapons.droptanks.PTB-275',
+        'weapons.droptanks.PTB-3000',
+        'weapons.droptanks.PTB-450',
         'weapons.droptanks.PTB-490-MIG21',
         'weapons.droptanks.PTB-490C-MIG21',
+        'weapons.droptanks.PTB-800',
         'weapons.droptanks.PTB-800-MIG21',
-        'weapons.droptanks.Mosquito_Drop_Tank_50gal',
-        'weapons.droptanks.Mosquito_Drop_Tank_100gal',
-        'weapons.droptanks.PTB-450',
-        'weapons.droptanks.800L Tank Empty',
-        'weapons.droptanks.1100L Tank Empty',
-        'weapons.droptanks.fueltank450',
+        'weapons.droptanks.PTB300_MIG15',
+        'weapons.droptanks.PTB400_MIG15',
+        'weapons.droptanks.PTB400_MIG19',
+        'weapons.droptanks.PTB600_MIG15',
+        'weapons.droptanks.PTB760_MIG19',
+        'weapons.droptanks.PTB_1200_F1',
+        'weapons.droptanks.PTB_120_F86F35',
+        'weapons.droptanks.PTB_1500_MIG29A',
+        'weapons.droptanks.PTB_200_F86F35',
+        'weapons.droptanks.PTB_580G_F1',
+        'weapons.droptanks.S-3-PTB',
+        'weapons.droptanks.Spitfire_slipper_tank',
+        'weapons.droptanks.Spitfire_tank_1',
+        'weapons.droptanks.T-PTB',
+        'weapons.droptanks.droptank_108_gal',
+        'weapons.droptanks.droptank_110_gal',
+        'weapons.droptanks.droptank_150_gal',
+        'weapons.droptanks.f-18c-ptb',
+        'weapons.droptanks.fuel_tank_230',
+        'weapons.droptanks.fuel_tank_300gal',
+        'weapons.droptanks.fuel_tank_370gal',
         'weapons.droptanks.fueltank200',
-        'weapons.droptanks.C130J_Ext_Tank_R',
-        'weapons.droptanks.C130J_Ext_Tank_L',
         'weapons.droptanks.fueltank230',
+        'weapons.droptanks.fueltank450',
+        'weapons.droptanks.i16_eft',
+        'weapons.droptanks.oiltank',
         'weapons.droptanks.uh60l_iafts',
-		'weapons.droptanks.PTB-800',
-		'weapons.droptanks.PTB-275',
-		'weapons.droptanks.Drop tank 75gal',
-		'weapons.droptanks.S-3-PTB',
-		'weapons.droptanks.F4-BAK-C',
-		'weapons.droptanks.PTB-1150-29',
-		'weapons.droptanks.f-18c-ptb',
-		'weapons.droptanks.F4-BAK-L',
-		'weapons.droptanks.PTB-2000',
-		'weapons.droptanks.MIG-23-PTB',
-		'weapons.droptanks.PTB-150',
-		'weapons.droptanks.PTB-1150',
-		'weapons.droptanks.fuel_tank_300gal',
-		'weapons.droptanks.MIG-25-PTB',
-		'weapons.droptanks.PTB-1500',
-		'weapons.droptanks.PTB-3000',
-		'weapons.droptanks.M2000-PTB',
-		'weapons.droptanks.FT600',
-		'weapons.droptanks.T-PTB',
-		'weapons.droptanks.F15-PTB',
-		'weapons.droptanks.fuel_tank_370gal',
-		'weapons.droptanks.F-16-PTB-N2',
+        'weapons.droptanks.{IAFS_ComboPak_100}',
     },
 
 [WEAPONSLIST.ItemCategory.MISC] = {
     -- MISC (ADAPTERS / PODS / GUNMOUNTS / OTHER)
-		
+        -- new
+        'weapons.adapters.ACH_47F_GL',
+        'weapons.adapters.B-8V20A',
+        'weapons.adapters.KMGU-2',
+        'weapons.adapters.MBD-3-LAU-61',
+        'weapons.adapters.MBD-3-LAU-68',
+        'weapons.adapters.OH-58D_Gorgona',
+        'weapons.adapters.kmgu-2',
+        'weapons.adapters.lau-88',
+        'weapons.containers.',
+        'weapons.containers.16c_hts_pod',
         'weapons.containers.AAQ-28_LITENING',
-        'weapons.containers.MB339_Vinten',
+        'weapons.containers.ACH_47F_GL',
+        'weapons.containers.ACH_47F_Left',
+        'weapons.containers.ACH_47F_Right',
+        'weapons.containers.AIM-9S',
+        'weapons.containers.ALQ-131',
+        'weapons.containers.ALQ-184',
+        'weapons.containers.ANAWW_13',
+        'weapons.containers.AN_AAQ_33',
+        'weapons.containers.AN_ASQ_228',
+        'weapons.containers.APK-9',
+        'weapons.containers.ASO-2',
+        'weapons.containers.AV8BNA_ALQ164',
+        'weapons.containers.BARAX',
+        'weapons.containers.BOZ-100',
+        'weapons.containers.BRD-4-250',
+        'weapons.containers.BRU-42_LS',
+        'weapons.containers.ETHER',
         'weapons.containers.F-15E_AAQ-13_LANTIRN',
         'weapons.containers.F-15E_AAQ-14_LANTIRN',
         'weapons.containers.F-15E_AAQ-28_LITENING',
         'weapons.containers.F-15E_AAQ-33_XR_ATP-SE',
         'weapons.containers.F-15E_AXQ-14_DATALINK',
-        'weapons.containers.KINGAL',
-        'weapons.containers.ah-64d_radar',
-        'weapons.containers.HB_ALE_40_0_0',
-        'weapons.containers.HB_ALE_40_0_120',
-        'weapons.containers.HB_ALE_40_30_60',
-        'weapons.containers.HB_ALE_40_15_90',
-        'weapons.containers.HB_ALE_40_30_0',
-        'weapons.containers.HB_ORD_Pave_Spike',
-        'weapons.containers.HB_ORD_Pave_Spike_Fast',
-        'weapons.containers.HB_F14_EXT_TARPS',
-        'weapons.containers.HB_F14_EXT_ECA',
-        'weapons.containers.LANTIRN',
-        'weapons.containers.AN_AAQ_33',
-        'weapons.containers.APK-9',
-        'weapons.containers.PAVETACK',
-        'weapons.containers.ANAWW_13',
-        'weapons.containers.aaq-28LEFT litening',
-        'weapons.containers.AN_ASQ_228',
-        'weapons.containers.dlpod_akg',
-        'weapons.containers.wmd7',
-        'weapons.containers.{F14-LANTIRN-TP}',
-        'weapons.containers.LANTIRN-F14-TARGET',
-        'weapons.containers.TANGAZH',
-        'weapons.containers.ETHER',
-        'weapons.containers.SHPIL',
-        'weapons.containers.Fantasm',
         'weapons.containers.F-18-FLIR-POD',
         'weapons.containers.F-18-LDT-POD',
-        'weapons.containers.16c_hts_pod',
-        'weapons.containers.Spear',
-        'weapons.containers.ALQ-184',
-        'weapons.containers.SORBCIJA_R',
-        'weapons.containers.BARAX',
-        'weapons.containers.MATRA-PHIMAT',
-        'weapons.containers.HB_F14_EXT_AN_APQ-167',
-        'weapons.containers.ALQ-131',
-        'weapons.containers.SORBCIJA_L',
-        'weapons.containers.U22',
-        'weapons.containers.U22A',
-        'weapons.containers.SPS-141',
-        'weapons.containers.AV8BNA_ALQ164',
-        'weapons.containers.SKY_SHADOW',
-        'weapons.containers.kg600',
-        'weapons.containers.',
-        'weapons.containers.SPS-141-100',
-        'weapons.containers.{ECM_POD_L_175V}',
-        'weapons.containers.MPS-410',
-        'weapons.containers.alq-184long',
-        'weapons.containers.ais-pod-t50_r',
-        'weapons.containers.sa342_dipole_antenna',
-        'weapons.containers.MB339_TravelPod',
-		'weapons.adapters.MBD-3-LAU-61',
-        'weapons.adapters.lau-88',
-		'weapons.adapters.MBD-3-LAU-68',
-		'weapons.containers.SPRD_99Twin',
-        'weapons.containers.FAS',
-        'weapons.containers.IRDeflector',
-        'weapons.containers.{EclairM_60}',
-        'weapons.containers.{EclairM_51}',
-        'weapons.containers.{EclairM_42}',
-        'weapons.containers.{EclairM_33}',
-        'weapons.containers.{EclairM_24}',
-        'weapons.containers.{EclairM_15}',
-        'weapons.containers.{EclairM_06}',
-        'weapons.containers.KBpod',
-        'weapons.containers.BOZ-100',
-        'weapons.containers.{Eclair}',
-        'weapons.containers.ASO-2',
-        'weapons.containers.{M2KC_AGF}',
-        'weapons.containers.{M2KC_AAF}',
-        'weapons.containers.MB339_SMOKE-POD',
-        'weapons.containers.{US_M10_SMOKE_TANK_RED}',
-        'weapons.containers.{US_M10_SMOKE_TANK_YELLOW}',
-        'weapons.containers.{US_M10_SMOKE_TANK_ORANGE}',
-        'weapons.containers.{US_M10_SMOKE_TANK_GREEN}',
-        'weapons.containers.{US_M10_SMOKE_TANK_BLUE}',
-        'weapons.containers.{US_M10_SMOKE_TANK_WHITE}',
-        'weapons.containers.{F4U1D_SMOKE_WHITE}',
-        'weapons.containers.{SMOKE_WHITE}',
-        'weapons.containers.smoke_pod',
-        'weapons.containers.{CE2_SMOKE_WHITE}',
-        'weapons.containers.HVAR_rocket',
-        'weapons.containers.{MIG21_SMOKE_WHITE}',
-        'weapons.containers.{MIG21_SMOKE_RED}',
-        'weapons.containers.pl5eii',
-        'weapons.containers.HB_F14_EXT_BRU34',
         'weapons.containers.F4-PILON',
-        'weapons.containers.SPRD-99',
-        'weapons.containers.ais-pod-t50',
-        'weapons.containers.rightSeat',
-        'weapons.containers.leftSeat',
-        'weapons.containers.rearCargoSeats',
-        'weapons.containers.ais-pod-t50_l',
+        'weapons.containers.FAS',
+        'weapons.containers.Fantasm',
+        'weapons.containers.GUV_VOG',
+        'weapons.containers.GUV_YakB_GSHP',
+        'weapons.containers.HB_ALE_40_0_0',
+        'weapons.containers.HB_ALE_40_0_120',
+        'weapons.containers.HB_ALE_40_15_90',
+        'weapons.containers.HB_ALE_40_30_0',
+        'weapons.containers.HB_ALE_40_30_60',
+        'weapons.containers.HB_F14_EXT_AN_APQ-167',
+        'weapons.containers.HB_F14_EXT_BRU34',
+        'weapons.containers.HB_F14_EXT_ECA',
         'weapons.containers.HB_F14_EXT_LAU-7',
-        'weapons.containers.fullCargoSeats',
-        'weapons.containers.lau-105',
+        'weapons.containers.HB_F14_EXT_TARPS',
         'weapons.containers.HB_ORD_MER',
         'weapons.containers.HB_ORD_Missile_Well_Adapter',
-
-
-        'weapons.shells.KDA_35_FAPDS',
-        'weapons.shells.Rh202_20_HE',
-        'weapons.shells.Mauser7.92x57_S.m.K.',
-        'weapons.shells.Mauser7.92x57_S.m.K._Ub.m.Zerl.',
-        'weapons.shells.N37_37x155_HEI_T',
-        'weapons.shells.MG_20x82_API',
-        'weapons.shells.GSH23_23_AP',
-        'weapons.shells.M2_12_7',
-        'weapons.shells.L23A1_APFSDS',
-        'weapons.shells.DEFA553_30HE',
-        'weapons.shells.KS19_100HE',
-        'weapons.shells.50Browning_API_M8_Corsair',
-        'weapons.shells.MG_13x64_HEI_T',
-        'weapons.shells.2A38_30_AP',
-        'weapons.shells.20mm_M70LD_SAPHEI',
-        'weapons.shells.ZTZ_125_HE',
-        'weapons.shells.HP30_30_AP',
-        'weapons.shells.M256_120_HE',
-        'weapons.shells.7_62x51tr',
-        'weapons.shells.AK176_76',
-        'weapons.shells.M393A3_105_HE',
-        'weapons.shells.M61_20_AP',
-        'weapons.shells.DM53_120_AP',
-        'weapons.shells.PJ26_76_PFHE',
-        'weapons.shells.HEDPM430',
-        'weapons.shells.GSH_23_HE',
-        'weapons.shells.Hispano_Mk_II_SAP/I',
-        'weapons.shells.DEFA554_30_HE',
-        'weapons.shells.50Browning_Ball_M2',
-        'weapons.shells.50Browning_I_M1',
-        'weapons.shells.British303_Ball_Mk8',
-        'weapons.shells.ZTZ_7_62',
-        'weapons.shells.Mauser7.92x57_B.',
-        'weapons.shells.M39_20_HEI',
-        "weapons.shells.Mauser7.92x57_S.m.K._L'spur(weiss)",
-        'weapons.shells.3UBM11_100mm_AP',
-        'weapons.shells.MK_108_MGsch',
-        'weapons.shells.ship_Bofors_40mm_HE',
-        'weapons.shells.GSh_30_2K_AP_Tr',
-        'weapons.shells.M383',
-        'weapons.shells.M53_APT_RED',
-        'weapons.shells.75mm_AA_JAP',
-        'weapons.shells.2A28_73',
-        'weapons.shells.GAU8_30_AP',
-        'weapons.shells.British303_Ball_Mk1c',
-        'weapons.shells.L31_120mm_HESH',
-        'weapons.shells.20mm_M53_API',
-        'weapons.shells.MINGR55_NO_TRC',
-        'weapons.shells.British303_G_Mk4',
-        'weapons.shells.CHAP_76_PFHE',
-        'weapons.shells.PJ87_100_PFHE',
-        'weapons.shells.2A42_30_AP',
-        'weapons.shells.37mm_Type_100_JAP',
-        'weapons.shells.M2_12_7_T',
-        'weapons.shells.2A42_30_HE',
-        'weapons.shells.M230_HEI M799',
-        'weapons.shells.Sprgr_34_L48',
-        'weapons.shells.7_62x39',
-        'weapons.shells.GSH23_23_HE',
-        'weapons.shells.British303_G_Mk2',
-        'weapons.shells.M242_25_AP_M919',
-        'weapons.shells.M322_120_AP',
-        'weapons.shells.M242_25_HE_M792',
-        'weapons.shells.M46',
-        'weapons.shells.CHAP_76_HE_T',
-        'weapons.shells.2A38_30_HE',
-        'weapons.shells.British303_G_Mk5',
-        'weapons.shells.M39_20_TP',
-        'weapons.shells.GAU8_30_HE',
-        'weapons.shells.KDA_35_AP',
-        'weapons.shells.CL3143_120_AP',
-        'weapons.shells.M61_20_TP_T',
-        'weapons.shells.NR23_23x115_API',
-        'weapons.shells.KPVT_14_5',
-        'weapons.shells.L14A2_30_APDS',
-        'weapons.shells.L21A1_30_HE',
-        'weapons.shells.GSh_30_2K_HE',
-        'weapons.shells.M39_20_API',
-        'weapons.shells.2A46M_125_AP',
-        'weapons.shells.M61_20_HEIT_RED',
-        'weapons.shells.KS19_100AP',
-        'weapons.shells.20mm_M56_HEI',
-        'weapons.shells.M61',
-        'weapons.shells.2A46M_125_HE',
-        'weapons.shells.50Browning_T_M1',
-        'weapons.shells.NR30_30x155_APT',
-        'weapons.shells.AK630_30_AP',
-        'weapons.shells.L23_120_AP',
-        'weapons.shells.25mm_AA_JAP',
-        'weapons.shells.MK_108_HEI',
-        'weapons.shells.MG_13x64_I_T',
-        'weapons.shells.OF_350',
-        'weapons.shells.M134_7_62_T',
-        'weapons.shells.DM33_120_AP',
-        'weapons.shells.M256_120_HE_L55',
-        'weapons.shells.YakB_12_7',
-        'weapons.shells.M230_30',
-        'weapons.shells.VOG17',
-        'weapons.shells.GSh_30_2K_AP',
-        'weapons.shells.M61_20_PGU30',
-        'weapons.shells.120_EXPL_F1_120mm_HE',
-        'weapons.shells.PGU32_SAPHEI_T',
-        'weapons.shells.British303_W_Mk1z',
-        'weapons.shells.5_56x45_NOtr',
-        'weapons.shells.50Browning_API_M8',
-        'weapons.shells.5_45x39',
-        'weapons.shells.M39_20_HEI_T',
-        'weapons.shells.CHAP_125_3BM69_APFSDS_T',
-        'weapons.shells.3BM59_125_AP',
-        'weapons.shells.6_5mm_Type_91_JAP',
-        'weapons.shells.M61_20_PGU28',
-        'weapons.shells.NR30_30x155_APHE',
-        'weapons.shells.7_7mm_Type_97_JAP',
-        'weapons.shells.PINK_PROJECTILE',
-        'weapons.shells.CHAP_76_HESH_T',
-        'weapons.shells.PKT_7_62',
-        'weapons.shells.OFL_120F2_AP',
-        'weapons.shells.DM12_L55_120mm_HEAT_MP_T',
-        'weapons.shells.British303_O_Mk1',
-        'weapons.shells.M256_120_AP',
-        'weapons.shells.UOF412_100HE',
-        'weapons.shells.M61_20_HE_gr',
-        'weapons.shells.M61_20_PGU27',
-        'weapons.shells.Utes_12_7x108',
-        'weapons.shells.2A7_23_HE',
-        'weapons.shells.British303_G_Mk3',
-        'weapons.shells.M61_20_AP_gr',
-        'weapons.shells.M485_155_IL',
-        'weapons.shells.2A64_152',
-        'weapons.shells.M61_20_HE',
-        'weapons.shells.57mm_Type_90_JAP',
-        'weapons.shells.DEFA554_30_HE_TRACERS',
-        'weapons.shells.Hispano_Mk_II_MKIIZ_AP',
-        'weapons.shells.M256_120_AP_L55',
-        'weapons.shells.MG_13x64_HE',
-        'weapons.shells.Hispano_Mk_II_Tracer_G',
-        'weapons.shells.20mm_M220_Tracer',
-        'weapons.shells.Bofors_40mm_Essex',
-        'weapons.shells.MG_13x64_I',
-        'weapons.shells.Pzgr_39/40',
-        'weapons.shells.2A60_120',
-        'weapons.shells.MK_108_MGsch_T',
-        'weapons.shells.HP30_30_HE',
-        'weapons.shells.L31A7_HESH',
-        'weapons.shells.GSH301_30_AP',
-        'weapons.shells.M55A2_TP_RED',
-        'weapons.shells.MG_13x64_API',
-        'weapons.shells.DM23_105_AP',
-        'weapons.shells.Bofors_40mm_HE',
-        'weapons.shells.7_62x54',
-        'weapons.shells.DM12_120mm_HEAT_MP_T',
-        'weapons.shells.DEFA553_30AP',
-        'weapons.shells.76mm_AA_JAP',
-        'weapons.shells.PLZ_155_HE',
-        'weapons.shells.GSH301_30_HE',
-        'weapons.shells.Br303',
-        'weapons.shells.DANA_152',
-        'weapons.shells.MK45_127',
-        'weapons.shells.M230_TP M788',
-        'weapons.shells.Utes_12_7x108_T',
-        'weapons.shells.7_92x57sS',
-        'weapons.shells.M20_50_aero_APIT',
-        'weapons.shells.20MM_M242_HEI-T',
-        'weapons.shells.M339_120mm_HEAT_MP_T',
-        'weapons.shells.M68_105_HE',
-        'weapons.shells.50Browning_APIT_M20',
-        'weapons.shells.M197_20',
-        'weapons.shells.KDA_35_HE',
-        'weapons.shells.British303_Ball_Mk6',
-        'weapons.shells.7_62x54_NOTRACER',
-        'weapons.shells.ZTZ_14_5',
-        'weapons.shells.A222_130',
-        'weapons.shells.50Browning_AP_M2_Corsair',
-        'weapons.shells.M68_105_AP',
-        'weapons.shells.Mauser7.92x57_S.m.K.H.',
-        'weapons.shells.BR_354N',
-        'weapons.shells.British303_G_Mk6z',
-        'weapons.shells.KPVT_14_5_T',
-        'weapons.shells.NR23_23x115_HEI_T',
-        'weapons.shells.M56A3_HE_RED',
-        'weapons.shells.GSh_30_2K_HE_Tr',
-        'weapons.shells.K307_155HE',
-        'weapons.shells.Oerlikon_20mm_Essex',
-        'weapons.shells.HESH_105',
-        'weapons.shells.M242_25_AP_M791',
-        'weapons.shells.BK_27',
-        'weapons.shells.M185_155',
-        'weapons.shells.British303_B_Mk4z',
-        'weapons.shells.M246_20_HE_gr',
-        'weapons.shells.Hispano_Mk_II_MKI_HE/I',
-        'weapons.shells.2A7_23_AP',
-        'weapons.shells.MG_13x64_APT',
-        'weapons.shells.M2_50_aero_AP',
-        'weapons.shells.2A18_122',
-        'weapons.shells.YakB_12_7_T',
-        'weapons.shells.N37_37x155_API_T',
-        'weapons.shells.MG_20x82_MGsch',
-        'weapons.shells.British303_G_Mk1',
-        'weapons.shells.M53_AP_RED',
-        'weapons.shells.British303_Ball_Mk7',
-        'weapons.shells.7_62x51',
-        'weapons.shells.Hispano_Mk_II_AP/T',
-        'weapons.shells.GSH_23_AP',
-        'weapons.shells.MK75_76',
-        'weapons.shells.50Browning_Ball_M2_Corsair',
-        'weapons.shells.GAU8_30_TP',
-        'weapons.shells.MK45_127mm_AP_Essex',
-        'weapons.shells.NR30_30x155_HEI_T',
-        'weapons.shells.PKT_7_62_T',
-        'weapons.shells.7_92x57_Smkl',
-        'weapons.shells.M2_12_7_TG',
-        'weapons.shells.M230_ADEM/DEFA',
-        'weapons.shells.9x19_m882',
-        'weapons.shells.2A33_152',
-        'weapons.shells.M825A1_155_SM',
-        'weapons.shells.53-UBR-281U',
-        'weapons.shells.MINGR55',
-        'weapons.shells.MK45_127mm_Essex',
-        'weapons.shells.MAUZER30_30',
-        'weapons.shells.MG_20x82_HEI_T',
-        'weapons.shells.DEFA552_30',
-        'weapons.shells.50Browning_AP_M2',
-        'weapons.shells.5_56x45',
-        'weapons.shells.M61_20_TP',
-        'weapons.shells.AK100_100',
-        'weapons.shells.53-UOR-281U',
-        'weapons.shells.ZTZ_125_AP',
-        'weapons.shells.50Browning_APIT_M20_Corsair',
-        'weapons.shells.British303_B_Mk6z',
-        'weapons.shells.M61_20_HE_INVIS',
-        'weapons.shells.M230_HEDP M789',
-        'weapons.shells.Rh202_20_AP',
-        'weapons.shells.Br303_tr',
-        'weapons.shells.UOF_17_100HE',
-        'weapons.shells.5_45x39_NOtr',
-        'weapons.shells.GSH23_23_HE_T',
-        'weapons.shells.AK630_30_HE',
-        'weapons.shells.Flak18_Sprgr_39',
-        "weapons.shells.Mauser7.92x57_S.m.K._L'spur(gelb)",
-        'weapons.shells.DEFA553_30APIT',
-        "weapons.shells.Mauser7.92x57_P.m.K.",
-        'weapons.shells.Hispano_Mk_II_Mk_Z_Ball',
-        'weapons.shells.Oerlikon_20mm_HE',
-        'weapons.shells.HE_T_MkII_40mm',
-        'weapons.shells.RM_15cm_HE',
-        'weapons.shells.Mk_20_HE_shell',
-        'weapons.shells.Flak41_Sprgr_39',
-        'weapons.shells.Pzgr_39/42',
-        'weapons.shells.M1_37mm_37AP-T',
-        'weapons.shells.Pzgr_39_5cm',
-        'weapons.shells.Sprgr_38',
-        'weapons.shells.Pzgr_39/43',
-        'weapons.shells.Sprgr_39',
-        'weapons.shells.37x263_AP',
-        'weapons.shells.20x138B_AP',
-        'weapons.shells.Besa7_92x57T',
-        'weapons.shells.Sprgr_34_L70',
-        'weapons.shells.QF94_AA_HE',
-        'weapons.shells.M63_37HE',
-        'weapons.shells.QF95_206R_fixed',
-        'weapons.shells.UBR_365_85AP',
-        'weapons.shells.M101',
-        'weapons.shells.HE_M1_Shell',
-        'weapons.shells.M42A1_HE',
-        'weapons.shells.UO_365K_85HE',
-        'weapons.shells.M1_37mm_HE-T',
-        'weapons.shells.QF17_HE',
-        'weapons.shells.2A20_115mm_HE',
-        'weapons.shells.Pzgr_39',
-        'weapons.shells.2A20_115mm_AP',
-        'weapons.shells.Besa7_92x57',
-        'weapons.shells.leFH18_105HE',
-        'weapons.shells.I_Gr_33',
-        'weapons.shells.Sprgr_43_L71',
-        'weapons.shells.M62_APC',
-        'weapons.shells.APCBC',
-        'weapons.shells.20x138B_HE',
-        'weapons.shells.AP_T_MkI_40mm',
-        'weapons.shells.Mk_12_HE_shell',
-        'weapons.shells.M51_37AP',
-        'weapons.shells.37x263_HE',
-
-
-
-        'weapons.gunmounts.NR-30',
-        'weapons.gunmounts.{MB339_ANM3_L}',
-        'weapons.gunmounts.OH58D_M3P_L500',
-        'weapons.gunmounts.C130_M4_Rifle',
-        'weapons.gunmounts.{C130-M18-Sidearm}',
-        'weapons.gunmounts.MINIGUN',
-        'weapons.gunmounts.{GIAT_M621_SAPHEI}',
-        'weapons.gunmounts.{C130-Cargo-Bay-M4}',
-        'weapons.gunmounts.{CC420_GUN_POD}',
-        'weapons.gunmounts.{MB339_DEFA553_R}',
-        'weapons.gunmounts.PKT_7_62',
-        'weapons.gunmounts.{UH60_GAU19_LEFT}',
-        'weapons.gunmounts.defa_553',
-        'weapons.gunmounts.{CH47_STBD_M60D}',
-        'weapons.gunmounts.N-37',
-        'weapons.gunmounts.{CH47_AFT_M60D}',
-        'weapons.gunmounts.M-61A1',
-        'weapons.gunmounts.UH60L_M134',
-        'weapons.gunmounts.{AN-M3}',
-        'weapons.gunmounts.NR-23',
-        'weapons.gunmounts.UPK_23_25',
-        'weapons.gunmounts.{UH60L_M134_GUNNER}',
-        'weapons.gunmounts.{SUU_23_POD}',
-        'weapons.gunmounts.{SA342_M134_SIDE_R}',
-        'weapons.gunmounts.HMP400',
-        'weapons.gunmounts.M134_R',
-        'weapons.gunmounts.OH_58_BRAUNING',
-        'weapons.gunmounts.{UH60L_M60_GUNNER}',
-        'weapons.gunmounts.M60_SIDE_L',
-        'weapons.gunmounts.KORD_12_7_MI24_R',
-        'weapons.gunmounts.KORD_12_7_MI24_L',
-        'weapons.gunmounts.M60_SIDE_R',
-        'weapons.gunmounts.{GAU_12_Equalizer_HE}',
-        'weapons.gunmounts.{FN_HMP400_100}',
-        'weapons.gunmounts.MG_151_20',
-        'weapons.gunmounts.C130_M18_Sidearm',
-        'weapons.gunmounts.m3_browning',
-        'weapons.gunmounts.{AKAN_NO_TRC}',
-        'weapons.gunmounts.A20_TopTurret_M2_R',
-        'weapons.gunmounts.MG_131',
-        'weapons.gunmounts.GUV_VOG',
-        'weapons.gunmounts.GIAT_M261',
-        'weapons.gunmounts.GSh-23-2 tail defense',
-        'weapons.gunmounts.HispanoMkII',
-        'weapons.gunmounts.{ADEN_GUNPOD}',
-        'weapons.gunmounts.OH58D_M3P',
-        'weapons.gunmounts.{GAU_12_Equalizer}',
-        'weapons.gunmounts.CPG_M4',
-        'weapons.gunmounts.M134_L',
-        'weapons.gunmounts.{UH60_M134_LEFT}',
-        'weapons.gunmounts.{UH60_M230_RIGHT}',
-        'weapons.gunmounts.M134_SIDE_R',
-        'weapons.gunmounts.UH-60L GAU-19',
-        'weapons.gunmounts.{AKAN}',
-        'weapons.gunmounts.GAU_12',
-        'weapons.gunmounts.OH58D_M3P_L300',
-        'weapons.gunmounts.{GAU_12_Equalizer_AP}',
-        'weapons.gunmounts.{MB339_ANM3_R}',
-        'weapons.gunmounts.MK_108',
-        'weapons.gunmounts.UH60_M134',
-        'weapons.gunmounts.OH58D_M3P_L100',
-        'weapons.gunmounts.{CH47_PORT_M240H}',
-        'weapons.gunmounts.{GIAT_M621_HEAP}',
-        'weapons.gunmounts.{GIAT_M621_HE}',
-        'weapons.gunmounts.SPPU_22',
-        'weapons.gunmounts.{FN_HMP400_200}',
-        'weapons.gunmounts.{PK-3}',
-        'weapons.gunmounts.A20_TopTurret_M2_L',
-        'weapons.gunmounts.{UH60_GAU19_RIGHT}',
-        'weapons.gunmounts.{CH47_PORT_M134D}',
-        'weapons.gunmounts.{GIAT_M621_AP}',
-        'weapons.gunmounts.AKAN_NO_TRC',
-        'weapons.gunmounts.BrowningM2',
-        'weapons.gunmounts.{CH47_AFT_M240H}',
-        'weapons.gunmounts.OH58D_M3P_L400',
-        'weapons.gunmounts.M230',
-        'weapons.gunmounts.{MB339_DEFA553_L}',
-        'weapons.gunmounts.M-61',
-        'weapons.gunmounts.GSH_23',
-        'weapons.gunmounts.M134_SIDE_L',
-        'weapons.gunmounts.GUV_YakB_GSHP',
-        'weapons.gunmounts.KORD_12_7',
-        'weapons.gunmounts.AKAN',
-        'weapons.gunmounts.Browning303MkII',
-        'weapons.gunmounts.DEFA_553',
-        'weapons.gunmounts.{C-101-DEFA553}',
-        'weapons.gunmounts.{CH47_STBD_M240H}',
-        'weapons.gunmounts.{UH60_M134_RIGHT}',
-        'weapons.gunmounts.{FN_HMP400}',
-        'weapons.gunmounts.{GIAT_M621_APHE}',
-        'weapons.gunmounts.SHKAS_GUN',
-        'weapons.gunmounts.{UH60_M230_LEFT}',
-        'weapons.gunmounts.{CH47_AFT_M3M}',
-        'weapons.gunmounts.OH58D_M3P_L200',
-        'weapons.gunmounts.{CH47_PORT_M60D}',
-        'weapons.gunmounts.DEFA 554',
-        'weapons.gunmounts.{UH60L_M2_GUNNER}',
-        'weapons.gunmounts.{CH47_STBD_M134D}',
-		'weapons.gunmounts.B17_TailTurret_M2_L',
-		'weapons.gunmounts.B17_BallTurret_M2_L',
-		'weapons.gunmounts.B17_BallTurret_M2_R',
-		'weapons.gunmounts.B17_TopTurret_M2_R',
-		'weapons.gunmounts.B17_Waist_Right_M2',
-		'weapons.gunmounts.Ju88_Turret_Top_Right_MG_81',
-		'weapons.gunmounts.Ju88_Turret_Bottom_MG_81_L',
-		'weapons.gunmounts.B17_ChinTurret_M2_L',
-		'weapons.gunmounts.B17_ChinTurret_M2_R',
-		'weapons.gunmounts.B17_Right_Nose_M2',
-		'weapons.gunmounts.Ju88_Turret_Bottom_MG_81_R',
-		'weapons.gunmounts.Ju88_Turret_ahead_MG_81',
-		'weapons.gunmounts.B17_Waist_Left_M2',
-		'weapons.gunmounts.B17_TailTurret_M2_R',
-		'weapons.gunmounts.B17_Left_Nose_M2',
-		'weapons.gunmounts.Ju88_Turret_Top_Left_MG_81',
-		'weapons.gunmounts.B17_TopTurret_M2_L',
-		'weapons.adapters.B-8V20A',
-		'weapons.adapters.OH-58D_Gorgona',
-		'weapons.torpedoes.G7A_T1',
-		'weapons.torpedoes.YU-6',
-		'weapons.torpedoes.Mark_46',
-		'weapons.torpedoes.mk46torp_name',
-		'weapons.torpedoes.LTF_5B',
-        -- new
-        'weapons.adapters.',
-        -- new
-        'weapons.containers.BRU-42_LS',
-        -- new
-        'weapons.containers.GUV_VOG',
-        -- new
-        'weapons.containers.GUV_YakB_GSHP',
-        -- new
+        'weapons.containers.HB_ORD_Pave_Spike',
+        'weapons.containers.HB_ORD_Pave_Spike_Fast',
+        'weapons.containers.HVAR_rocket',
+        'weapons.containers.IRDeflector',
+        'weapons.containers.KBpod',
+        'weapons.containers.KINGAL',
         'weapons.containers.KORD_12_7',
-        -- new
         'weapons.containers.KORD_12_7_MI24_L',
-        -- new
         'weapons.containers.KORD_12_7_MI24_R',
-        -- new
+        'weapons.containers.LANTIRN',
+        'weapons.containers.LANTIRN-F14-TARGET',
         'weapons.containers.M134_L',
-        -- new
         'weapons.containers.M134_R',
-        -- new
         'weapons.containers.M134_SIDE_L',
-        -- new
         'weapons.containers.M134_SIDE_R',
-        -- new
         'weapons.containers.M60_SIDE_L',
-        -- new
         'weapons.containers.M60_SIDE_R',
-        -- new
+        'weapons.containers.MATRA-PHIMAT',
+        'weapons.containers.MB339_SMOKE-POD',
+        'weapons.containers.MB339_TravelPod',
+        'weapons.containers.MB339_Vinten',
+        'weapons.containers.MPS-410',
         'weapons.containers.MXU-648',
-        -- new
         'weapons.containers.OH58D_M3P_L100',
-        -- new
         'weapons.containers.OH58D_M3P_L200',
-        -- new
         'weapons.containers.OH58D_M3P_L300',
-        -- new
         'weapons.containers.OH58D_M3P_L400',
-        -- new
         'weapons.containers.OH58D_M3P_L500',
-        -- new
+        'weapons.containers.OV-10A_Paratrooper',
+        'weapons.containers.PAVETACK',
         'weapons.containers.PKT_7_62',
-        -- new
         'weapons.containers.R-73U',
-        -- new
+        'weapons.containers.SHPIL',
+        'weapons.containers.SKY_SHADOW',
+        'weapons.containers.SORBCIJA_L',
+        'weapons.containers.SORBCIJA_R',
+        'weapons.containers.SPRD-99',
+        'weapons.containers.SPRD_99Twin',
+        'weapons.containers.SPS-141',
+        'weapons.containers.SPS-141-100',
+        'weapons.containers.Spear',
+        'weapons.containers.TANGAZH',
+        'weapons.containers.U22',
+        'weapons.containers.U22A',
+        'weapons.containers.aaq-28LEFT litening',
+        'weapons.containers.ah-64d_radar',
+        'weapons.containers.ais-pod-t50',
+        'weapons.containers.ais-pod-t50_l',
+        'weapons.containers.ais-pod-t50_r',
+        'weapons.containers.alq-184long',
+        'weapons.containers.dlpod_akg',
+        'weapons.containers.fullCargoSeats',
         'weapons.containers.hvar_SmokeGenerator',
-        -- new
+        'weapons.containers.kg600',
+        'weapons.containers.lau-105',
+        'weapons.containers.leftSeat',
         'weapons.containers.oh-58-brauning',
-        -- new
+        'weapons.containers.pl5eii',
+        'weapons.containers.rearCargoSeats',
+        'weapons.containers.rightSeat',
+        'weapons.containers.sa342_dipole_antenna',
+        'weapons.containers.smoke_pod',
+        'weapons.containers.wmd7',
         'weapons.containers.{05544F1A-C39C-466b-BC37-5BD1D52E57BB}',
-        -- new
+        'weapons.containers.{ACH_47_M230_Combat_Mix}',
+        'weapons.containers.{ACH_47_M230_NoTracers}',
         'weapons.containers.{ADEN_GUNPOD}',
-        -- new
         'weapons.containers.{AKAN_NO_TRC}',
-        -- new
         'weapons.containers.{AKAN}',
-        -- new
         'weapons.containers.{AN-M3}',
-        -- new
         'weapons.containers.{C-101-DEFA553}',
-        -- new
         'weapons.containers.{C130-Cargo-Bay-M4}',
-        -- new
         'weapons.containers.{C130-M18-Sidearm}',
-        -- new
         'weapons.containers.{CC420_GUN_POD}',
-        -- new
+        'weapons.containers.{CE2_SMOKE_WHITE}',
         'weapons.containers.{CH47_AFT_M240H}',
-        -- new
         'weapons.containers.{CH47_AFT_M3M}',
-        -- new
         'weapons.containers.{CH47_AFT_M60D}',
-        -- new
         'weapons.containers.{CH47_PORT_M134D}',
-        -- new
         'weapons.containers.{CH47_PORT_M240H}',
-        -- new
         'weapons.containers.{CH47_PORT_M60D}',
-        -- new
         'weapons.containers.{CH47_STBD_M134D}',
-        -- new
         'weapons.containers.{CH47_STBD_M240H}',
-        -- new
         'weapons.containers.{CH47_STBD_M60D}',
-        -- new
         'weapons.containers.{E92CBFE5-C153-11d8-9897-000476191836}',
-        -- new
+        'weapons.containers.{ECM_POD_L_175V}',
+        'weapons.containers.{EclairM_06}',
+        'weapons.containers.{EclairM_15}',
+        'weapons.containers.{EclairM_24}',
+        'weapons.containers.{EclairM_33}',
+        'weapons.containers.{EclairM_42}',
+        'weapons.containers.{EclairM_51}',
+        'weapons.containers.{EclairM_60}',
+        'weapons.containers.{Eclair}',
+        'weapons.containers.{F14-LANTIRN-TP}',
+        'weapons.containers.{F4U1D_SMOKE_WHITE}',
         'weapons.containers.{FN_HMP400_100}',
-        -- new
         'weapons.containers.{FN_HMP400_200}',
-        -- new
         'weapons.containers.{FN_HMP400}',
-        -- new
         'weapons.containers.{GAU_12_Equalizer_AP}',
-        -- new
         'weapons.containers.{GAU_12_Equalizer_HE}',
-        -- new
         'weapons.containers.{GAU_12_Equalizer}',
-        -- new
         'weapons.containers.{GIAT_M621_APHE}',
-        -- new
         'weapons.containers.{GIAT_M621_AP}',
-        -- new
         'weapons.containers.{GIAT_M621_HEAP}',
-        -- new
         'weapons.containers.{GIAT_M621_HE}',
-        -- new
         'weapons.containers.{GIAT_M621_SAPHEI}',
-        -- new
         'weapons.containers.{INV-SMOKE-BLUE}',
-        -- new
         'weapons.containers.{INV-SMOKE-GREEN}',
-        -- new
         'weapons.containers.{INV-SMOKE-ORANGE}',
-        -- new
         'weapons.containers.{INV-SMOKE-RED}',
-        -- new
         'weapons.containers.{INV-SMOKE-WHITE}',
-        -- new
         'weapons.containers.{INV-SMOKE-YELLOW}',
-        -- new
+        'weapons.containers.{M2KC_AAF}',
+        'weapons.containers.{M2KC_AGF}',
         'weapons.containers.{MB339_ANM3_L}',
-        -- new
         'weapons.containers.{MB339_ANM3_R}',
-        -- new
         'weapons.containers.{MB339_DEFA553_L}',
-        -- new
         'weapons.containers.{MB339_DEFA553_R}',
-
-        'weapons.containers.{PK-3}',
-        -- new
-        'weapons.containers.{RKL609_L}',
-        -- new
-        'weapons.containers.{RKL609_R}',
-        -- new
-        'weapons.containers.{SA342_M134_SIDE_R}',
-        -- new
-        'weapons.containers.{SUU_23_POD}',
-        -- new
-        'weapons.containers.{UH60L_M134_GUNNER}',
-        -- new
-        'weapons.containers.{UH60L_M2_GUNNER}',
-        -- new
-        'weapons.containers.{UH60L_M60_GUNNER}',
-        -- new
-        'weapons.containers.{UH60_GAU19_LEFT}',
-        -- new
-        'weapons.containers.{UH60_GAU19_RIGHT}',
-        -- new
-        'weapons.containers.{UH60_M134_LEFT}',
-        'weapons.containers.{UH60_M134_RIGHT}',
-        'weapons.containers.{UH60_M230_LEFT}',
-        'weapons.containers.{UH60_M230_RIGHT}',
-        'weapons.containers.{UPK-23-250 MiG-21}',
-
-		'weapons.gunmounts.{ACH_47_M230_Combat_Mix}',
-		'weapons.containers.{ACH_47_M230_Combat_Mix}',
-		'weapons.containers.{ACH_47_M230_NoTracers}',
-		'weapons.gunmounts.ACH_47_M230_NT',
-		'weapons.gunmounts.ACH_47_M230',
-		'weapons.adapters.ACH_47F_GL',
-		"weapons.gunmounts.{ACH_47_M230_NoTracers}",
-		"weapons.containers.ACH_47F_Right",
-		"weapons.containers.ACH_47F_Left",
-		"weapons.containers.ACH_47F_GL",
-
-		 {4,4,8,11212},
-		 {4,4,8,11210},
-		 {4,4,8,11211},
-		 {4,4,8,11209},
-	
-
---[[ 		
-		{4,15,46,825}, -- harrier gunpod
-		{4,15,46,824}, -- harrier gunpod
-		{4,15,46,300}, -- harrier gunpod
-
-		{4,15,46,2491},
-		{4,15,46,2490},	
-		{4,15,46,2489},
-		{4,15,46,2488},
-		{4,15,46,2493},
-		{4,15,46,2494},
-		{4,15,46,2495},
-		{4,15,46,20},
-		{4,5,32,95},
-		{4,5,32,94},
-		{4,15,46,2611},
-		{4,15,46,2610},
-		{4,15,46,2609},
-		{4,15,46,2608},
-		{4,15,46,2607},
-		{4,15,46,18},
-		{4,15,46,183},
-		{4,15,46,1771},
-		{4,15,46,1294},
-		{4,15,46,1295},
-		{4,15,46,1770},
-		{4,15,46,1769},
-		{4,15,46,1768},
-		{4,15,46,1767},
-		{4,15,46,1766},
-		{4,15,46,1765},
-		{4,15,46,1764},
-		{4,15,46,1057},
-		{4,15,46,160},
-		{4,15,46,161},
-		{4,15,46,170},
-		{4,15,46,171},
-		{4,15,46,174},
-		{4,15,46,175},
-		{4,15,46,176},
-		{4,15,46,177},
-		{4,15,46,184},
-		{4,15,46,3169},
-		{4,15,46,3102},
-		{4,15,46,3163},
-		{4,15,46,3164},
-		{4,15,46,3165},
-		{4,15,46,3166},
-		{4,15,46,3167},
-		{4,15,46,3168},
-		{4,15,46,3170},
-		{4,15,46,3171},
-
-		-- little bird
-
-		{1,3,43,464},
-		{4,15,46,3155},
-		{4,15,46,3156},
-		{4,15,46,3157},
-		{4,15,46,3158},
-		{4,15,46,3172},
-		{4,15,46,3173},
-		{4,15,46,3174},
-		{4,15,46,3175},
-		{4,15,46,3176},
-		{4,15,46,3177},
-		{4,15,46,3178},
-		{4,15,46,3179},
-		{4,15,46,3180},
-		{4,4,8,11209},
-		{4,4,8,11210},
-		{4,4,8,11211},
-		{4,4,8,11212},
-		{1,3,43,3159},
-
-		"weapons.bombs.AH6_SMOKE_RED",
-		"weapons.bombs.AH6_SMOKE_GREEN",
-		"weapons.bombs.AH6_SMOKE_YELLOW",
-		"weapons.bombs.AH6_SMOKE_BLUE",
-	-- unknown
-		{1,3,43,3176},
-		{1,3,43,3177},
-		{1,3,43,3178},
-		{1,3,43,3179},
-		{4,15,46,3184},
-		{4,15,46,3185},
-		{4,15,46,3186},
-		{4,15,46,3187},
-		{4,15,46,3188},
-		{4,15,46,3189},
-		{4,15,46,3190},
-		{4,15,46,3191},
-		{4,15,46,3192},
-		{4,7,33,475},
-		{4,15,47,3177},
-		{4,15,46,3193},
-		{4,15,46,3194},
-		{4,15,46,3195},
-		{4,15,46,3196}, ]]
-    },
-}
-
-local WEAPONSLIST_MODS_ITEMS = {
-		-- FUEL TANKS
-		'weapons.adapters.HB_F-4E_ORD_LAU_77',
-		'weapons.adapters.hb_a-6e_lau7_adu299',
-		'weapons.adapters.UB-13',
-		'weapons.adapters.APU-60-1',
-		'weapons.adapters.M-2000C_AUF2',
-		'weapons.adapters.Carrier_N-1_EM_EF',
-		'weapons.adapters.RB15pylon',
-		'weapons.adapters.UB_32A',
-		'weapons.adapters.OH58D_M260',
-		'weapons.adapters.HB_F14_EXT_SHOULDER_PHX_L',
-		'weapons.adapters.sa342_ATAM_Tube_2x',
-		'weapons.adapters.CHAP_Mi28N_ataka',
-		'weapons.adapters.B-8V20A',
-		'weapons.adapters.apu-13mt',
-		'weapons.adapters.HB_ORD_Missile_Well_Adapter',
-		'weapons.adapters.9M114-PYLON_EMPTY',
-		'weapons.adapters.adapter_gdj_kd63',
-		'weapons.adapters.LAU-117',
-		'weapons.adapters.Spitfire_pilon2L',
-		'weapons.adapters.adapter_df4b',
-		'weapons.adapters.b52-mbd_mk84',
-		'weapons.adapters.J-11A_twinpylon_l',
-		'weapons.adapters.aero-3b',
-		'weapons.adapters.F4-PILON',
-		'weapons.adapters.mbd-4',
-		'weapons.adapters.m559',
-		'weapons.adapters.BRU-42_LS_(LAU-131)',
-		'weapons.adapters.LAU-61',
-		'weapons.adapters.mer2',
-		'weapons.adapters.30-6-M2',
-		'weapons.adapters.LAU-10',
-		'weapons.adapters.HB_F14_EXT_LAU-7',
-		'weapons.adapters.PU_9S846_STRELEC',
-		'weapons.adapters.b-52_CSRL_ALCM',
-		'weapons.adapters.9M114-PILON',
-		'weapons.adapters.CLB_4',
-		'weapons.adapters.CHAP_Mi28N_igla',
-		'weapons.adapters.hj12-launcher-tube',
-		'weapons.adapters.9m114-pilon',
-		'weapons.adapters.b52-mbd_m117',
-		'weapons.adapters.OH58D_HRACK_R',
-		'weapons.adapters.F4E_dual_LAU7',
-		'weapons.adapters.HB_F14_EXT_SPARROW_PYLON',
-		'weapons.adapters.tu-22m3-mbd',
-		'weapons.adapters.HB_F-4E_BRU-42',
-		'weapons.adapters.MBD-2-67',
-		'weapons.adapters.OH58D_SRACK_R',
-		'weapons.adapters.UB-16',
-		'weapons.adapters.APU-170',
-		'weapons.adapters.adapter_df4a',
-		'weapons.adapters.Rocket_Launcher_4_5inch',
-		'weapons.adapters.JF-17_PF12_twin',
-		'weapons.adapters.CLB_30',
-		'weapons.adapters.9M120_pylon',
-		'weapons.adapters.oro-57k.edm',
-		'weapons.adapters.suu-25',
-		'weapons.adapters.LAU-3',
-		'weapons.adapters.F-15E_LAU-117',
-		'weapons.adapters.SA342_LAU_HOT3_2x',
-		'weapons.adapters.Schloss_500XIIC',
-		'weapons.adapters.mbd-3',
-		'weapons.adapters.b52-mbd_agm86',
-		'weapons.adapters.Spitfire_pilon2R',
-		'weapons.adapters.apu-60-2_R',
-		'weapons.adapters.MER-5E',
-		'weapons.adapters.gdj-iv1',
-		'weapons.adapters.14-3-M2',
-
-		'weapons.adapters.ARAKM70B',
-		'weapons.adapters.apu-6',
-		'weapons.adapters.BRU-42_LS',
-		'weapons.adapters.M299_AGM114',
-		'weapons.adapters.BRU-42_LS_(LAU-68)',
-		'weapons.adapters.B-1B_Conventional_Rotary_Launcher',
-		'weapons.adapters.LAU-105',
-		'weapons.adapters.ER4_Rack',
-		'weapons.adapters.lau-118a',
-		'weapons.adapters.b-52_suu67',
-		'weapons.adapters.JF-17_GDJ-II19L',
-		'weapons.adapters.AUF2_RACK',
-		'weapons.adapters.KMGU-2',
-		'weapons.adapters.kmgu-2',
-		'weapons.adapters.JF-17_GDJ-II19R',
-		'weapons.adapters.F-15E_LAU-88',
-		'weapons.adapters.9k121',
-		'weapons.adapters.MAK-79_VAR_4',
-		'weapons.adapters.BRU_42A',
-		'weapons.adapters.APU-12-40',
-		'weapons.adapters.HB_F14_EXT_BRU34',
-		'weapons.adapters.apu-13u-2',
-		'weapons.adapters.UB-32',
-		'weapons.adapters.HB_ORD_LAU-88',
-		'weapons.adapters.ptab-2_5ko_block1',
-		'weapons.adapters.XM158',
-		'weapons.adapters.CBLS-200',
-		'weapons.adapters.ao-2_5rt_block1',
-		'weapons.adapters.MAK-79_VAR_2',
-		'weapons.adapters.UB_32A_24',
-		'weapons.adapters.tow-pilon',
-		'weapons.adapters.apu-7',
-		'weapons.adapters.BRU-42_HS',
-		'weapons.adapters.TER-9A',
-		'weapons.adapters.LAU-115C',
-		'weapons.adapters.M-2000C_LRF4.edm',
-		'weapons.adapters.su-27-twinpylon',
-		'weapons.adapters.BRU_33A',
-		'weapons.adapters.T45_PMBR',
-		'weapons.adapters.M-2000c_BAP_Rack',
-		'weapons.adapters.apu-60-2_L',
-		'weapons.adapters.BRD-4-250',
-		'weapons.adapters.lau-117',
-		'weapons.adapters.uh60l_lwl12',
-		'weapons.adapters.HB_ORD_SUU_7',
-		'weapons.adapters.9m120',
-		'weapons.adapters.APU-68',
-		'weapons.adapters.OH58D_HRACK_L',
-		'weapons.adapters.APU-73',
-		'weapons.adapters.CHAP_Tu95MS_rotary_launcher',
-		'weapons.adapters.MAK-79_VAR_3',
-		'weapons.adapters.hf20_pod',
-		'weapons.adapters.LAU_127',
-		'weapons.adapters.M272_AGM114',
-		'weapons.adapters.M272',
-		'weapons.adapters.HB_F14_EXT_SHOULDER_PHX_R',
-		'weapons.adapters.rb04pylon',
-		'weapons.adapters.M-2000C_LRF4',
-		'weapons.adapters.mbd',
-		'weapons.adapters.PylonM71',
-		'weapons.adapters.b-52_CRL_mod1',
-		'weapons.adapters.9K114_Shturm',
-		'weapons.adapters.f4-pilon',
-		'weapons.adapters.M261',
-		'weapons.adapters.B-20',
-		'weapons.adapters.BR21-Gerat',
-		'weapons.adapters.LAU-68',
-		'weapons.adapters.HB_F-4E_LAU-34',
-		'weapons.adapters.LR-25',
-		'weapons.adapters.b-52_HSAB',
-		'weapons.adapters.BRU_57',
-		'weapons.adapters.MAK-79_VAR_1',
-		'weapons.adapters.SA342_Telson8',
-		'weapons.adapters.LAU-115C+2_LAU127',
-		'weapons.adapters.BRU-42_LS_(SUU-25)',
-		'weapons.adapters.9M120_pylon2',
-		'weapons.adapters.LAU-131',
-		'weapons.adapters.apu-68um3',
-		'weapons.adapters.OH58D_SRACK_L',
-		'weapons.adapters.rb05pylon',
-		'weapons.adapters.B-1B_28-store_Conventional_Bomb_Module',
-		'weapons.adapters.C-25PU',
-		'weapons.adapters.HB_F4E_LAU117',
-		'weapons.adapters.UB-16-57UMP',
-		'weapons.adapters.mbd3-u6-68',
-		'weapons.adapters.b-20',
-		'weapons.adapters.c-25pu',
-		'weapons.adapters.Matra-F1-Rocket',
-		'weapons.adapters.J-11A_twinpylon_r',
-		'weapons.adapters.M299',
-		'weapons.adapters.Spitfire_pilon1',
-		'weapons.adapters.adapter_gdj_yj83k',
-		'weapons.adapters.HB_ORD_MER',
-		'weapons.adapters.9m114_pylon2',
-		'weapons.adapters.boz-100',
-		'weapons.adapters.BRU_55',
-		'weapons.adapters.lau-105',
-		'weapons.adapters.apu-68m3',
-		'weapons.adapters.B-1B_10-store_Conventional_Bomb_Module',
-		'weapons.adapters.AKU-58',
-		'weapons.adapters.HB_F14_EXT_BRU42',
-		'weapons.adapters.SA342_LAU_HOT3_1x',
-		'weapons.adapters.MBD-2-67U',
-		'weapons.adapters.BRU_41A',
-		'weapons.adapters.9m120m',
-		'weapons.adapters.M260',
-		'weapons.missiles.HQ-16',
-		'weapons.missiles.MALUTKA',
-		'weapons.missiles.SM_6',
-		'weapons.missiles.Sea_Dart',
-		'weapons.missiles.SA48H6E2',
-		'weapons.missiles.Sea_Cat',
-		'weapons.missiles.FIM_92C',
-		'weapons.missiles.SM_2ER',
-		'weapons.missiles.SA9M338K',
-		'weapons.missiles.M39A1',
-		'weapons.missiles.SA3M9M',
-		'weapons.missiles.HQ-7B',
-		'weapons.missiles.SA5B55',
-		'weapons.missiles.9M723',
-		'weapons.missiles.SVIR',
-		'weapons.missiles.REFLEX',
-		'weapons.missiles.HOT2',
-		'weapons.missiles.Rapier',
-		'weapons.missiles.YJ-83',
-		'weapons.missiles.BGM_109B',
-		'weapons.missiles.ROLAND_R',
-		'weapons.missiles.SPIKE_ERA',
-		'weapons.missiles.TOW2',
-		'weapons.missiles.SA9M333',
-		'weapons.missiles.P_9M133',
-		'weapons.missiles.RIM_116A',
-		'weapons.missiles.Sea_Wolf',
-		'weapons.missiles.M30',
-		'weapons.missiles.SA_IRIS_T_SL',
-		'weapons.missiles.9M317',
-		'weapons.missiles.SA9M31',
-		'weapons.missiles.HHQ-9',
-		'weapons.missiles.MIM_104',
-		'weapons.missiles.SM_1',
-		'weapons.missiles.HAWK_RAKETA',
-		'weapons.missiles.HY-2',
-		'weapons.missiles.SA57E6',
-		'weapons.missiles.P_500',
-		'weapons.missiles.9M723_HE',
-		'weapons.missiles.SA2V755',
-		'weapons.missiles.SCUD_RAKETA',
-		'weapons.missiles.SA9M38M1',
-		'weapons.missiles.SA9M33',
-		'weapons.missiles.SA5B27',
-		'weapons.missiles.M31',
-		'weapons.missiles.SM_2',
-		'weapons.missiles.KONKURS',
-		'weapons.missiles.SA9M311',
-		'weapons.missiles.P_700',
-		'weapons.missiles.MIM_72G',
-		'weapons.missiles.SeaSparrow',
-		'weapons.missiles.SA9M330',
-		'weapons.missiles.M48',
-		'weapons.missiles.YJ-62',
-		'weapons.missiles.P_9M117',
-		'weapons.missiles.SA5V28',
-		'weapons.missiles.AGM_84S',
-		'weapons.missiles.X_29TE',
-		'weapons.missiles.YJ-82',
-		'weapons.missiles.Barrel',
-		'weapons.missiles.Mi28NE_9M120M',
-		'weapons.missiles.Mi28NE_9M120F',
-		'weapons.missiles.Mi28NE_9M220',
-		'weapons.missiles.Mi28NE_305E',
--- Su 30 mod
-		'weapons.missiles.Su30_SAAW',
-		'weapons.missiles.CF-ASTRA-MK-1',
-		'weapons.missiles.Su30_KH-38MTE',
-		'weapons.missiles.CF-R-73L',
-		'weapons.missiles.Su30_KH31PD',		
-		'weapons.missiles.Su30_KH35UE',
-		'weapons.missiles.Su30_KH_59MK2',
-
-		'weapons.containers.Su30_R73U_BLACK',
-		'weapons.containers.SU30_SAP518_R1',
-		'weapons.containers.Su30SM_T2201',
-		'weapons.containers.{GSh_30_1}',
-		'weapons.containers.SU30_SAP518_L1',
-		'weapons.containers.Su30_ELM2060',
-		'weapons.containers.Su30SM_T220',
-
-		'weapons.bombs.SU30_244N',
-		'weapons.bombs.Su30_OFAB250',
-		'weapons.bombs.Su30_FAB500M62',
-		'weapons.bombs.KAB-500S',
-		'weapons.bombs.KAB-1500LG',
-		'weapons.bombs.FAB-500M62NV',
-		'weapons.bombs.Su30_OFAB100',
-		'weapons.bombs.SU30_GBU-38',
-		'weapons.bombs.SU30-KAB-1500T',
-		'weapons.bombs.Su30_FAB250M62',
-		'weapons.bombs.Su30_FAB500M54',
-
-		'weapons.missiles.Su30_KH_59MK',
-		'weapons.missiles.CF-RVV-SD',
-		'weapons.missiles.CF-R-74M2',
-		'weapons.missiles.CF-R-27T1',
-		'weapons.missiles.CF-R-27ER',
-		'weapons.missiles.Su30_CMII',
-		'weapons.missiles.CF-R-77PD',
-		'weapons.missiles.CF-RVV-AE',
-		'weapons.missiles.Su30_BRAHMOS_S',
-		'weapons.missiles.CF-R-27R',
-
-		'weapons.missiles.Su30_KH-29TE',
-		'weapons.missiles.Su30_Rudra-M1',
-		'weapons.missiles.CF-R-27EA',
-		'weapons.missiles.CF-R-27ET1',
-		'weapons.missiles.CF-R-77M',
-		'weapons.missiles.CF-R-74M',
-		'weapons.missiles.SU30_KH31A',
-		'weapons.missiles.CF-R-77',
-		'weapons.missiles.Su30_KH38MAE',
-		'weapons.missiles.Su30_KH31P',
-		'weapons.missiles.Su30_KH29L',
-		'weapons.missiles.Su30_KH36',
-		'weapons.missiles.CF-R-37M',
-		'weapons.missiles.CF-I-DERBY-ER',
-		'weapons.missiles.CF-RVV-MD2',
-		'weapons.missiles.Su30_KH35A',
-		'weapons.missiles.CF-R-27P',
-		'weapons.missiles.CF-R-27EP',
-		'weapons.missiles.Su30_KH-59M',
-		'weapons.missiles.CF-R-77-1',
-		'weapons.missiles.Su30_FAB500UMPK',
-		'weapons.missiles.Su30_KH31AD',
-		'weapons.missiles.Su30_KH38MLE',
-		'weapons.missiles.Su30_BRAHMOS_SEAD',
-		'weapons.containers.Su30_DAMOCLES',
--- end of su 30 mod
-
-		'weapons.nurs.SMERCH_9M55F',
-		'weapons.nurs.M26',
-		'weapons.nurs.AGR_20_M282_unguided',
-		'weapons.nurs.AGR_20_M151_unguided',
-		'weapons.nurs.BRM1_90MM_UG',
-		'weapons.nurs.PG_9V',
-		'weapons.nurs.PG_16V',
-		'weapons.nurs.GRAD_9M22U',
-		'weapons.nurs.URAGAN_9M27F',
-		'weapons.nurs.M26HE',
-		'weapons.nurs.SMERCH_9M55K',
-		'weapons.nurs.MO_10104M',
-		'weapons.bombs.M485_FLARE',
-		'weapons.bombs.GBU_30',
-		'weapons.bombs.S_8OM_FLARE',
-		'weapons.bombs.RBK_500SOAB',
-		'weapons.bombs.RBK_500U_BETAB_M',
-		'weapons.bombs.SAB_100_FLARE',
-		'weapons.bombs.AO_2_5RT',
-		'weapons.bombs.GBU_11',
-		'weapons.bombs.LUU_2BB',
-		'weapons.bombs.RBK_250S',
-		'weapons.bombs.PTAB_2_5KO',
-		'weapons.bombs.GBU_17',
-		'weapons.bombs.LUU_19',
-		'weapons.bombs.AH6_SMOKE_BLUE',
-		'weapons.bombs.AH6_SMOKE_GREEN',
-		'weapons.bombs.AH6_SMOKE_RED',
-		'weapons.bombs.AH6_SMOKE_YELLOW',
-
-		'weapons.bombs.M257_FLARE',
-		'weapons.bombs.LYSBOMB_CANDLE',
-		'weapons.bombs.SAB_250_FLARE',
-		'weapons.bombs.GBU_29',
-		'weapons.bombs.LUU_2AB',
-		'weapons.adapters.aku-58',
-		'weapons.adapters.AMBER',
-		'weapons.adapters.BRU_33AA',
-		'weapons.adapters.f-15ex_pylon1',
-		'weapons.adapters.jas39_arakm70b',
-		'weapons.adapters.jas39_brimstone_triple_rack',
-		'weapons.adapters.jas39_bru_61',
-		'weapons.adapters.jas39_PylonM71',
-		'weapons.adapters.jas39_spear_triple_rack',
-		'weapons.adapters.Lau_33_A',
-		'weapons.adapters.lau-131',
-		'weapons.adapters.lau-61',
-		'weapons.adapters.LWL_12',
-		'weapons.adapters.null',
-		'weapons.adapters.OH-6_XM158',
-		'weapons.adapters.PAMC',
-		'weapons.adapters.placeholder',
-		'weapons.adapters.STA02_SUU80+SUU79+SUU79_OFFSET_RACK',
-		'weapons.adapters.STA03_SUU80+SUU79+SUU79_OFFSET_RACK',
-		'weapons.adapters.STA09_SUU80+SUU79+SUU79_OFFSET_RACK',
-		'weapons.adapters.STA10_SUU80+SUU79+SUU79_OFFSET_RACK',
-		'weapons.adapters.TLAU_127',
-		'weapons.adapters.TWP_35',
-		'weapons.adapters.WingLauncher',
-		'weapons.bombs.jas_gbu-31',
-		'weapons.bombs.jas_gbu-31_blu109',
-		'weapons.bombs.jas_gbu-32',
-		'weapons.bombs.jas_gbu-38',
-		'weapons.bombs.jas_gbu-49',
-		'weapons.bombs.jas_sdb',
-		'weapons.bombs.jas39_gbu-10',
-		'weapons.bombs.jas39_gbu-12',
-		'weapons.bombs.jas39_gbu-16',
-		'weapons.bombs.M71HD',
-		'weapons.bombs.M71LD',
-		'weapons.bombs.Mk-82 500 lb GP Bomb',
-		'weapons.bombs.Mk-83 1000 lb GP Bomb',
-		'weapons.bombs.Mk-84 2000 lb GP Bomb',
-		'weapons.bombs.OH6_FRAG',
-		'weapons.bombs.OH6_SMOKE_BLUE',
-		'weapons.bombs.OH6_SMOKE_GREEN',
-		'weapons.bombs.OH6_SMOKE_RED',
-		'weapons.bombs.OH6_SMOKE_YELLOW',
-		'weapons.droptanks.A-29B TANK',
-		'weapons.droptanks.AA42R',
-		'weapons.droptanks.Bidon',
-		'weapons.droptanks.Drop tank 1100 litre',
-		'weapons.droptanks.DUMMY_STORE',
-		'weapons.droptanks.F-15EX Mods',
-		'weapons.droptanks.F22_LDTP',
-		'weapons.droptanks.FPU_12_FUEL_TANK',
-		'weapons.droptanks.FPU_12_FUEL_TANKHighVis',
-		'weapons.gunmounts.bk_27',
-		'weapons.gunmounts.M_60',
-		'weapons.gunmounts.MG_20',
-		'weapons.gunmounts.Mk11mod0',
-		'weapons.gunmounts.OH-6_M134',
-		'weapons.gunmounts.OH-6_M134_Door',
-		'weapons.gunmounts.OH-6_M60_Door',
-		'weapons.gunmounts.{OH-6_M134_Minigun1}',
-		'weapons.gunmounts.{OH-6_M134_Minigun2}',
-		'weapons.gunmounts.{OH-6_M134_Minigun3}',
-		'weapons.gunmounts.{OH-6_M134_Minigun4}',
-		'weapons.gunmounts.{OH-6_M134_Minigun5}',
-		'weapons.gunmounts.{OH-6_M134_Minigun6}',
-		'weapons.gunmounts.{OH-6_M134_Minigun7}',
-		'weapons.gunmounts.{OH-6_M134_Minigun8}',
-		'weapons.gunmounts.{OH-6_M134_Minigun9}',
-		'weapons.gunmounts.{OH-6_M134_Minigun10}',
-		'weapons.gunmounts.{OH-6_M134_Minigun11}',
-		'weapons.gunmounts.{OH-6_M134_Minigun12}',
-		'weapons.gunmounts.{OH-6_M134_Minigun13}',
-		'weapons.gunmounts.{OH-6_M134_Minigun14}',
-		'weapons.gunmounts.{OH-6_M134_Door}',
-		'weapons.gunmounts.{OH-6_M60_Door}',
-        'weapons.containers.AIM-9S',
+        'weapons.containers.{MIG21_SMOKE_RED}',
+        'weapons.containers.{MIG21_SMOKE_WHITE}',
+        'weapons.containers.{MK4_Mod0_OV10}',
         'weapons.containers.{OH-6_M134_Door}',
         'weapons.containers.{OH-6_M134_Minigun10}',
         'weapons.containers.{OH-6_M134_Minigun11}',
@@ -23442,134 +23704,1292 @@ local WEAPONSLIST_MODS_ITEMS = {
         'weapons.containers.{OH-6_M134_Minigun8}',
         'weapons.containers.{OH-6_M134_Minigun9}',
         'weapons.containers.{OH-6_M60_Door}',
-		'weapons.gunmounts.{MK4_Mod0_OV10}',
-		'weapons.missiles.IRIS-T IR AAM',
+        'weapons.containers.{OV10_SMOKE}',
+        'weapons.containers.{PK-3}',
+        'weapons.containers.{RKL609_L}',
+        'weapons.containers.{RKL609_R}',
+        'weapons.containers.{SA342_M134_SIDE_R}',
+        'weapons.containers.{SMOKE_WHITE}',
+        'weapons.containers.{SUU_23_POD}',
+        'weapons.containers.{UH60L_M134_GUNNER}',
+        'weapons.containers.{UH60L_M2_GUNNER}',
+        'weapons.containers.{UH60L_M60_GUNNER}',
+        'weapons.containers.{UH60_GAU19_LEFT}',
+        'weapons.containers.{UH60_GAU19_RIGHT}',
+        'weapons.containers.{UH60_M134_LEFT}',
+        'weapons.containers.{UH60_M134_RIGHT}',
+        'weapons.containers.{UH60_M230_LEFT}',
+        'weapons.containers.{UH60_M230_RIGHT}',
+        'weapons.containers.{UPK-23-250 MiG-21}',
+        'weapons.containers.{US_M10_SMOKE_TANK_BLUE}',
+        'weapons.containers.{US_M10_SMOKE_TANK_GREEN}',
+        'weapons.containers.{US_M10_SMOKE_TANK_ORANGE}',
+        'weapons.containers.{US_M10_SMOKE_TANK_RED}',
+        'weapons.containers.{US_M10_SMOKE_TANK_WHITE}',
+        'weapons.containers.{US_M10_SMOKE_TANK_YELLOW}',
+        'weapons.gunmounts.A20_TopTurret_M2_L',
+        'weapons.gunmounts.A20_TopTurret_M2_R',
+        'weapons.gunmounts.ACH_47_M230',
+        'weapons.gunmounts.ACH_47_M230_NT',
+        'weapons.gunmounts.AKAN',
+        'weapons.gunmounts.AKAN_NO_TRC',
+        'weapons.gunmounts.B17_BallTurret_M2_L',
+        'weapons.gunmounts.B17_BallTurret_M2_R',
+        'weapons.gunmounts.B17_ChinTurret_M2_L',
+        'weapons.gunmounts.B17_ChinTurret_M2_R',
+        'weapons.gunmounts.B17_Left_Nose_M2',
+        'weapons.gunmounts.B17_Right_Nose_M2',
+        'weapons.gunmounts.B17_TailTurret_M2_L',
+        'weapons.gunmounts.B17_TailTurret_M2_R',
+        'weapons.gunmounts.B17_TopTurret_M2_L',
+        'weapons.gunmounts.B17_TopTurret_M2_R',
+        'weapons.gunmounts.B17_Waist_Left_M2',
+        'weapons.gunmounts.B17_Waist_Right_M2',
+        'weapons.gunmounts.Browning303MkII',
+        'weapons.gunmounts.BrowningM2',
+        'weapons.gunmounts.C130_M18_Sidearm',
+        'weapons.gunmounts.C130_M4_Rifle',
+        'weapons.gunmounts.CPG_M4',
+        'weapons.gunmounts.DEFA 554',
+        'weapons.gunmounts.DEFA_553',
+        'weapons.gunmounts.GAU_12',
+        'weapons.gunmounts.GIAT_M261',
+        'weapons.gunmounts.GSH_23',
+        'weapons.gunmounts.GSh-23-2 tail defense',
+        'weapons.gunmounts.GUV_VOG',
+        'weapons.gunmounts.GUV_YakB_GSHP',
+        'weapons.gunmounts.HMP400',
+        'weapons.gunmounts.HispanoMkII',
+        'weapons.gunmounts.Ju88_Turret_Bottom_MG_81_L',
+        'weapons.gunmounts.Ju88_Turret_Bottom_MG_81_R',
+        'weapons.gunmounts.Ju88_Turret_Top_Left_MG_81',
+        'weapons.gunmounts.Ju88_Turret_Top_Right_MG_81',
+        'weapons.gunmounts.Ju88_Turret_ahead_MG_81',
+        'weapons.gunmounts.KORD_12_7',
+        'weapons.gunmounts.KORD_12_7_MI24_L',
+        'weapons.gunmounts.KORD_12_7_MI24_R',
+        'weapons.gunmounts.M-61',
+        'weapons.gunmounts.M-61A1',
+        'weapons.gunmounts.M134_L',
+        'weapons.gunmounts.M134_R',
+        'weapons.gunmounts.M134_SIDE_L',
+        'weapons.gunmounts.M134_SIDE_R',
+        'weapons.gunmounts.M230',
+        'weapons.gunmounts.M60_SIDE_L',
+        'weapons.gunmounts.M60_SIDE_R',
+        'weapons.gunmounts.MG_131',
+        'weapons.gunmounts.MG_151_20',
+        'weapons.gunmounts.MINIGUN',
+        'weapons.gunmounts.MK_108',
+        'weapons.gunmounts.N-37',
+        'weapons.gunmounts.NR-23',
+        'weapons.gunmounts.NR-30',
+        'weapons.gunmounts.OH-6_M134',
+        'weapons.gunmounts.OH-6_M134_Door',
+        'weapons.gunmounts.OH-6_M60_Door',
+        'weapons.gunmounts.OH58D_M3P',
+        'weapons.gunmounts.OH58D_M3P_L100',
+        'weapons.gunmounts.OH58D_M3P_L200',
+        'weapons.gunmounts.OH58D_M3P_L300',
+        'weapons.gunmounts.OH58D_M3P_L400',
+        'weapons.gunmounts.OH58D_M3P_L500',
+        'weapons.gunmounts.OH_58_BRAUNING',
+        'weapons.gunmounts.PKT_7_62',
+        'weapons.gunmounts.SHKAS_GUN',
+        'weapons.gunmounts.SPPU_22',
+        'weapons.gunmounts.UH-60L GAU-19',
+        'weapons.gunmounts.UH60L_M134',
+        'weapons.gunmounts.UH60_M134',
+        'weapons.gunmounts.UPK_23_25',
+        'weapons.gunmounts.defa_553',
+        'weapons.gunmounts.m3_browning',
+        'weapons.gunmounts.{ACH_47_M230_Combat_Mix}',
+        'weapons.gunmounts.{ACH_47_M230_NoTracers}',
+        'weapons.gunmounts.{ADEN_GUNPOD}',
+        'weapons.gunmounts.{AKAN_NO_TRC}',
+        'weapons.gunmounts.{AKAN}',
+        'weapons.gunmounts.{AN-M3}',
+        'weapons.gunmounts.{C-101-DEFA553}',
+        'weapons.gunmounts.{C130-Cargo-Bay-M4}',
+        'weapons.gunmounts.{C130-M18-Sidearm}',
+        'weapons.gunmounts.{CC420_GUN_POD}',
+        'weapons.gunmounts.{CH47_AFT_M240H}',
+        'weapons.gunmounts.{CH47_AFT_M3M}',
+        'weapons.gunmounts.{CH47_AFT_M60D}',
+        'weapons.gunmounts.{CH47_PORT_M134D}',
+        'weapons.gunmounts.{CH47_PORT_M240H}',
+        'weapons.gunmounts.{CH47_PORT_M60D}',
+        'weapons.gunmounts.{CH47_STBD_M134D}',
+        'weapons.gunmounts.{CH47_STBD_M240H}',
+        'weapons.gunmounts.{CH47_STBD_M60D}',
+        'weapons.gunmounts.{FN_HMP400_100}',
+        'weapons.gunmounts.{FN_HMP400_200}',
+        'weapons.gunmounts.{FN_HMP400}',
+        'weapons.gunmounts.{GAU_12_Equalizer_AP}',
+        'weapons.gunmounts.{GAU_12_Equalizer_HE}',
+        'weapons.gunmounts.{GAU_12_Equalizer}',
+        'weapons.gunmounts.{GIAT_M621_APHE}',
+        'weapons.gunmounts.{GIAT_M621_AP}',
+        'weapons.gunmounts.{GIAT_M621_HEAP}',
+        'weapons.gunmounts.{GIAT_M621_HE}',
+        'weapons.gunmounts.{GIAT_M621_SAPHEI}',
+        'weapons.gunmounts.{MB339_ANM3_L}',
+        'weapons.gunmounts.{MB339_ANM3_R}',
+        'weapons.gunmounts.{MB339_DEFA553_L}',
+        'weapons.gunmounts.{MB339_DEFA553_R}',
+        'weapons.gunmounts.{MK4_Mod0_OV10}',
+        'weapons.gunmounts.{OH-6_M134_Door}',
+        'weapons.gunmounts.{OH-6_M134_Minigun10}',
+        'weapons.gunmounts.{OH-6_M134_Minigun11}',
+        'weapons.gunmounts.{OH-6_M134_Minigun12}',
+        'weapons.gunmounts.{OH-6_M134_Minigun13}',
+        'weapons.gunmounts.{OH-6_M134_Minigun14}',
+        'weapons.gunmounts.{OH-6_M134_Minigun1}',
+        'weapons.gunmounts.{OH-6_M134_Minigun2}',
+        'weapons.gunmounts.{OH-6_M134_Minigun3}',
+        'weapons.gunmounts.{OH-6_M134_Minigun4}',
+        'weapons.gunmounts.{OH-6_M134_Minigun5}',
+        'weapons.gunmounts.{OH-6_M134_Minigun6}',
+        'weapons.gunmounts.{OH-6_M134_Minigun7}',
+        'weapons.gunmounts.{OH-6_M134_Minigun8}',
+        'weapons.gunmounts.{OH-6_M134_Minigun9}',
+        'weapons.gunmounts.{OH-6_M60_Door}',
+        'weapons.gunmounts.{PK-3}',
+        'weapons.gunmounts.{SA342_M134_SIDE_R}',
+        'weapons.gunmounts.{SUU_23_POD}',
+        'weapons.gunmounts.{UH60L_M134_GUNNER}',
+        'weapons.gunmounts.{UH60L_M2_GUNNER}',
+        'weapons.gunmounts.{UH60L_M60_GUNNER}',
+        'weapons.gunmounts.{UH60_GAU19_LEFT}',
+        'weapons.gunmounts.{UH60_GAU19_RIGHT}',
+        'weapons.gunmounts.{UH60_M134_LEFT}',
+        'weapons.gunmounts.{UH60_M134_RIGHT}',
+        'weapons.gunmounts.{UH60_M230_LEFT}',
+        'weapons.gunmounts.{UH60_M230_RIGHT}',
+        'weapons.shells.120_EXPL_F1_120mm_HE',
+        'weapons.shells.20MM_M242_HEI-T',
+        'weapons.shells.20mm_M220_Tracer',
+        'weapons.shells.20mm_M53_API',
+        'weapons.shells.20mm_M56_HEI',
+        'weapons.shells.20mm_M70LD_SAPHEI',
+        'weapons.shells.20x138B_AP',
+        'weapons.shells.20x138B_HE',
+        'weapons.shells.25mm_AA_JAP',
+        'weapons.shells.2A18_122',
+        'weapons.shells.2A20_115mm_AP',
+        'weapons.shells.2A20_115mm_HE',
+        'weapons.shells.2A28_73',
+        'weapons.shells.2A33_152',
+        'weapons.shells.2A38_30_AP',
+        'weapons.shells.2A38_30_HE',
+        'weapons.shells.2A42_30_AP',
+        'weapons.shells.2A42_30_HE',
+        'weapons.shells.2A46M_125_AP',
+        'weapons.shells.2A46M_125_HE',
+        'weapons.shells.2A60_120',
+        'weapons.shells.2A64_152',
+        'weapons.shells.2A7_23_AP',
+        'weapons.shells.2A7_23_HE',
+        'weapons.shells.37mm_Type_100_JAP',
+        'weapons.shells.37x263_AP',
+        'weapons.shells.37x263_HE',
+        'weapons.shells.3BM59_125_AP',
+        'weapons.shells.3UBM11_100mm_AP',
+        'weapons.shells.50Browning_APIT_M20',
+        'weapons.shells.50Browning_APIT_M20_Corsair',
+        'weapons.shells.50Browning_API_M8',
+        'weapons.shells.50Browning_API_M8_Corsair',
+        'weapons.shells.50Browning_AP_M2',
+        'weapons.shells.50Browning_AP_M2_Corsair',
+        'weapons.shells.50Browning_Ball_M2',
+        'weapons.shells.50Browning_Ball_M2_Corsair',
+        'weapons.shells.50Browning_I_M1',
+        'weapons.shells.50Browning_T_M1',
+        'weapons.shells.53-UBR-281U',
+        'weapons.shells.53-UOR-281U',
+        'weapons.shells.57mm_Type_90_JAP',
+        'weapons.shells.5_45x39',
+        'weapons.shells.5_45x39_NOtr',
+        'weapons.shells.5_56x45',
+        'weapons.shells.5_56x45_NOtr',
+        'weapons.shells.6_5mm_Type_91_JAP',
+        'weapons.shells.75mm_AA_JAP',
+        'weapons.shells.76mm_AA_JAP',
+        'weapons.shells.7_62x39',
+        'weapons.shells.7_62x51',
+        'weapons.shells.7_62x51tr',
+        'weapons.shells.7_62x54',
+        'weapons.shells.7_62x54_NOTRACER',
+        'weapons.shells.7_7mm_Type_97_JAP',
+        'weapons.shells.7_92x57_Smkl',
+        'weapons.shells.7_92x57sS',
+        'weapons.shells.9x19_m882',
+        'weapons.shells.A222_130',
+        'weapons.shells.AK100_100',
+        'weapons.shells.AK176_76',
+        'weapons.shells.AK630_30_AP',
+        'weapons.shells.AK630_30_HE',
+        'weapons.shells.APCBC',
+        'weapons.shells.AP_T_MkI_40mm',
+        'weapons.shells.BK_27',
+        'weapons.shells.BR_354N',
+        'weapons.shells.Besa7_92x57',
+        'weapons.shells.Besa7_92x57T',
+        'weapons.shells.Bofors_40mm_Essex',
+        'weapons.shells.Bofors_40mm_HE',
+        'weapons.shells.Br303',
+        'weapons.shells.Br303_tr',
+        'weapons.shells.British303_B_Mk4z',
+        'weapons.shells.British303_B_Mk6z',
+        'weapons.shells.British303_Ball_Mk1c',
+        'weapons.shells.British303_Ball_Mk6',
+        'weapons.shells.British303_Ball_Mk7',
+        'weapons.shells.British303_Ball_Mk8',
+        'weapons.shells.British303_G_Mk1',
+        'weapons.shells.British303_G_Mk2',
+        'weapons.shells.British303_G_Mk3',
+        'weapons.shells.British303_G_Mk4',
+        'weapons.shells.British303_G_Mk5',
+        'weapons.shells.British303_G_Mk6z',
+        'weapons.shells.British303_O_Mk1',
+        'weapons.shells.British303_W_Mk1z',
+        'weapons.shells.CHAP_125_3BM69_APFSDS_T',
+        'weapons.shells.CHAP_76_HESH_T',
+        'weapons.shells.CHAP_76_HE_T',
+        'weapons.shells.CHAP_76_PFHE',
+        'weapons.shells.CL3143_120_AP',
+        'weapons.shells.DANA_152',
+        'weapons.shells.DEFA552_30',
+        'weapons.shells.DEFA553_30AP',
+        'weapons.shells.DEFA553_30APIT',
+        'weapons.shells.DEFA553_30HE',
+        'weapons.shells.DEFA554_30_HE',
+        'weapons.shells.DEFA554_30_HE_TRACERS',
+        'weapons.shells.DM12_120mm_HEAT_MP_T',
+        'weapons.shells.DM12_L55_120mm_HEAT_MP_T',
+        'weapons.shells.DM23_105_AP',
+        'weapons.shells.DM33_120_AP',
+        'weapons.shells.DM53_120_AP',
+        'weapons.shells.Flak18_Sprgr_39',
+        'weapons.shells.Flak41_Sprgr_39',
+        'weapons.shells.GAU8_30_AP',
+        'weapons.shells.GAU8_30_HE',
+        'weapons.shells.GAU8_30_TP',
+        'weapons.shells.GSH23_23_AP',
+        'weapons.shells.GSH23_23_HE',
+        'weapons.shells.GSH23_23_HE_T',
+        'weapons.shells.GSH301_30_AP',
+        'weapons.shells.GSH301_30_HE',
+        'weapons.shells.GSH_23_AP',
+        'weapons.shells.GSH_23_HE',
+        'weapons.shells.GSh_30_2K_AP',
+        'weapons.shells.GSh_30_2K_AP_Tr',
+        'weapons.shells.GSh_30_2K_HE',
+        'weapons.shells.GSh_30_2K_HE_Tr',
+        'weapons.shells.HEDPM430',
+        'weapons.shells.HESH_105',
+        'weapons.shells.HE_M1_Shell',
+        'weapons.shells.HE_T_MkII_40mm',
+        'weapons.shells.HP30_30_AP',
+        'weapons.shells.HP30_30_HE',
+        'weapons.shells.Hispano_Mk_II_AP/T',
+        'weapons.shells.Hispano_Mk_II_MKIIZ_AP',
+        'weapons.shells.Hispano_Mk_II_MKI_HE/I',
+        'weapons.shells.Hispano_Mk_II_Mk_Z_Ball',
+        'weapons.shells.Hispano_Mk_II_SAP/I',
+        'weapons.shells.Hispano_Mk_II_Tracer_G',
+        'weapons.shells.I_Gr_33',
+        'weapons.shells.K307_155HE',
+        'weapons.shells.KDA_35_AP',
+        'weapons.shells.KDA_35_FAPDS',
+        'weapons.shells.KDA_35_HE',
+        'weapons.shells.KPVT_14_5',
+        'weapons.shells.KPVT_14_5_T',
+        'weapons.shells.KS19_100AP',
+        'weapons.shells.KS19_100HE',
+        'weapons.shells.L14A2_30_APDS',
+        'weapons.shells.L21A1_30_HE',
+        'weapons.shells.L23A1_APFSDS',
+        'weapons.shells.L23_120_AP',
+        'weapons.shells.L31A7_HESH',
+        'weapons.shells.L31_120mm_HESH',
+        'weapons.shells.M101',
+        'weapons.shells.M134_7_62_T',
+        'weapons.shells.M185_155',
+        'weapons.shells.M197_20',
+        'weapons.shells.M1_37mm_37AP-T',
+        'weapons.shells.M1_37mm_HE-T',
+        'weapons.shells.M20_50_aero_APIT',
+        'weapons.shells.M230_30',
+        'weapons.shells.M230_ADEM/DEFA',
+        'weapons.shells.M230_HEDP M789',
+        'weapons.shells.M230_HEI M799',
+        'weapons.shells.M230_TP M788',
+        'weapons.shells.M242_25_AP_M791',
+        'weapons.shells.M242_25_AP_M919',
+        'weapons.shells.M242_25_HE_M792',
+        'weapons.shells.M246_20_HE_gr',
+        'weapons.shells.M256_120_AP',
+        'weapons.shells.M256_120_AP_L55',
+        'weapons.shells.M256_120_HE',
+        'weapons.shells.M256_120_HE_L55',
+        'weapons.shells.M2_12_7',
+        'weapons.shells.M2_12_7_T',
+        'weapons.shells.M2_12_7_TG',
+        'weapons.shells.M2_50_aero_AP',
+        'weapons.shells.M322_120_AP',
+        'weapons.shells.M339_120mm_HEAT_MP_T',
+        'weapons.shells.M383',
+        'weapons.shells.M393A3_105_HE',
+        'weapons.shells.M39_20_API',
+        'weapons.shells.M39_20_HEI',
+        'weapons.shells.M39_20_HEI_T',
+        'weapons.shells.M39_20_TP',
+        'weapons.shells.M42A1_HE',
+        'weapons.shells.M46',
+        'weapons.shells.M485_155_IL',
+        'weapons.shells.M51_37AP',
+        'weapons.shells.M53_APT_RED',
+        'weapons.shells.M53_AP_RED',
+        'weapons.shells.M55A2_TP_RED',
+        'weapons.shells.M56A3_HE_RED',
+        'weapons.shells.M61',
+        'weapons.shells.M61_20_AP',
+        'weapons.shells.M61_20_AP_gr',
+        'weapons.shells.M61_20_HE',
+        'weapons.shells.M61_20_HEIT_RED',
+        'weapons.shells.M61_20_HE_INVIS',
+        'weapons.shells.M61_20_HE_gr',
+        'weapons.shells.M61_20_PGU27',
+        'weapons.shells.M61_20_PGU28',
+        'weapons.shells.M61_20_PGU30',
+        'weapons.shells.M61_20_TP',
+        'weapons.shells.M61_20_TP_T',
+        'weapons.shells.M62_APC',
+        'weapons.shells.M63_37HE',
+        'weapons.shells.M68_105_AP',
+        'weapons.shells.M68_105_HE',
+        'weapons.shells.M825A1_155_SM',
+        'weapons.shells.MAUZER30_30',
+        'weapons.shells.MG_13x64_API',
+        'weapons.shells.MG_13x64_APT',
+        'weapons.shells.MG_13x64_HE',
+        'weapons.shells.MG_13x64_HEI_T',
+        'weapons.shells.MG_13x64_I',
+        'weapons.shells.MG_13x64_I_T',
+        'weapons.shells.MG_20x82_API',
+        'weapons.shells.MG_20x82_HEI_T',
+        'weapons.shells.MG_20x82_MGsch',
+        'weapons.shells.MINGR55',
+        'weapons.shells.MINGR55_NO_TRC',
+        'weapons.shells.MK45_127',
+        'weapons.shells.MK45_127mm_AP_Essex',
+        'weapons.shells.MK45_127mm_Essex',
+        'weapons.shells.MK75_76',
+        'weapons.shells.MK_108_HEI',
+        'weapons.shells.MK_108_MGsch',
+        'weapons.shells.MK_108_MGsch_T',
+        'weapons.shells.Mauser7.92x57_B.',
+        'weapons.shells.Mauser7.92x57_P.m.K.',
+        'weapons.shells.Mauser7.92x57_S.m.K.',
+        'weapons.shells.Mauser7.92x57_S.m.K.H.',
+        'weapons.shells.Mauser7.92x57_S.m.K._L\'spur(gelb)',
+        'weapons.shells.Mauser7.92x57_S.m.K._L\'spur(weiss)',
+        'weapons.shells.Mauser7.92x57_S.m.K._Ub.m.Zerl.',
+        'weapons.shells.Mk_12_HE_shell',
+        'weapons.shells.Mk_20_HE_shell',
+        'weapons.shells.N37_37x155_API_T',
+        'weapons.shells.N37_37x155_HEI_T',
+        'weapons.shells.NR23_23x115_API',
+        'weapons.shells.NR23_23x115_HEI_T',
+        'weapons.shells.NR30_30x155_APHE',
+        'weapons.shells.NR30_30x155_APT',
+        'weapons.shells.NR30_30x155_HEI_T',
+        'weapons.shells.OFL_120F2_AP',
+        'weapons.shells.OF_350',
+        'weapons.shells.Oerlikon_20mm_Essex',
+        'weapons.shells.Oerlikon_20mm_HE',
+        'weapons.shells.PGU32_SAPHEI_T',
+        'weapons.shells.PINK_PROJECTILE',
+        'weapons.shells.PJ26_76_PFHE',
+        'weapons.shells.PJ87_100_PFHE',
+        'weapons.shells.PKT_7_62',
+        'weapons.shells.PKT_7_62_T',
+        'weapons.shells.PLZ_155_HE',
+        'weapons.shells.Pzgr_39',
+        'weapons.shells.Pzgr_39/40',
+        'weapons.shells.Pzgr_39/42',
+        'weapons.shells.Pzgr_39/43',
+        'weapons.shells.Pzgr_39_5cm',
+        'weapons.shells.QF17_HE',
+        'weapons.shells.QF94_AA_HE',
+        'weapons.shells.QF95_206R_fixed',
+        'weapons.shells.RM_15cm_HE',
+        'weapons.shells.Rh202_20_AP',
+        'weapons.shells.Rh202_20_HE',
+        'weapons.shells.Sprgr_34_L48',
+        'weapons.shells.Sprgr_34_L70',
+        'weapons.shells.Sprgr_38',
+        'weapons.shells.Sprgr_39',
+        'weapons.shells.Sprgr_43_L71',
+        'weapons.shells.UBR_365_85AP',
+        'weapons.shells.UOF412_100HE',
+        'weapons.shells.UOF_17_100HE',
+        'weapons.shells.UO_365K_85HE',
+        'weapons.shells.Utes_12_7x108',
+        'weapons.shells.Utes_12_7x108_T',
+        'weapons.shells.VOG17',
+        'weapons.shells.YakB_12_7',
+        'weapons.shells.YakB_12_7_T',
+        'weapons.shells.ZTZ_125_AP',
+        'weapons.shells.ZTZ_125_HE',
+        'weapons.shells.ZTZ_14_5',
+        'weapons.shells.ZTZ_7_62',
+        'weapons.shells.leFH18_105HE',
+        'weapons.shells.ship_Bofors_40mm_HE',
+        'weapons.torpedoes.G7A_T1',
+        'weapons.torpedoes.LTF_5B',
+        'weapons.torpedoes.Mark_46',
+        'weapons.torpedoes.YU-6',
+        'weapons.torpedoes.mk46torp_name',
 
-		'weapons.missiles.Personal',
+		 {4,4,8,11212},
+		 {4,4,8,11210},
+		 {4,4,8,11211},
+		 {4,4,8,11209},
+	
+    },
+}
 
-		'weapons.missiles.V1',
-		'weapons.missiles.A-Darter IR AAM',
-		'weapons.missiles.Ammo',
-		'weapons.missiles.APKWS-II-IR',
-		'weapons.missiles.AGM-114L',
-		'weapons.missiles.AGM-88G AARGM-ER',
-		'weapons.missiles.AIM_120C7',
-		'weapons.missiles.AIM_120C8',
-		'weapons.missiles.AIM_120D3',
-		'weapons.missiles.AIM_260A',
-		'weapons.missiles.AIM-120B AMRAAM Active Rdr AAM',
-		'weapons.missiles.AIM-120C-5 AMRAAM - Active Rdr AAM',
-		'weapons.missiles.AIM-120C-5 AMRAAM Active Rdr AAM',
-		'weapons.missiles.AIM-120D',
-		'weapons.missiles.AIM-120D AMRAAM - Active Radar AAM',
-		'weapons.missiles.AIM-132 ASRAAM IR AAM',
-		'weapons.missiles.AIM-200A Peregrine Active Rdr AAM',
-		'weapons.missiles.AIM-260A JATM - Active Radar AAM',
-		'weapons.missiles.AIM-92C',
-		'weapons.missiles.AIM-92E',
-		'weapons.missiles.AIM-92J',
-		'weapons.missiles.AIM-9L Sidewinder IR AAM',
-		'weapons.missiles.AIM-9M Sidewinder IR AAM',
-		'weapons.missiles.AIM-9X Blk II+ Sidewinder IR AAM',
-		'weapons.missiles.AIM-9X Sidewinder IR AAM',
-		'weapons.missiles.AIM9X_BLKII',
-		'weapons.missiles.Brimstone Laser Guided Missile',
-		'weapons.missiles.GBU32_JDAM',
-		'weapons.missiles.I-Derby ER BVRAAM Active Rdr AAM',
-		'weapons.missiles.jas_agm_65h',
-		'weapons.missiles.jas_agm_65k',
-		'weapons.missiles.jas_dws39_arm',
-		'weapons.missiles.jas_dws39_tv',
-		'weapons.missiles.jas39_kepd350_arm',
-		'weapons.missiles.JAS39_RBS15_MK4',
-		'weapons.missiles.jas39_stormshadow_arm',
-		'weapons.missiles.KH-31P (AS-17 Krypton)',
-		'weapons.missiles.MAKO_A2A_C',
-		'weapons.missiles.MAKO_A2G_C',
-		'weapons.missiles.mar1',
-		'weapons.missiles.Meteor BVRAAM Active Rdr AAM',
-		'weapons.missiles.Python-5 IR AAM',
-		'weapons.missiles.R-33',
-		'weapons.missiles.R-37',
-		'weapons.missiles.R-37M',
-		'weapons.missiles.R-73L',
-		'weapons.missiles.R-77M',
-		'weapons.missiles.RBS-15 Mk4 AShM',
-		'weapons.missiles.RVV-BD',
-		'weapons.missiles.SPEAR-3 Anti-Radiation Missile',
-		'weapons.missiles.SPEAR-EW Decoy',
-		'weapons.missiles.AIM-120C-7 AMRAAM Active Rdr AAM',
-		'weapons.missiles.AIM-120C-7 AMRAAM - Active Rdr AAM',
-		'weapons.nurs.jas_m70bap',
-		'weapons.nurs.jas_m70bhe',
-		'weapons.nurs.LWL_MPP',
-		'weapons.nurs.LWL_RP',
-		'weapons.nurs.M49PSRAK145HEAT',
-		'weapons.nurs.M56ARAK135HE',
-		'weapons.nurs.OH6Rocket FFAR',
-		'weapons.shells.OH-6 7.62x51mm M61',
-		'weapons.shells.EB_US_5_56',
-		'weapons.shells.MG_20x64_HEI',
-		'weapons.shells.BK_27_AP',
-		'weapons.shells.MG_20x64_APT',
-		'weapons.shells.BK_27_PELET',
-		'weapons.shells.OH-6 7.62x51mm M80',
-		'weapons.shells.20x110mm HE-I',
-		'weapons.gunmounts.Akan M/55 30mm',
-		'weapons.shells.20x110mm AP-T',
-		'weapons.shells.20x110mm AP-I',
-		'weapons.shells.OH-6 7.62x51mm M62',
-		'weapons.shells.M39_20_TP_T',
-		'weapons.shells.BK_27_PELE',
-		'weapons.shells.OH-6 7.62x51mm HE-I',
-		'weapons.shells.7.62x51mm',
+local WEAPONSLIST_MODS_ITEMS = {
+		"weapons.missiles.9M317",
+		"weapons.missiles.9M723",
+		"weapons.missiles.9M723_HE",
+		"weapons.missiles.A-Darter IR AAM",
+		"weapons.missiles.A_29B_APKWS_M282",
+		"weapons.missiles.adarter_AA",
+		"weapons.missiles.AGM-114AS (Anti-Ship)",
+		"weapons.missiles.AGM-114L",
+		"weapons.missiles.AGM-114L (Anti-Radiation)",
+		"weapons.missiles.AGM-142 Popeye",
+		"weapons.missiles.AGM-88F HCSM",
+		"weapons.missiles.AGM-88G AARGM-ER",
+		"weapons.missiles.AGM_131C_SRAM",
+		"weapons.missiles.AGM_84S",
+		"weapons.missiles.AGM_88G_ARM",
+		"weapons.missiles.AGM_88G_N_ARM",
+		"weapons.missiles.AGR_20_M282_REDUX",
+		"weapons.missiles.AIM-120B AMRAAM Active Rdr AAM",
+		"weapons.missiles.AIM-120C-5 AMRAAM - Active Rdr AAM",
+		"weapons.missiles.AIM-120C-5 AMRAAM Active Rdr AAM",
+		"weapons.missiles.AIM-120C-6",
+		"weapons.missiles.AIM-120C-7",
+		"weapons.missiles.AIM-120C-7 AMRAAM - Active Rdr AAM",
+		"weapons.missiles.AIM-120C-7 AMRAAM Active Rdr AAM",
+		"weapons.missiles.AIM-120C-8",
+		"weapons.missiles.AIM-120D",
+		"weapons.missiles.AIM-120D AMRAAM - Active Radar AAM",
+		"weapons.missiles.AIM-120D-3",
+		"weapons.missiles.AIM-120E",
+		"weapons.missiles.AIM-132 ASRAAM IR AAM",
+		"weapons.missiles.AIM-174B",
+		"weapons.missiles.AIM-200A Peregrine Active Radar AAM",
+		"weapons.missiles.AIM-200A Peregrine Active Rdr AAM",
+		"weapons.missiles.AIM-260A",
+		"weapons.missiles.AIM-260A JATM - Active Radar AAM",
+		"weapons.missiles.AIM-260B",
+		"weapons.missiles.AIM-92C",
+		"weapons.missiles.AIM-92E",
+		"weapons.missiles.AIM-92J",
+		"weapons.missiles.AIM-9C",
+		"weapons.missiles.AIM-9D",
+		"weapons.missiles.AIM-9L Sidewinder IR AAM",
+		"weapons.missiles.AIM-9M Sidewinder IR AAM",
+		"weapons.missiles.AIM-9X Blk II+ Sidewinder IR AAM",
+		"weapons.missiles.AIM-9X Sidewinder IR AAM",
+		"weapons.missiles.AIM9X_BLKII",
+		"weapons.missiles.AIM_120C7",
+		"weapons.missiles.AIM_120C8",
+		"weapons.missiles.AIM_120D3",
+		"weapons.missiles.Aim_132",
+		"weapons.missiles.AIM_2000",
+		"weapons.missiles.AIM_200A",
+		"weapons.missiles.AIM_260A",
+		"weapons.missiles.AIM_272A",
+		"weapons.missiles.AIM_74A",
+		"weapons.missiles.AIM_74B",
+		"weapons.missiles.AIM_9X2",
+		"weapons.missiles.AIM_9X3",
+		"weapons.missiles.Ammo",
+		"weapons.missiles.APKWS-II-IR",
+		"weapons.missiles.asraam_AA",
+		"weapons.missiles.B61_11_A",
+		"weapons.missiles.B61_11_B",
+		"weapons.missiles.B61_11_C",
+		"weapons.missiles.B61_11_D",
+		"weapons.missiles.Barrel",
+		"weapons.missiles.Beer",
+		"weapons.missiles.BGM_109B",
+		"weapons.missiles.Brimstone Laser Guided Missile",
+		"weapons.missiles.CATM-Python-5",
+		"weapons.missiles.CATM_120C",
+		"weapons.missiles.CATM_9X",
+		"weapons.missiles.CF-ASTRA-MK-1",
+		"weapons.missiles.CF-I-DERBY-ER",
+		"weapons.missiles.CF-R-27EA",
+		"weapons.missiles.CF-R-27EP",
+		"weapons.missiles.CF-R-27ER",
+		"weapons.missiles.CF-R-27ET1",
+		"weapons.missiles.CF-R-27P",
+		"weapons.missiles.CF-R-27R",
+		"weapons.missiles.CF-R-27T1",
+		"weapons.missiles.CF-R-37M",
+		"weapons.missiles.CF-R-73L",
+		"weapons.missiles.CF-R-74M",
+		"weapons.missiles.CF-R-74M2",
+		"weapons.missiles.CF-R-77",
+		"weapons.missiles.CF-R-77-1",
+		"weapons.missiles.CF-R-77M",
+		"weapons.missiles.CF-R-77PD",
+		"weapons.missiles.CF-RVV-AE",
+		"weapons.missiles.CF-RVV-MD2",
+		"weapons.missiles.CF-RVV-SD",
+		"weapons.missiles.f111_agm_130",
+		"weapons.missiles.F111_AGM_84D",
+		"weapons.missiles.FIM_92C",
+		"weapons.missiles.Fuel",
+		"weapons.missiles.GBU32_JDAM",
+		"weapons.missiles.GBU_32",
+		"weapons.missiles.HAWK_RAKETA",
+		"weapons.missiles.HHQ-9",
+		"weapons.missiles.HOT2",
+		"weapons.missiles.HQ-16",
+		"weapons.missiles.HQ-7B",
+		"weapons.missiles.HY-2",
+		"weapons.missiles.I-Derby ER BVRAAM Active Rdr AAM",
+		"weapons.missiles.IRIS-T IR AAM",
+		"weapons.missiles.IrisT",
+		"weapons.missiles.jas39_kepd350_arm",
+		"weapons.missiles.JAS39_RBS15_MK4",
+		"weapons.missiles.jas39_stormshadow_arm",
+		"weapons.missiles.jas_agm_65h",
+		"weapons.missiles.jas_agm_65k",
+		"weapons.missiles.jas_dws39_arm",
+		"weapons.missiles.jas_dws39_tv",
+		"weapons.missiles.KH-31P (AS-17 Krypton)",
+		"weapons.missiles.KONKURS",
+		"weapons.missiles.m2000d_aasm_250",
+		"weapons.missiles.M30",
+		"weapons.missiles.M31",
+		"weapons.missiles.M39A1",
+		"weapons.missiles.M48",
+		"weapons.missiles.MAKO_A2A_C",
+		"weapons.missiles.MAKO_A2A_N",
+		"weapons.missiles.MAKO_A2G_C",
+		"weapons.missiles.MAKO_A2G_N",
+		"weapons.missiles.MALUTKA",
+		"weapons.missiles.mar1",
+		"weapons.missiles.Meteor",
+		"weapons.missiles.Meteor BVRAAM Active Rdr AAM",
+		"weapons.missiles.Meteor-N",
+		"weapons.missiles.Mi28NE_305E",
+		"weapons.missiles.Mi28NE_9M120",
+		"weapons.missiles.Mi28NE_9M120F",
+		"weapons.missiles.Mi28NE_9M120M",
+		"weapons.missiles.Mi28NE_9M220",
+		"weapons.missiles.MICA IR AAM",
+		"weapons.missiles.MICA NG RF",
+		"weapons.missiles.MICA_IR",
+		"weapons.missiles.MIM_104",
+		"weapons.missiles.MIM_72G",
+		"weapons.missiles.MK83",
+		"weapons.missiles.OKC_RIM8_Talos",
+		"weapons.missiles.P_500",
+		"weapons.missiles.P_700",
+		"weapons.missiles.P_9M117",
+		"weapons.missiles.P_9M133",
+		"weapons.missiles.Personal",
+		"weapons.missiles.PYTHON 5 AAM",
+		"weapons.missiles.Python-5 IR AAM",
+		"weapons.missiles.Python_AA",
+		"weapons.missiles.R-33",
+		"weapons.missiles.R-33S",
+		"weapons.missiles.R-37",
+		"weapons.missiles.R-37M",
+		"weapons.missiles.R-73L",
+		"weapons.missiles.R-77M",
+		"weapons.missiles.Rapier",
+		"weapons.missiles.RBS-15 Mk4 AShM",
+		"weapons.missiles.REFLEX",
+		"weapons.missiles.RIM_116A",
+		"weapons.missiles.ROLAND_R",
+		"weapons.missiles.RVV-BD",
+		"weapons.missiles.SA2V755",
+		"weapons.missiles.SA3M9M",
+		"weapons.missiles.SA48H6E2",
+		"weapons.missiles.SA57E6",
+		"weapons.missiles.SA5B27",
+		"weapons.missiles.SA5B55",
+		"weapons.missiles.SA5V28",
+		"weapons.missiles.SA9M31",
+		"weapons.missiles.SA9M311",
+		"weapons.missiles.SA9M33",
+		"weapons.missiles.SA9M330",
+		"weapons.missiles.SA9M333",
+		"weapons.missiles.SA9M338K",
+		"weapons.missiles.SA9M38M1",
+		"weapons.missiles.SA_IRIS_T_SL",
+		"weapons.missiles.SCALP-EG",
+		"weapons.missiles.SCUD_RAKETA",
+		"weapons.missiles.Sea_Cat",
+		"weapons.missiles.Sea_Dart",
+		"weapons.missiles.Sea_Wolf",
+		"weapons.missiles.SeaSparrow",
+		"weapons.missiles.SM_1",
+		"weapons.missiles.SM_2",
+		"weapons.missiles.SM_2ER",
+		"weapons.missiles.SM_6",
+		"weapons.missiles.SP_AIM_120C7",
+		"weapons.missiles.SP_AIM_120C8",
+		"weapons.missiles.SP_AIM_120D3",
+		"weapons.missiles.SP_AIM_260A",
+		"weapons.missiles.SP_MAKO_A2G_C",
+		"weapons.missiles.SPEAR-3 Anti-Radiation Missile",
+		"weapons.missiles.SPEAR-EW Decoy",
+		"weapons.missiles.SPIKE_ERA",
+		"weapons.missiles.Su30_BRAHMOS_S",
+		"weapons.missiles.Su30_BRAHMOS_SEAD",
+		"weapons.missiles.Su30_CMII",
+		"weapons.missiles.Su30_FAB500UMPK",
+		"weapons.missiles.Su30_KH-29TE",
+		"weapons.missiles.Su30_KH-38MTE",
+		"weapons.missiles.Su30_KH-59M",
+		"weapons.missiles.Su30_KH29L",
+		"weapons.missiles.SU30_KH31A",
+		"weapons.missiles.Su30_KH31AD",
+		"weapons.missiles.Su30_KH31P",
+		"weapons.missiles.Su30_KH31PD",
+		"weapons.missiles.Su30_KH35A",
+		"weapons.missiles.Su30_KH35UE",
+		"weapons.missiles.Su30_KH36",
+		"weapons.missiles.Su30_KH38MAE",
+		"weapons.missiles.Su30_KH38MLE",
+		"weapons.missiles.Su30_KH_59MK",
+		"weapons.missiles.Su30_KH_59MK2",
+		"weapons.missiles.Su30_Rudra-M1",
+		"weapons.missiles.Su30_SAAW",
+		"weapons.missiles.SVIR",
+		"weapons.missiles.TOW2",
+		"weapons.missiles.V1",
+		"weapons.missiles.X_29TE",
+		"weapons.missiles.YJ-62",
+		"weapons.missiles.YJ-82",
+		"weapons.missiles.YJ-83",
+
+		"weapons.bombs.AAA GEPARD [34720lb]",
+		"weapons.bombs.AAA Vulcan M163 Air [21666lb]",
+		"weapons.bombs.AAA Vulcan M163 Skid [21577lb]",
+		"weapons.bombs.AH6_SMOKE_BLUE",
+		"weapons.bombs.AH6_SMOKE_GREEN",
+		"weapons.bombs.AH6_SMOKE_RED",
+		"weapons.bombs.AH6_SMOKE_YELLOW",
+		"weapons.bombs.AN-M66A2",
+		"weapons.bombs.AN-M81",
+		"weapons.bombs.AN-M88",
+		"weapons.bombs.AO_2_5RT",
+		"weapons.bombs.APC BTR-80 Air [23936lb]",
+		"weapons.bombs.APC BTR-82A Air [24998lb]",
+		"weapons.bombs.APC BTR-82A Skid [24888lb]",
+		"weapons.bombs.APC Cobra Air [10912lb]",
+		"weapons.bombs.APC Cobra Skid [10802lb]",
+		"weapons.bombs.APC LAV-25 Air [22520lb]",
+		"weapons.bombs.APC LAV-25 Skid [22514lb]",
+		"weapons.bombs.APC M1043 HMMWV Armament Air [7023lb]",
+		"weapons.bombs.APC M1126 Stryker ICV [29542lb]",
+		"weapons.bombs.APC M113 Air [21624lb]",
+		"weapons.bombs.APC M113 Skid [21494lb]",
+		"weapons.bombs.APC MTLB Air [26400lb]",
+		"weapons.bombs.APC MTLB Skid [26290lb]",
+		"weapons.bombs.ART 2S9 NONA Air [19140lb]",
+		"weapons.bombs.ARV BRDM-2 Air [12320lb]",
+		"weapons.bombs.ARV BRDM-2 Skid [12210lb]",
+		"weapons.bombs.ATGM M1045 HMMWV TOW Air [7183lb]",
+		"weapons.bombs.ATGM M1134 Stryker [30337lb]",
+		"weapons.bombs.BLU-3B_OLD",
+		"weapons.bombs.BLU-4B_OLD",
+		"weapons.bombs.BLU_3B_GROUP",
+		"weapons.bombs.BLU_4B_GROUP",
+		"weapons.bombs.EWR SBORKA Air [21624lb]",
+		"weapons.bombs.EWR SBORKA Skid [21624lb]",
+		"weapons.bombs.f111_gbu_10",
+		"weapons.bombs.f111_gbu_12",
+		"weapons.bombs.f111_gbu_16",
+		"weapons.bombs.f111_gbu_24",
+		"weapons.bombs.FAB-500M62NV",
+		"weapons.bombs.FLASH_CARTRIDGE",
+		"weapons.bombs.GBU-43/B(MOAB)",
+		"weapons.bombs.GBU_11",
+		"weapons.bombs.GBU_17",
+		"weapons.bombs.GBU_29",
+		"weapons.bombs.GBU_30",
+		"weapons.bombs.Generic Crate [20000lb]",
+		"weapons.bombs.IFV BMD-1 Air [18040lb]",
+		"weapons.bombs.IFV BMP-2 [25168lb]",
+		"weapons.bombs.IFV BMP-3 [32912lb]",
+		"weapons.bombs.IFV BTR-D Air [18040lb]",
+		"weapons.bombs.IFV BTR-D Skid [17930lb]",
+		"weapons.bombs.IFV M2A2 Bradley [34720lb]",
+		"weapons.bombs.IFV MCV-80 [34720lb]",
+		"weapons.bombs.IFV TPZ FUCH [33440lb]",
+		"weapons.bombs.jas39_gbu-10",
+		"weapons.bombs.jas39_gbu-12",
+		"weapons.bombs.jas39_gbu-16",
+		"weapons.bombs.jas_gbu-31",
+		"weapons.bombs.jas_gbu-31_blu109",
+		"weapons.bombs.jas_gbu-32",
+		"weapons.bombs.jas_gbu-38",
+		"weapons.bombs.jas_gbu-49",
+		"weapons.bombs.jas_sdb",
+		"weapons.bombs.KAB-1500LG",
+		"weapons.bombs.KAB-500S",
+		"weapons.bombs.LUU_19",
+		"weapons.bombs.LUU_2AB",
+		"weapons.bombs.LUU_2BB",
+		"weapons.bombs.LYSBOMB_CANDLE",
+		"weapons.bombs.M1025 HMMWV Air [6160lb]",
+		"weapons.bombs.m2000d_gbu-10",
+		"weapons.bombs.m2000d_gbu-12",
+		"weapons.bombs.m2000d_gbu-16",
+		"weapons.bombs.m2000d_gbu-24",
+		"weapons.bombs.M257_FLARE",
+		"weapons.bombs.M485_FLARE",
+		"weapons.bombs.M71HD",
+		"weapons.bombs.M71LD",
+		"weapons.bombs.MK-81SE",
+		"weapons.bombs.Mk-82 500 lb GP Bomb",
+		"weapons.bombs.Mk-83 1000 lb GP Bomb",
+		"weapons.bombs.Mk-84 2000 lb GP Bomb",
+		"weapons.bombs.MK77mod0-WPN",
+		"weapons.bombs.MK77mod1-WPN",
+		"weapons.bombs.OH6_FRAG",
+		"weapons.bombs.OH6_SMOKE_BLUE",
+		"weapons.bombs.OH6_SMOKE_GREEN",
+		"weapons.bombs.OH6_SMOKE_RED",
+		"weapons.bombs.OH6_SMOKE_YELLOW",
+		"weapons.bombs.RBK_250S",
+		"weapons.bombs.RBK_500SOAB",
+		"weapons.bombs.RBK_500U_BETAB_M",
+		"weapons.bombs.S_8OM_FLARE",
+		"weapons.bombs.S_8OM_FLARE_BLUE",
+		"weapons.bombs.S_8OM_FLARE_COPY",
+		"weapons.bombs.S_8OM_FLARE_RED",
+		"weapons.bombs.SAB_100_FLARE",
+		"weapons.bombs.SAB_250_FLARE",
+		"weapons.bombs.SAM Avenger M1097 Air [7200lb]",
+		"weapons.bombs.SAM CHAPARRAL Air [21624lb]",
+		"weapons.bombs.SAM ROLAND ADS [34720lb]",
+		"weapons.bombs.SAM ROLAND LN [34720b]",
+		"weapons.bombs.SAM SA-13 STRELA [21624lb]",
+		"weapons.bombs.SPG M1128 Stryker MGS [33036lb]",
+		"weapons.bombs.Squad 30 x Soldier [7950lb]",
+		"weapons.bombs.SU30-KAB-1500T",
+		"weapons.bombs.SU30_244N",
+		"weapons.bombs.Su30_FAB250M62",
+		"weapons.bombs.Su30_FAB500M54",
+		"weapons.bombs.Su30_FAB500M62",
+		"weapons.bombs.SU30_GBU-38",
+		"weapons.bombs.Su30_OFAB100",
+		"weapons.bombs.Su30_OFAB250",
+		"weapons.bombs.toilet_bomb",
+		"weapons.bombs.Transport M818 [16000lb]",
+		"weapons.bombs.Transport Tigr Air [15900lb]",
+		"weapons.bombs.Transport Tigr Skid [15730lb]",
+		"weapons.bombs.Transport UAZ-469 Air [3747lb]",
+		"weapons.bombs.Transport UAZ-469 Skid [3630lb]",
+		"weapons.bombs.Transport URAL-375 [14815lb]",
+
+		"weapons.nurs.AGR_20_M151_unguided",
+		"weapons.nurs.AGR_20_M282_unguided",
+		"weapons.nurs.ANDR0ID_SONO_IL",
+		"weapons.nurs.ANDR0ID_SONO_IL2",
+		"weapons.nurs.BRM1_90MM_UG",
+		"weapons.nurs.GRAD_9M22U",
+		"weapons.nurs.jas_m70bap",
+		"weapons.nurs.jas_m70bhe",
+		"weapons.nurs.LWL_MPP",
+		"weapons.nurs.LWL_RP",
+		"weapons.nurs.M26",
+		"weapons.nurs.M26HE",
+		"weapons.nurs.M282_MPP_REDO",
+		"weapons.nurs.M49PSRAK145HEAT",
+		"weapons.nurs.M56ARAK135HE",
+		"weapons.nurs.MO_10104M",
+		"weapons.nurs.OH6Rocket FFAR",
+		"weapons.nurs.PG_16V",
+		"weapons.nurs.PG_9V",
+		"weapons.nurs.SMERCH_9M55F",
+		"weapons.nurs.SMERCH_9M55K",
+		"weapons.nurs.URAGAN_9M27F",
+
+		"weapons.adapters.14-3-M2",
+		"weapons.adapters.30-6-M2",
+		"weapons.adapters.9K114_Shturm",
+		"weapons.adapters.9k121",
+		"weapons.adapters.9M114-PILON",
+		"weapons.adapters.9m114-pilon",
+		"weapons.adapters.9M114-PYLON_EMPTY",
+		"weapons.adapters.9m114_pylon2",
+		"weapons.adapters.9m120",
+		"weapons.adapters.9M120_pylon",
+		"weapons.adapters.9M120_pylon2",
+		"weapons.adapters.9m120m",
+		"weapons.adapters.A4E_SUU-7",
+		"weapons.adapters.ACH_47F_Left",
+		"weapons.adapters.ACH_47F_Left_ATAS",
+		"weapons.adapters.ACH_47F_Left_Outboard",
+		"weapons.adapters.ACH_47F_Right",
+		"weapons.adapters.ACH_47F_Right_ATAS",
+		"weapons.adapters.ACH_47F_Right_Outboard",
+		"weapons.adapters.adapter_df4a",
+		"weapons.adapters.adapter_df4b",
+		"weapons.adapters.adapter_gdj_kd63",
+		"weapons.adapters.adapter_gdj_yj83k",
+		"weapons.adapters.aero-3b",
+		"weapons.adapters.AKU-58",
+		"weapons.adapters.aku-58",
+		"weapons.adapters.AMBER",
+		"weapons.adapters.ANDR0ID_JAYHAWK",
+		"weapons.adapters.ANDR0ID_MH60_SOAR_OldShort",
+		"weapons.adapters.ANDR0ID_MH60K",
+		"weapons.adapters.ANDR0ID_MH60M_NewLong",
+		"weapons.adapters.ANDR0ID_MH60M_NewShort",
+		"weapons.adapters.ANDR0ID_MH60M_RADAR",
+		"weapons.adapters.ANDR0ID_MK58_Launcher_ACH47",
+		"weapons.adapters.ANDR0ID_Pavehawk_New",
+		"weapons.adapters.ANDR0ID_Pavehawk_Old",
+		"weapons.adapters.ANDR0ID_SH60R",
+		"weapons.adapters.ANDR0ID_SH60R_Console",
+		"weapons.adapters.ANDR0ID_SH60R_Launcher",
+		"weapons.adapters.ANDR0ID_SH60S_NOPYLON",
+		"weapons.adapters.ANDR0ID_SH60S_PYLON",
+		"weapons.adapters.ANDR0ID_STD_ESSS",
+		"weapons.adapters.ao-2_5rt_block1",
+		"weapons.adapters.APU-12-40",
+		"weapons.adapters.apu-13mt",
+		"weapons.adapters.apu-13u-2",
+		"weapons.adapters.APU-170",
+		"weapons.adapters.apu-6",
+		"weapons.adapters.APU-60-1",
+		"weapons.adapters.apu-60-2_L",
+		"weapons.adapters.apu-60-2_R",
+		"weapons.adapters.APU-68",
+		"weapons.adapters.apu-68m3",
+		"weapons.adapters.apu-68um3",
+		"weapons.adapters.apu-7",
+		"weapons.adapters.APU-73",
+		"weapons.adapters.ARAKM70B",
+		"weapons.adapters.AUF2_RACK",
+		"weapons.adapters.B-1B_10-store_Conventional_Bomb_Module",
+		"weapons.adapters.B-1B_28-store_Conventional_Bomb_Module",
+		"weapons.adapters.B-1B_Conventional_Rotary_Launcher",
+		"weapons.adapters.B-20",
+		"weapons.adapters.b-20",
+		"weapons.adapters.b-52_CRL_mod1",
+		"weapons.adapters.b-52_CSRL_ALCM",
+		"weapons.adapters.b-52_HSAB",
+		"weapons.adapters.b-52_suu67",
+		"weapons.adapters.B-8V20A",
+		"weapons.adapters.b52-mbd_agm86",
+		"weapons.adapters.b52-mbd_m117",
+		"weapons.adapters.b52-mbd_mk84",
+		"weapons.adapters.boz-100",
+		"weapons.adapters.BR21-Gerat",
+		"weapons.adapters.BRD-4-250",
+		"weapons.adapters.BRU-42_HS",
+		"weapons.adapters.BRU-42_LS",
+		"weapons.adapters.BRU-42_LS_(LAU-131)",
+		"weapons.adapters.BRU-42_LS_(LAU-68)",
+		"weapons.adapters.BRU-42_LS_(SUU-25)",
+		"weapons.adapters.BRU_33A",
+		"weapons.adapters.BRU_33AA",
+		"weapons.adapters.BRU_41A",
+		"weapons.adapters.BRU_42A",
+		"weapons.adapters.BRU_55",
+		"weapons.adapters.BRU_57",
+		"weapons.adapters.C-25PU",
+		"weapons.adapters.c-25pu",
+		"weapons.adapters.cargo_oh6_ammo",
+		"weapons.adapters.cargo_oh6_animals",
+		"weapons.adapters.cargo_oh6_fbi",
+		"weapons.adapters.cargo_oh6_fuel",
+		"weapons.adapters.cargo_oh6_mixed",
+		"weapons.adapters.cargo_oh6_mre",
+		"weapons.adapters.cargo_oh6_pax",
+		"weapons.adapters.Carrier_N-1_EM_EF",
+		"weapons.adapters.CBLS-200",
+		"weapons.adapters.CHAP_Mi28N_ataka",
+		"weapons.adapters.CHAP_Mi28N_igla",
+		"weapons.adapters.CHAP_Tu95MS_rotary_launcher",
+		"weapons.adapters.CLB_30",
+		"weapons.adapters.CLB_4",
+		"weapons.adapters.DAGR_Launcher",
+		"weapons.adapters.ER4_Rack",
+		"weapons.adapters.EX_Pylon",
+		"weapons.adapters.EX_Pylon_Single",
+		"weapons.adapters.F-15E_LAU-117",
+		"weapons.adapters.F-15E_LAU-88",
+		"weapons.adapters.f-15ex_pylon1",
+		"weapons.adapters.F22_IRST",
+		"weapons.adapters.F4-PILON",
+		"weapons.adapters.f4-pilon",
+		"weapons.adapters.F4E_dual_LAU7",
+		"weapons.adapters.gdj-iv1",
+		"weapons.adapters.hb_a-6e_lau7_adu299",
+		"weapons.adapters.HB_F-4E_BRU-42",
+		"weapons.adapters.HB_F-4E_LAU-34",
+		"weapons.adapters.HB_F-4E_ORD_LAU_77",
+		"weapons.adapters.HB_F14_EXT_BRU34",
+		"weapons.adapters.HB_F14_EXT_BRU42",
+		"weapons.adapters.HB_F14_EXT_LAU-7",
+		"weapons.adapters.HB_F14_EXT_SHOULDER_PHX_L",
+		"weapons.adapters.HB_F14_EXT_SHOULDER_PHX_R",
+		"weapons.adapters.HB_F14_EXT_SPARROW_PYLON",
+		"weapons.adapters.HB_F4E_LAU117",
+		"weapons.adapters.HB_ORD_LAU-88",
+		"weapons.adapters.HB_ORD_MER",
+		"weapons.adapters.HB_ORD_Missile_Well_Adapter",
+		"weapons.adapters.HB_ORD_SUU_7",
+		"weapons.adapters.Hercules_Ammo_Pallet",
+		"weapons.adapters.hf20_pod",
+		"weapons.adapters.hj12-launcher-tube",
+		"weapons.adapters.J-11A_twinpylon_l",
+		"weapons.adapters.J-11A_twinpylon_r",
+		"weapons.adapters.jas39_arakm70b",
+		"weapons.adapters.jas39_brimstone_triple_rack",
+		"weapons.adapters.jas39_bru_61",
+		"weapons.adapters.jas39_PylonM71",
+		"weapons.adapters.jas39_spear_triple_rack",
+		"weapons.adapters.JF-17_GDJ-II19L",
+		"weapons.adapters.JF-17_GDJ-II19R",
+		"weapons.adapters.JF-17_PF12_twin",
+		"weapons.adapters.LAU-10",
+		"weapons.adapters.LAU-105",
+		"weapons.adapters.lau-105",
+		"weapons.adapters.LAU-115C",
+		"weapons.adapters.LAU-115C+2_LAU127",
+		"weapons.adapters.LAU-117",
+		"weapons.adapters.lau-117",
+		"weapons.adapters.lau-118a",
+		"weapons.adapters.LAU-131",
+		"weapons.adapters.lau-131",
+		"weapons.adapters.LAU-3",
+		"weapons.adapters.LAU-61",
+		"weapons.adapters.lau-61",
+		"weapons.adapters.LAU-68",
+		"weapons.adapters.lau-68",
+		"weapons.adapters.LAU_127",
+		"weapons.adapters.Lau_33_A",
+		"weapons.adapters.LR-25",
+		"weapons.adapters.LWL_12",
+		"weapons.adapters.M-2000C_AUF2",
+		"weapons.adapters.M-2000c_BAP_Rack",
+		"weapons.adapters.M-2000C_LRF4",
+		"weapons.adapters.M-2000C_LRF4.edm",
+		"weapons.adapters.M260",
+		"weapons.adapters.M261",
+		"weapons.adapters.M272",
+		"weapons.adapters.M272_AGM114",
+		"weapons.adapters.M299",
+		"weapons.adapters.M299_AGM114",
+		"weapons.adapters.m559",
+		"weapons.adapters.MAK-79_VAR_1",
+		"weapons.adapters.MAK-79_VAR_2",
+		"weapons.adapters.MAK-79_VAR_3",
+		"weapons.adapters.MAK-79_VAR_4",
+		"weapons.adapters.Matra-F1-Rocket",
+		"weapons.adapters.mbd",
+		"weapons.adapters.MBD-2-67",
+		"weapons.adapters.MBD-2-67U",
+		"weapons.adapters.mbd-3",
+		"weapons.adapters.mbd-4",
+		"weapons.adapters.mbd3-u6-68",
+		"weapons.adapters.MER-5E",
+		"weapons.adapters.mer2",
+		"weapons.adapters.mer_a4e",
+		"weapons.adapters.Mi28_9K114_Shturm",
+		"weapons.adapters.Mi28_9K114_Shturm_g",
+		"weapons.adapters.Mi28NE_305E_dual_pylon",
+		"weapons.adapters.Mi28NE_305E_pylon",
+		"weapons.adapters.Mi28NE_BL13L",
+		"weapons.adapters.null",
+		"weapons.adapters.OH-6_XM158",
+		"weapons.adapters.OH58D_HRACK_L",
+		"weapons.adapters.OH58D_HRACK_R",
+		"weapons.adapters.OH58D_M260",
+		"weapons.adapters.OH58D_SRACK_L",
+		"weapons.adapters.OH58D_SRACK_R",
+		"weapons.adapters.oh6_cargo_ammo",
+		"weapons.adapters.oh6_cargo_animals",
+		"weapons.adapters.oh6_cargo_crates",
+		"weapons.adapters.oh6_cargo_jerrycans",
+		"weapons.adapters.oh6_cargo_operator",
+		"weapons.adapters.oh6_cargo_pax",
+		"weapons.adapters.oh6_cargo_pigs",
+		"weapons.adapters.oh6_cargo_soldiers",
+		"weapons.adapters.oro-57k.edm",
+		"weapons.adapters.PAMC",
+		"weapons.adapters.placeholder",
+		"weapons.adapters.ptab-2_5ko_block1",
+		"weapons.adapters.PU_9S846_STRELEC",
+		"weapons.adapters.PylonM71",
+		"weapons.adapters.rb04pylon",
+		"weapons.adapters.rb05pylon",
+		"weapons.adapters.RB15pylon",
+		"weapons.adapters.Rocket_Launcher_4_5inch",
+		"weapons.adapters.sa342_ATAM_Tube_2x",
+		"weapons.adapters.SA342_LAU_HOT3_1x",
+		"weapons.adapters.SA342_LAU_HOT3_2x",
+		"weapons.adapters.SA342_Telson8",
+		"weapons.adapters.Schloss_500XIIC",
+		"weapons.adapters.Spitfire_pilon1",
+		"weapons.adapters.Spitfire_pilon2L",
+		"weapons.adapters.Spitfire_pilon2R",
+		"weapons.adapters.STA02_SUU80+SUU79+SUU79_OFFSET_RACK",
+		"weapons.adapters.STA03_SUU80+SUU79+SUU79_OFFSET_RACK",
+		"weapons.adapters.STA09_SUU80+SUU79+SUU79_OFFSET_RACK",
+		"weapons.adapters.STA10_SUU80+SUU79+SUU79_OFFSET_RACK",
+		"weapons.adapters.su-27-twinpylon",
+		"weapons.adapters.Su30_Brahmos_pylon",
+		"weapons.adapters.Su30_DUAL_77",
+		"weapons.adapters.Su30_SAAW_POD",
+		"weapons.adapters.suu-25",
+		"weapons.adapters.T45_PMBR",
+		"weapons.adapters.TER-9A",
+		"weapons.adapters.tinytim",
+		"weapons.adapters.TLAU_127",
+		"weapons.adapters.tow-pilon",
+		"weapons.adapters.tu-22m3-mbd",
+		"weapons.adapters.TWP_35",
+		"weapons.adapters.UB-13",
+		"weapons.adapters.UB-16",
+		"weapons.adapters.UB-16-57UMP",
+		"weapons.adapters.UB-32",
+		"weapons.adapters.UB_32A",
+		"weapons.adapters.UB_32A_24",
+		"weapons.adapters.uh60l_lwl12",
+		"weapons.adapters.vap_ammo_box_wood_small",
+		"weapons.adapters.WingLauncher",
+		"weapons.adapters.XM158",
+
+		"weapons.containers.2-c9",
+		"weapons.containers.22_RBF.edm",
+		"weapons.containers.2c1",
+		"weapons.containers.2c6m",
+		"weapons.containers.A29B_SMOKE-POD",
+		"weapons.containers.A29B_SMOKE-POD",
+		"weapons.containers.A4E_SUU-7",
+		"weapons.containers.ab-212_cable",
+		"weapons.containers.aero-3b",
+		"weapons.containers.agrarspray",
 		"weapons.containers.ALQ-167",
+		"weapons.containers.AN/ASG-34 Legion IRST Pod (Cosmetic)",
+		"weapons.containers.AN/ASW-55",
+		"weapons.containers.ANDR0ID_JAYHAWK",
+		"weapons.containers.ANDR0ID_MH60_SOAR_OldShort",
+		"weapons.containers.ANDR0ID_MH60K",
+		"weapons.containers.ANDR0ID_MH60M_NewLong",
+		"weapons.containers.ANDR0ID_MH60M_NewShort",
+		"weapons.containers.ANDR0ID_MH60M_RADAR",
+		"weapons.containers.ANDR0ID_Pavehawk_New",
+		"weapons.containers.ANDR0ID_Pavehawk_Old",
+		"weapons.containers.ANDR0ID_SH60R",
+		"weapons.containers.ANDR0ID_SH60R_Console",
+		"weapons.containers.ANDR0ID_SH60S_NOPYLON",
+		"weapons.containers.ANDR0ID_SH60S_PYLON",
+		"weapons.containers.ANDR0ID_STD_ESSS",
+		"weapons.containers.BA_58",
+		"weapons.containers.Bell47-Floats",
+		"weapons.containers.BLACK",
+		"weapons.containers.BLUE",
+		"weapons.containers.bmd-1",
+		"weapons.containers.bmp-1",
+		"weapons.containers.BRU_42A",
+		"weapons.containers.BTR-80",
+		"weapons.containers.Damocles Targeting Pod",
+		"weapons.containers.ECLAIR-M Pod",
+		"weapons.containers.Elta EL/L 8222",
+		"weapons.containers.F22_IRST_PAIR",
+		"weapons.containers.F22_Sensor_Pod",
+		"weapons.containers.FLIR-STAR-SAFIRE",
+		"weapons.containers.GRAY",
+		"weapons.containers.GREEN",
+		"weapons.containers.HEMTT",
+		"weapons.containers.hemtt_fire",
+		"weapons.containers.Hercules_Battle_Station",
+		"weapons.containers.Hercules_Battle_Station_TGP",
+		"weapons.containers.Hercules_JATO",
+		"weapons.containers.HMMWV_M1025",
+		"weapons.containers.HMMWV_M1043",
+		"weapons.containers.HMMWV_M1045",
+		"weapons.containers.HMMWV_M973",
+		"weapons.containers.HookBell47",
+		"weapons.containers.L-370_Left.edm",
+		"weapons.containers.L-370_Right.edm",
+		"weapons.containers.Legion Pod",
+		"weapons.containers.Litening III Targeting Pod",
+		"weapons.containers.M48",
+		"weapons.containers.M6",
+		"weapons.containers.marder",
+		"weapons.containers.null",
+		"weapons.containers.ORANGE",
+		"weapons.containers.OV-10A_Paratrooper",
+		"weapons.containers.RED",
+		"weapons.containers.sh2f_mad",
+		"weapons.containers.stretchers_bell47",
+		"weapons.containers.Su30_APK_9",
+		"weapons.containers.Su30_DAMOCLES",
+		"weapons.containers.Su30_ELM2060",
+		"weapons.containers.Su30_R73U_BLACK",
+		"weapons.containers.SU30_SAP518_L1",
+		"weapons.containers.SU30_SAP518_R1",
+		"weapons.containers.Su30SM_T220",
+		"weapons.containers.Su30SM_T2201",
+		"weapons.containers.TLAU_127",
+		"weapons.containers.WHITE",
+		"weapons.containers.YELLOW",
+		"weapons.containers.zsu-23-4",
+		"weapons.containers.{5d5aa063-a002-4de8-8a89-6eda1e80ee7b}",
+		"weapons.containers.{AH-6_DOORS}",
+		"weapons.containers.{AH-6_Door}",
+		"weapons.containers.{AH-6_FN_HMP400}",
+		"weapons.containers.{AH-6_Gunners}",
+		"weapons.containers.{AH6_M134L}",
+		"weapons.containers.{AH6_M134R}",
+		"weapons.containers.{ANDR0ID_M134}",
+		"weapons.containers.{ANDR0ID_M240_TWIN_AFT}",
+		"weapons.containers.{ANDR0ID_M2HB_AFT}",
+		"weapons.containers.{ANDR0ID_M2HB_DUAL_PORT}",
+		"weapons.containers.{ANDR0ID_M2HB_DUAL_STBD}",
+		"weapons.containers.{ANDR0ID_M2HB_PORT}",
+		"weapons.containers.{ANDR0ID_M2HB_STBD}",
+		"weapons.containers.{ANDR0ID_MH47_DUAL_PORT}",
+		"weapons.containers.{ANDR0ID_MH47_DUAL_STBD}",
+		"weapons.containers.{ANDR0ID_MK19}",
+		"weapons.containers.{ANDR0ID_XM197}",
+		"weapons.containers.{C_A4E_CBU-1A}",
+		"weapons.containers.{C_A4E_CBU-2A}",
+		"weapons.containers.{C_A4E_CBU-2BA}",
+		"weapons.containers.{CANON PUCA LEFT}",
+		"weapons.containers.{CANON PUCA RIGHT}",
+		"weapons.containers.{DAP_6_A29B}",
+		"weapons.containers.{F111C_FLIR}",
+		"weapons.containers.{FN_HMP400_100_A29B}",
+		"weapons.containers.{FN_HMP400_200_A29B}",
+		"weapons.containers.{FN_HMP400_A29B}",
+		"weapons.containers.{GIAT_NC621_AP_A29B}",
+		"weapons.containers.{GIAT_NC621_APHE_A29B}",
+		"weapons.containers.{GIAT_NC621_HE_A29B}",
+		"weapons.containers.{GIAT_NC621_HEAP_A29B}",
+		"weapons.containers.{GIAT_NC621_SAPHEI_A29B}",
+		"weapons.containers.{GSh_30_1}",
+		"weapons.containers.{Herc_105mm_Howitzer}",
+		"weapons.containers.{Herc_GAU_23A_Chain_Gun}",
+		"weapons.containers.{Herc_M61_Vulcan_Rotary_Cannon}",
+		"weapons.containers.{JAS39_EWS39}",
+		"weapons.containers.{M134 SittingMinigun}",
+		"weapons.containers.{Mk4 HIPEG}",
+		"weapons.containers.{OH-58_M134P_3000}",
+		"weapons.containers.{OH-6_M129}",
+		"weapons.containers.{OH58_GAU-19}",
+		"weapons.containers.{OH6_Browning_M3P_1}",
+		"weapons.containers.{OH6_Browning_M3P_2}",
+		"weapons.containers.{OH6_Browning_M3P_3}",
+		"weapons.containers.{OH6_FN_HMP_1}",
+		"weapons.containers.{OH6_FN_HMP_2}",
+		"weapons.containers.{OH6_FN_HMP_3}",
+		"weapons.containers.{OH6_GIAT_M261_1}",
+		"weapons.containers.{OH6_GIAT_M261_2}",
+		"weapons.containers.{OH6_GIAT_M261_3}",
+		"weapons.containers.{OV10_SMOKE}",
+		"weapons.containers.{SPRAY_F}",
+		"weapons.containers.{SPRAY_H}",
+		"weapons.containers.{SPRAY_P}",
+		"weapons.containers.{SPRAYER_F}",
+		"weapons.containers.{SPRAYER_H}",
 		"weapons.containers.{SPRAYER_P}",
 
-		"weapons.gunmounts.{5d5aa063-a002-4de8-8a89-6eda1e80ee7b}",
-		"weapons.containers.{SPRAYER_F}",
-		"weapons.containers.{OV10_SMOKE}",
+		"weapons.droptanks.A-29B TANK",
+		"weapons.droptanks.AA42R",
+		"weapons.droptanks.ah6_auxtank",
+		"weapons.droptanks.DFT_150_GAL_A4E",
+		"weapons.droptanks.DFT_300_GAL_A4E",
+		"weapons.droptanks.DFT_300_GAL_A4E_LR",
+		"weapons.droptanks.DFT_400_GAL_A4E",
+		"weapons.droptanks.dragonfly_fuel_tanks",
+		"weapons.droptanks.Drop Tank 1000 Litre",
+		"weapons.droptanks.Drop tank 1100 litre",
+		"weapons.droptanks.Drop Tank 2000 Litre",
+		"weapons.droptanks.DUMMY_STORE",
+		"weapons.droptanks.EF_CENTRAL_TANK",
+		"weapons.droptanks.EF_FuelTank_1000L",
+		"weapons.droptanks.F-15EX Mods",
+		"weapons.droptanks.F22_600gal",
+		"weapons.droptanks.F22_LDTP",
+		"weapons.droptanks.FPU_12_FUEL_TANK",
+		"weapons.droptanks.FPU_12_FUEL_TANKHighVis",
+		"weapons.droptanks.Hercules_ExtFuelTank",
+		"weapons.droptanks.JAYHAWK_120_Fuel_Tank",
+		"weapons.droptanks.JAYHAWK_80gal_Fuel_Tank",
+		"weapons.droptanks.null",
+		"weapons.droptanks.PUCARA TANK",
+		"weapons.droptanks.SEAHAWK_120_Fuel_Tank",
+		"weapons.droptanks.sh2f_tank_l",
+		"weapons.droptanks.sh2f_tank_r",
+		"weapons.droptanks.Su-25sm3_PTB-800.edm",
 
-		"weapons.adapters.DAGR_Launcher",
-		"weapons.containers.Litening III Targeting Pod",
-		"weapons.containers.TLAU_127",
-		"weapons.containers.{SPRAY_P}",
-		"weapons.containers.{SPRAY_F}",
-		"weapons.containers.OV-10A_Paratrooper",
-		"weapons.containers.FLIR-STAR-SAFIRE",
-		"weapons.containers.Legion Pod",
-		"weapons.containers.A29B_SMOKE-POD",
-		"weapons.shells.BK_27_HE",
-		"weapons.shells.BK_27_APHE",
-		"weapons.missiles.Fuel",
-		"weapons.shells.DroneBombShell",
-		"weapons.gunmounts.{DroneBomb}",
-		"weapons.gunmounts.DroneBombMount",
-		"weapons.containers.A29B_SMOKE-POD",
-		"weapons.containers.null",
-		"weapons.bombs.FLASH_CARTRIDGE",
-		"weapons.gunmounts.AH-6_M134R",
-		"weapons.gunmounts.{AH6_M134L}",
-		"weapons.adapters.Mi28NE_BL13L",
-		"weapons.adapters.Mi28NE_305E_pylon",
-		"weapons.adapters.Mi28_9K114_Shturm_g",
-		"weapons.containers.22_RBF.edm",
-		"weapons.gunmounts.{AH-6_Door}",
-		"weapons.shells.AH-6 7.62x51mm M62",
-		"weapons.gunmounts.sppu_gun",
-		"weapons.gunmounts.{AH6_M134R}",
-		"weapons.gunmounts.{AH-6_FN_HMP400}",
-		"weapons.shells.AH-6 7.62x51mm M80",
-		"weapons.adapters.Mi28NE_305E_dual_pylon",
-		"weapons.adapters.Mi28_9K114_Shturm",
-		"weapons.gunmounts.{22_SPPU}",
-		"weapons.gunmounts.AH-6_M134L",
-		"weapons.missiles.Mi28NE_9M120",
-		"weapons.gunmounts.{22_SPPU_reversed}",
+		"weapons.shells.20x110mm AP-I",
+		"weapons.shells.20x110mm AP-T",
+		"weapons.shells.20x110mm HE-I",
+		"weapons.shells.7.62x51mm",
 		"weapons.shells.AH-6 7.62x51mm M61",
-		"weapons.gunmounts.AH-6_HMP400",
+		"weapons.shells.AH-6 7.62x51mm M62",
+		"weapons.shells.AH-6 7.62x51mm M80",
+		"weapons.shells.BK_27_AP",
+		"weapons.shells.BK_27_APHE",
+		"weapons.shells.BK_27_HE",
+		"weapons.shells.BK_27_PELE",
+		"weapons.shells.BK_27_PELET",
+		"weapons.shells.DroneBombShell",
+		"weapons.shells.EB_US_5_56",
+		"weapons.shells.M39_20_TP_T",
+		"weapons.shells.Mauser7.92x57_S.m.K._L",
+		"weapons.shells.Mauser7.92x57_S.m.K._L",
+		"weapons.shells.MG_20x64_APT",
+		"weapons.shells.MG_20x64_HEI",
+		"weapons.shells.OH-6 7.62x51mm HE-I",
+		"weapons.shells.OH-6 7.62x51mm M61",
+		"weapons.shells.OH-6 7.62x51mm M62",
+		"weapons.shells.OH-6 7.62x51mm M80",
+
 		"weapons.gunmounts.AH-6_Door_Gun",
-		"weapons.containers.BA_58",
+		"weapons.gunmounts.AH-6_HMP400",
+		"weapons.gunmounts.AH-6_M134L",
+		"weapons.gunmounts.AH-6_M134R",
+		"weapons.gunmounts.Akan M/55 30mm",
+		"weapons.gunmounts.bk_27",
+		"weapons.gunmounts.DroneBombMount",
+		"weapons.gunmounts.M_60",
+		"weapons.gunmounts.MG_20",
+		"weapons.gunmounts.Mk11mod0",
+		"weapons.gunmounts.sppu_gun",
+		"weapons.gunmounts.{22_SPPU_reversed}",
+		"weapons.gunmounts.{22_SPPU}",
+		"weapons.gunmounts.{5d5aa063-a002-4de8-8a89-6eda1e80ee7b}",
+		"weapons.gunmounts.{AH-6_Door}",
+		"weapons.gunmounts.{AH-6_FN_HMP400}",
+		"weapons.gunmounts.{AH6_M134L}",
+		"weapons.gunmounts.{AH6_M134R}",
+		"weapons.gunmounts.{DroneBomb}",
 	}
 
 if AllowMods and Era == "Modern" then
@@ -23746,6 +25166,13 @@ function WEAPONSLIST.SyncFromWarehouseLogistics(opts)
     end
   end
 
+  -- Build mods set so we can skip mod-only items when AllowMods is false.
+  local mods = {}
+  for _, name in ipairs(WEAPONSLIST_MODS_ITEMS or {}) do
+    mods[name] = true
+  end
+  local allowModWeapons = (Era == "Modern" and AllowMods == true)
+
   local airbases = _wsCollectLogisticCenterAirbases()
   if #airbases == 0 then return false end
 
@@ -23757,15 +25184,19 @@ function WEAPONSLIST.SyncFromWarehouseLogistics(opts)
     if storage and storage.GetInventory then
       local _, _, wp = storage:GetInventory()
       for weaponName, qty in pairs(wp or {}) do
-        if qty and qty > 0 and _wsIsAllowedWeaponKey(weaponName) then
+        if type(qty) == "number" and qty >= 0 and _wsIsAllowedWeaponKey(weaponName) then
           scanned = scanned + 1
-          if not known[weaponName] then
-            known[weaponName] = true
-            local cat = _wsCategoryForWeapon(weaponName)
-            addedByCat[cat] = addedByCat[cat] or {}
-            table.insert(addedByCat[cat], weaponName)
-            if addToList then
-              _wsAddItem(cat, weaponName)
+          if (not allowModWeapons) and mods[weaponName] then
+            -- Mods not allowed: ignore mod-only items so they don't get added/logged.
+          else
+            if not known[weaponName] then
+              known[weaponName] = true
+              local cat = _wsCategoryForWeapon(weaponName)
+              addedByCat[cat] = addedByCat[cat] or {}
+              table.insert(addedByCat[cat], weaponName)
+              if addToList then
+                _wsAddItem(cat, weaponName)
+              end
             end
           end
         end
@@ -23917,8 +25348,8 @@ allowedPlanes = allowedPlanes or {
   "SA342L","Mi-8MT","Mirage-F1EE","Mi-24P","CH-47Fbl1","FA-18C_hornet","F-16C_50", "MiG-29 Fulcrum","UH-60L_DAP","C-130J-30","F-14B","AH-64D_BLK_II","MH-6J","AH-6J","Mi-28NE"}
 
 restockAircraft = restockAircraft or {
-"FA-18FT","EA-18G","F-22A","FA-18E","B-52H","FA-18F","FA-18ET","F15EX","A-29B","F-23A","Ka-50_3","Ka-50","Mi-28NE","SU22","AV8BNA","Su-30MKA","Su-30MKI","Su-30MKM","Su-30SM",
-"Bronco-OV-10A","JAS39Gripen_AG","MiG-31BM","JAS39Gripen","Su-35S","UH-60L","OH-6A","Su-35","JAS39Gripen_BVR","SK-60","T-45","UH-60L_DAP", "MiG-29 Fulcrum","MH-6J","AH-6J"}
+"UH-60L_DAP","UH-60L","Bronco-OV-10A","Ka-50_3","Ka-50","SK-60","T-45","OH-6A","FA-18FT","EA-18G","F-22A","FA-18E","B-52H","FA-18F","FA-18ET","F15EX","A-29B","F-23A","Mi-28NE","SU22","AV8BNA","Su-30MKA","Su-30MKI","Su-30MKM","Su-30SM",
+"JAS39Gripen_AG","MiG-31BM","JAS39Gripen","Su-35S","Su-35","JAS39Gripen_BVR", "MH-6J","AH-6J"}
 
 
 
@@ -24005,13 +25436,21 @@ function checkWeaponsList(airbase)
 		end
     end
 
-    local function restockColdwarLogisticCenter(storage,airbaseName)
-        if not storage then return end
-        if not storage.GetInventory then return end
+	local function restockColdwarLogisticCenter(storage,airbaseName)
+		if not storage then return end
+		if not storage.GetInventory then return end
 
-        local ac, lq, wp = storage:GetInventory()
+		local ac, lq, wp = storage:GetInventory()
 		if WarehouseLogistics ~= true or isLogisticCenterAirbase(airbaseName) then
 			for name, _ in pairs(wp or {}) do
+				if not (restrictedWeaponSet and restrictedWeaponSet[name]) then
+					storage:SetItem(name, 1073741823)
+				end
+			end
+			-- Also fill any allowed items that are missing from the warehouse list.
+			local allItems = (WEAPONSLIST and WEAPONSLIST.GetAllItems and WEAPONSLIST.GetAllItems()) or {}
+			for i = 1, #allItems do
+				local name = allItems[i]
 				if not (restrictedWeaponSet and restrictedWeaponSet[name]) then
 					storage:SetItem(name, 1073741823)
 				end
@@ -24123,3 +25562,4 @@ timer.scheduleFunction(function()
         end
     end
 end, {}, timer.getTime() + 0.1)
+

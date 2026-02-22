@@ -9949,7 +9949,7 @@ local function groupfireAtPoint(var)
                 local unit = group:getUnit(1)
                 local shooterType = unit and unit:getTypeName() or groupName
                 local batchKey = zoneName ~= "" and (tostring(coal) .. ":" .. zoneName) or ("coal:" .. tostring(coal))
-                local batchWindow = AIEN.config.artyMessageBatchWindow or 1.0
+                local batchWindow = AIEN.config.artyMessageBatchWindow or 1.6
 
                 AIEN._msgBatch = AIEN._msgBatch or {}
                 local b = AIEN._msgBatch[batchKey]
@@ -13365,9 +13365,6 @@ function update_ISR() -- basically clean old ISR data
                 AIEN.changePhase()
                 scheduleNextPhaseCycle()
                 -- debug steps
-                if AIEN.config.AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
-                    dumpTableAIEN("intelDb.lua", intelDb, "int")
-                end
                 if AIEN.config.AIEN_debugProcessDetail then
                     env.info((tostring(ModuleName) .. ", update_ISR: fase B completed"))
                 end
@@ -13411,10 +13408,7 @@ function update_ISR() -- basically clean old ISR data
         else
             AIEN.changePhase()
             scheduleNextPhaseCycle()
-            -- debug steps
-            if AIEN.config.AIEN_debugProcessDetail and AIEN_io and AIEN_lfs then
-                dumpTableAIEN("intelDb.lua", intelDb, "int")
-            end
+
             if AIEN.config.AIEN_debugProcessDetail then
                 env.info((tostring(ModuleName) .. ", update_ISR: fase B skipped"))
             end            

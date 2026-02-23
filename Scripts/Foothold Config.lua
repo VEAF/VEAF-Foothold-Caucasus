@@ -70,6 +70,10 @@ HideSAMOnMFD = true -- if random, use "random" (string)
 -- ammo depots, fuel tanks, factories).
 UseStatics = true
 
+-- PVE_Only is a flag where you can decide if you want to disable players from spawning in red zones.
+-- This is when the player chooses Red coalition.
+PVE_Only = false -- If true, players can not spawn in red coalition zones.
+
 -- "Modern" or "Coldwar" ("Gulfwar" if the map is Iraq).
 -- In the editor, Don't copy to all ships, make sure all planes in every warehouse are set to LIMITED!!!
 Era = "Modern" -- does not work in Afghanistan or kola

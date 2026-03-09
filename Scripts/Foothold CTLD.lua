@@ -11,7 +11,7 @@ BASE:I("CTLD : is loading.")
 CTLD_Logging = false
 CTLD_Logging_DEEP = false
 
-Foothold_ctld = CTLD:New(coalition.side.BLUE,{"CH.47", "UH.1H", "Hercules", "Mi.8MT", "Bronco.OV", "UH.60L", "Mi.24P", "OH58D", "KA.50", "AH.64D", "UH.60.DAP","C.130J.30"},"Lufttransportbrigade I")
+Foothold_ctld = CTLD:New(coalition.side.BLUE,{"CH.47", "UH.1H", "Hercules", "Mi.8MT","Ми.8МТВ2","Ми.24П", "Bronco.OV", "UH.60L", "Mi.24P", "OH58D", "KA.50", "AH.64D", "UH.60.DAP","C.130J.30"},"Lufttransportbrigade I")
 Foothold_ctld.dropcratesanywhere = true
 Foothold_ctld.forcehoverload = false
 Foothold_ctld.CrateDistance = 65
@@ -84,12 +84,12 @@ CTLDPrices = CTLDPrices or {
   ["HAWK Site"]              = { price = 750, reqRank = 3 },
   ["Nasam Site"]             = { price = 750, reqRank = 3 },
   ["FARP"]                   = { price = 500, reqRank = 1 },
-  ["IRIS T SLM STR"]         = { price = 750, reqRank = 3 },
-  ["IRIS T SLM LN"]          = { price = 500, reqRank = 3 },
-  ["IRIS T SLM C2"]          = { price = 500, reqRank = 3 },
-  ["IRIS T SLM System"]      = { price = 1800, reqRank = 3 },
+  ["IRIS T STR Add-on"]      = { price = 750, reqRank = 3 },
+  ["IRIS T LN Add-on"]       = { price = 500, reqRank = 3 },
+  ["IRIS T C2 Add-on"]       = { price = 500, reqRank = 3 },
+  ["IRIS T System"]          = { price = 1800, reqRank = 3 },
   ["C-RAM"]                  = { price = 500, reqRank = 2 },
-  ["HIMARS GMLRRS HE GUIDED"] = { price = 1000, reqRank = 3 },
+  ["HIMARS GMLRRS HE GUIDED"]= { price = 1000, reqRank = 3 },
   ["FV-107 Scimitar"]        = { price = 250, reqRank = 2 },
   ["FV-101 Scorpion"]        = { price = 250, reqRank = 2 },
   ["Avenger"]                = { price = 250, reqRank = 2 },
@@ -121,10 +121,10 @@ Foothold_ctld:AddCratesCargoNoMove("Nasam Site",{"CTLD_CARGO_NasamsSite"},CTLD_C
 Foothold_ctld:AddCratesCargo("FARP",{"CTLD_TROOP_FOB"},CTLD_CARGO.Enum.FOB,3,1500,10, "FARP",nil,nil,nil,"Cargos","ammo_cargo",nil, "cds_crate")
 
 if Era=='Modern' then
-Foothold_ctld:AddCratesCargoNoMove("IRIS T SLM STR", {"CTLD_CARGO_IRISTSLM_STR"},CTLD_CARGO.Enum.FOB, 1, 2500, 10, "SAM/AAA",nil,nil,nil,"Cargos",nil,nil, "iso_container_small")
-Foothold_ctld:AddCratesCargoNoMove("IRIS T SLM LN", {"CTLD_CARGO_IRISTSLM-LN"},CTLD_CARGO.Enum.FOB, 1, 3500, 15, "SAM/AAA",nil,nil,nil,"Cargos",nil,nil, "iso_container_small")
-Foothold_ctld:AddCratesCargoNoMove("IRIS T SLM C2", {"CTLD_CARGO_IRISTSLM_C2"},CTLD_CARGO.Enum.FOB, 1, 1900, 10, "SAM/AAA",nil,nil,nil,"Cargos",nil,nil, "iso_container_small")
-Foothold_ctld:AddCratesCargoNoMove("IRIS T SLM System", {"CTLD_CARGO_IRISTSLM_System"}, CTLD_CARGO.Enum.FOB, 3, 2800, 10, "SAM/AAA", nil,nil,nil,"Cargos",nil,nil, "iso_container_small")
+Foothold_ctld:AddCratesCargoNoMove("IRIS T STR Add-on", {"CTLD_CARGO_IRISTSLM_STR"},CTLD_CARGO.Enum.FOB, 1, 2500, 10, "SAM/AAA",nil,nil,nil,"Cargos","cds_crate",nil, "iso_container_small")
+Foothold_ctld:AddCratesCargoNoMove("IRIS T LN Add-on", {"CTLD_CARGO_IRISTSLM-LN"},CTLD_CARGO.Enum.FOB, 1, 3500, 15, "SAM/AAA",nil,nil,nil,"Cargos","cds_crate",nil, "iso_container_small")
+Foothold_ctld:AddCratesCargoNoMove("IRIS T C2 Add-on", {"CTLD_CARGO_IRISTSLM_C2"},CTLD_CARGO.Enum.FOB, 1, 1900, 10, "SAM/AAA",nil,nil,nil,"Cargos","cds_crate",nil, "iso_container_small")
+Foothold_ctld:AddCratesCargoNoMove("IRIS T System", {"CTLD_CARGO_IRISTSLM_System"}, CTLD_CARGO.Enum.FOB, 3, 2800, 10, "SAM/AAA", nil,nil,nil,"Cargos","cds_crate",nil, "iso_container_small")
 Foothold_ctld:AddCratesCargoNoMove("C-RAM", {"CTLD_CARGO_CRAM"}, CTLD_CARGO.Enum.FOB, 2, 1000, 10, "SAM/AAA")
 Foothold_ctld:AddCratesCargoNoMove("HIMARS GMLRRS HE GUIDED",{"CTLD_CARGO_GMLRS_HE"},CTLD_CARGO.Enum.VEHICLE,2,3500,12, "Support", nil,nil,nil,"Cargos",nil,nil, "iso_container_small")
 end
@@ -212,10 +212,10 @@ MAX_AT_SPAWN = MAX_AT_SPAWN or {
     ["Nasam Site"]              = 3,
     ["Tank Abrahams"]           = 0,
     ["FARP"]                    = 3,
-    ["IRIS T SLM STR"]          = 3,
-    ["IRIS T SLM LN"]           = 8,
-    ["IRIS T SLM C2"]           = 3,
-    ["IRIS T SLM System"]       = 2,
+    ["IRIS T STR Add-on"]       = 3,
+    ["IRIS T LN Add-on"]        = 8,
+    ["IRIS T C2 Add-on"]        = 3,
+    ["IRIS T System"]           = 2,
     ["C-RAM"]                   = 4,
     ["HIMARS GMLRRS HE GUIDED"] = 4,
     ["FV-107 Scimitar"]         = 2,
@@ -321,6 +321,487 @@ deployedTroopsSet = SET_GROUP:New()
 zoneCaptureInfo = {}
 deployedTroops = {}
 local zoneSupplyCrates = {}
+
+local IRIS_LOG_PREFIX = "[IRIS-MERGE]"
+local IRIS_SYSTEM_CARGO_NAME = "IRIS T SLM System"
+local IRIS_SYSTEM_TEMPLATE = "CTLD_CARGO_IRISTSLM_System"
+local IRIS_ROLE_BY_CARGO_NAME = {
+  ["IRIS T SLM LN"] = "LN",
+  ["IRIS T SLM STR"] = "STR",
+  ["IRIS T SLM C2"] = "C2",
+}
+local IRIS_ROLE_BY_TEMPLATE_ID = {
+  ["CTLD_CARGO_IRISTSLM-LN"] = "LN",
+  ["CTLD_CARGO_IRISTSLM_STR"] = "STR",
+  ["CTLD_CARGO_IRISTSLM_C2"] = "C2",
+}
+local IRIS_ROLE_TO_TEMPLATE = {
+  LN = "CTLD_CARGO_IRISTSLM-LN",
+  STR = "CTLD_CARGO_IRISTSLM_STR",
+  C2 = "CTLD_CARGO_IRISTSLM_C2",
+}
+local IRIS_ROLE_TO_UNITTYPE = {
+  LN = "CHAP_IRISTSLM_LN",
+  STR = "CHAP_IRISTSLM_STR",
+  C2 = "CHAP_IRISTSLM_CP",
+}
+local IRIS_BASELINE_COUNTS = { LN = 1, STR = 1, C2 = 1 }
+local IRIS_MERGE_DISTANCE = 200
+local IRIS_MERGE_SLOT_COUNT = 6
+local IRIS_MERGE_BASE_RADIUS = 90
+local IRIS_MERGE_RING_STEP = 35
+IRIS_RESTORE_UNIT_HEALTH_ON_MERGE = IRIS_RESTORE_UNIT_HEALTH_ON_MERGE or false
+
+local LoadIRISAugments = function() return {} end
+local ApplyIRISAugments = function() return false end
+local RunIrisOnePassStandaloneMerge = function() return false end
+
+local function irisLog(self, message)
+  local text = string.format("%s %s", IRIS_LOG_PREFIX, tostring(message))
+  if self and self.I then
+    self:I(text)
+  else
+    env.info(text)
+  end
+end
+
+local function isIrisComponentCargoName(cargoName)
+  return IRIS_ROLE_BY_CARGO_NAME[tostring(cargoName or "")]
+end
+
+local function roleFromTemplateIdText(text)
+  local haystack = tostring(text or "")
+  for templateId, role in pairs(IRIS_ROLE_BY_TEMPLATE_ID) do
+    if string.find(haystack, templateId, 1, true) then
+      return role
+    end
+  end
+  return nil
+end
+
+local function isIrisSystemTemplateText(text)
+  return string.find(tostring(text or ""), IRIS_SYSTEM_TEMPLATE, 1, true) ~= nil
+end
+
+local function resolveIrisComponentRole(vehicleGroup, cargoName)
+  local role = nil
+
+  if vehicleGroup and vehicleGroup.GetName then
+    role = roleFromTemplateIdText(vehicleGroup:GetName())
+    if role then return role end
+  end
+
+  if vehicleGroup and vehicleGroup.GetTemplate then
+    local template = vehicleGroup:GetTemplate()
+    if template then
+      role = roleFromTemplateIdText(template.name)
+      if role then return role end
+
+      if type(template.units) == "table" then
+        for _, unit in ipairs(template.units) do
+          local unitType = unit and unit.type or nil
+          for candidateRole, mappedType in pairs(IRIS_ROLE_TO_UNITTYPE) do
+            if unitType == mappedType then
+              return candidateRole
+            end
+          end
+        end
+      end
+    end
+  end
+
+  return isIrisComponentCargoName(cargoName)
+end
+
+local function isIrisSystemGroupName(groupName)
+  if type(groupName) ~= "string" then return false end
+  return string.find(groupName, IRIS_SYSTEM_TEMPLATE, 1, true) == 1
+end
+
+local function roleFromUnitType(typeName)
+  for role, unitType in pairs(IRIS_ROLE_TO_UNITTYPE) do
+    if typeName == unitType then
+      return role
+    end
+  end
+  return nil
+end
+
+local function countIrisRolesInTemplate(template)
+  local counts = { LN = 0, STR = 0, C2 = 0 }
+  if not template or type(template.units) ~= "table" then return counts end
+  for _, unit in ipairs(template.units) do
+    local role = roleFromUnitType(unit and unit.type or nil)
+    if role then
+      counts[role] = (counts[role] or 0) + 1
+    end
+  end
+  return counts
+end
+
+local function countIrisRolesInGroup(group)
+  local counts = { LN = 0, STR = 0, C2 = 0 }
+  if not group or not group.IsAlive or not group:IsAlive() then return counts end
+  local units = group:GetUnits() or {}
+  for _, unit in ipairs(units) do
+    local role = roleFromUnitType(unit and unit.GetTypeName and unit:GetTypeName() or nil)
+    if role then
+      counts[role] = (counts[role] or 0) + 1
+    end
+  end
+  return counts
+end
+
+local function getIrisMergeBaseTemplate(systemGroup)
+  if not systemGroup then
+    return nil, nil, "system group missing"
+  end
+
+  local template = systemGroup:GetTemplate()
+  if not template or type(template.units) ~= "table" then
+    return nil, nil, "system template missing units"
+  end
+
+  if IRIS_RESTORE_UNIT_HEALTH_ON_MERGE then
+    return template, "restore-health", nil
+  end
+
+  local aliveCounts = countIrisRolesInGroup(systemGroup)
+  local aliveTotal = (aliveCounts.LN or 0) + (aliveCounts.STR or 0) + (aliveCounts.C2 or 0)
+  if aliveTotal <= 0 then
+    return nil, "preserve-alive-composition", "no alive IRIS units in system to merge onto"
+  end
+  local keptCounts = { LN = 0, STR = 0, C2 = 0 }
+  local trimmedUnits = {}
+
+  for _, unit in ipairs(template.units) do
+    local role = roleFromUnitType(unit and unit.type or nil)
+    if not role then
+      trimmedUnits[#trimmedUnits + 1] = unit
+    else
+      local keepMax = aliveCounts[role] or 0
+      if (keptCounts[role] or 0) < keepMax then
+        keptCounts[role] = (keptCounts[role] or 0) + 1
+        trimmedUnits[#trimmedUnits + 1] = unit
+      end
+    end
+  end
+
+  if #trimmedUnits == 0 then
+    return nil, "preserve-alive-composition", "no alive units in system to merge onto"
+  end
+
+  template.units = trimmedUnits
+  return template, "preserve-alive-composition", nil
+end
+
+local function extractUnitTemplateForRole(groupTemplate, role)
+  if not groupTemplate or type(groupTemplate.units) ~= "table" then return nil end
+  local wantedType = IRIS_ROLE_TO_UNITTYPE[role]
+  local fallback = nil
+  for _, unit in ipairs(groupTemplate.units) do
+    if not fallback and unit then
+      fallback = UTILS.DeepCopy(unit)
+    end
+    if unit and unit.type == wantedType then
+      return UTILS.DeepCopy(unit)
+    end
+  end
+  return fallback
+end
+
+local function getIrisSlotPosition(ax, ay, slotIndex)
+  local index = slotIndex or 1
+  local ring = math.floor((index - 1) / IRIS_MERGE_SLOT_COUNT)
+  local spoke = (index - 1) % IRIS_MERGE_SLOT_COUNT
+  local angle = math.rad(spoke * (360 / IRIS_MERGE_SLOT_COUNT))
+  local radius = IRIS_MERGE_BASE_RADIUS + (ring * IRIS_MERGE_RING_STEP)
+  return ax + math.cos(angle) * radius, ay + math.sin(angle) * radius
+end
+
+local function reflowIrisTemplateLayout(systemTemplate, anchorUnit)
+  if not systemTemplate or type(systemTemplate.units) ~= "table" or #systemTemplate.units == 0 then
+    return false
+  end
+
+  local units = systemTemplate.units
+  local anchor = anchorUnit or units[1]
+  local ax = (anchor and anchor.x) or systemTemplate.x or 0
+  local ay = (anchor and anchor.y) or systemTemplate.y or 0
+  local ah = (anchor and (anchor.heading or anchor.psi)) or 0
+
+  if units[1] then
+    units[1].x = ax
+    units[1].y = ay
+    units[1].heading = units[1].heading or ah
+    units[1].psi = units[1].psi or units[1].heading or ah
+    units[1].unitId = nil
+    units[1].groupId = nil
+  end
+
+  for i = 2, #units do
+    local unit = units[i]
+    if unit then
+      local px, py = getIrisSlotPosition(ax, ay, i - 1)
+      unit.x = px
+      unit.y = py
+      unit.heading = unit.heading or ah
+      unit.psi = unit.psi or unit.heading or ah
+      unit.unitId = nil
+      unit.groupId = nil
+    end
+  end
+
+  return true
+end
+
+local function appendUnitTemplateWithOffset(systemTemplate, unitTemplate, anchorUnit, idx)
+  if not systemTemplate or not unitTemplate then return nil end
+  systemTemplate.units = systemTemplate.units or {}
+  if type(systemTemplate.units) ~= "table" then return nil end
+
+  local clone = UTILS.DeepCopy(unitTemplate)
+  local index = idx or 1
+  local ax = (anchorUnit and anchorUnit.x) or systemTemplate.x or 0
+  local ay = (anchorUnit and anchorUnit.y) or systemTemplate.y or 0
+
+  clone.x, clone.y = getIrisSlotPosition(ax, ay, index)
+  clone.heading = (anchorUnit and anchorUnit.heading) or clone.heading or 0
+  clone.psi = (anchorUnit and anchorUnit.psi) or clone.psi
+  clone.name = string.format("%s-%d", IRIS_SYSTEM_TEMPLATE, math.random(100000, 999999))
+  clone.unitId = nil
+  clone.groupId = nil
+
+  table.insert(systemTemplate.units, clone)
+  return clone
+end
+
+local function spawnMergedIrisSystemTemplate(template, preferredName)
+  if not template or type(template) ~= "table" then
+    return nil, "template missing"
+  end
+  if type(template.units) ~= "table" or #template.units == 0 then
+    return nil, "template has no units"
+  end
+
+  local spawnName = preferredName or string.format("%s-%d", IRIS_SYSTEM_TEMPLATE, math.random(100000, 999999))
+  local tpl = UTILS.DeepCopy(template)
+  tpl.name = spawnName
+  tpl.groupId = nil
+
+  local spawner = SPAWN:NewFromTemplate(tpl, spawnName, nil, true)
+  if not spawner then
+    return nil, "SPAWN:NewFromTemplate failed"
+  end
+  local grp = spawner:Spawn()
+  if not grp then
+    return nil, "spawn returned nil"
+  end
+  return grp
+end
+
+local function removeGroundUnitEntryByName(groupName)
+  if not groupName then return end
+  for i = #GroundUnits, 1, -1 do
+    local entry = GroundUnits[i]
+    if entry and entry.groupName == groupName then
+      table.remove(GroundUnits, i)
+    end
+  end
+end
+
+local function findCrateCargoNameByTemplate(self, templateId, fallbackName)
+  if not self or type(self.Cargo_Crates) ~= "table" then
+    return fallbackName
+  end
+
+  for _, cargoData in pairs(self.Cargo_Crates) do
+    local templates = cargoData and cargoData.Templates or nil
+    if type(templates) == "string" then
+      templates = { templates }
+    end
+    if type(templates) == "table" then
+      for _, tplName in pairs(templates) do
+        if tplName == templateId then
+          if cargoData.GetName then
+            return cargoData:GetName()
+          end
+          return cargoData.Name or fallbackName
+        end
+      end
+    end
+  end
+
+  return fallbackName
+end
+
+local function syncGroundUnitsAfterIrisMerge(self, oldSystemName, oldComponentName, newSystemName)
+  if type(newSystemName) ~= "string" or newSystemName == "" then return end
+
+  removeGroundUnitEntryByName(oldSystemName)
+  removeGroundUnitEntryByName(oldComponentName)
+  removeGroundUnitEntryByName(newSystemName)
+
+  local systemCargoName = findCrateCargoNameByTemplate(self, IRIS_SYSTEM_TEMPLATE, IRIS_SYSTEM_CARGO_NAME)
+  local cargoObject = self and self._FindCratesCargoObject and self:_FindCratesCargoObject(systemCargoName) or nil
+  local currentStock = cargoObject and cargoObject:GetStock() or 0
+  table.insert(GroundUnits, {
+    groupName = newSystemName,
+    Timestamp = timer.getTime(),
+    CargoName = systemCargoName,
+    Stock = currentStock,
+  })
+end
+
+local function removeDroppedTroopGroupByName(self, groupName)
+  if not self or not groupName or type(self.DroppedTroops) ~= "table" then return end
+  for idx, grp in pairs(self.DroppedTroops) do
+    if grp and grp.GetName and grp:GetName() == groupName then
+      self.DroppedTroops[idx] = nil
+    end
+  end
+end
+
+local function trackDroppedTroopGroup(self, grp)
+  if not self or not grp then return end
+  self.DroppedTroops = self.DroppedTroops or {}
+  self.TroopCounter = (self.TroopCounter or 0) + 1
+  self.DroppedTroops[self.TroopCounter] = grp
+end
+
+local function findNearestIrisSystemGroup(coord, maxDist)
+  if not coord then return nil, nil end
+  local searchRadius = maxDist or IRIS_MERGE_DISTANCE
+  if searchRadius <= 0 then searchRadius = IRIS_MERGE_DISTANCE end
+
+  local nearestGroup = nil
+  local nearestDist = nil
+  local seen = {}
+
+  for _, entry in ipairs(GroundUnits) do
+    local gname = entry and entry.groupName or nil
+    if gname and not seen[gname] and (entry.CargoName == IRIS_SYSTEM_CARGO_NAME or isIrisSystemGroupName(gname)) then
+      seen[gname] = true
+      local grp = GROUP:FindByName(gname)
+      if grp and grp:IsAlive() then
+        local gCoord = grp:GetCoordinate()
+        if gCoord then
+          local dist = coord:Get2DDistance(gCoord)
+          if dist <= searchRadius and (not nearestDist or dist < nearestDist) then
+            nearestGroup = grp
+            nearestDist = dist
+          end
+        end
+      end
+    end
+  end
+
+  if nearestGroup then
+    return nearestGroup, nearestDist
+  end
+
+  local tmpZoneName = string.format("IRIS_MERGE_SCAN_%d", math.random(1, 1000000))
+  local nearby = SET_GROUP:New()
+    :FilterCoalitions("blue")
+    :FilterZones({ ZONE_RADIUS:New(tmpZoneName, coord:GetVec2(), searchRadius, false) })
+    :FilterOnce()
+  for _, grp in pairs(nearby.Set or {}) do
+    if grp and grp:IsAlive() and isIrisSystemGroupName(grp:GetName()) then
+      local gCoord = grp:GetCoordinate()
+      if gCoord then
+        local dist = coord:Get2DDistance(gCoord)
+        if dist <= searchRadius and (not nearestDist or dist < nearestDist) then
+          nearestGroup = grp
+          nearestDist = dist
+        end
+      end
+    end
+  end
+
+  return nearestGroup, nearestDist
+end
+
+local function tryMergeIrisComponentIntoNearbySystem(self, Group, Vehicle, cargoName, roleHint, mergeDistanceOverride)
+  local role = roleHint or resolveIrisComponentRole(Vehicle, cargoName)
+  if not role then
+    return false
+  end
+  if not Vehicle or not Vehicle.IsAlive or not Vehicle:IsAlive() then
+    irisLog(self, "Build vehicle is not alive, merge skipped.")
+    return false
+  end
+
+  local buildCoord = Vehicle:GetCoordinate()
+  if not buildCoord then
+    irisLog(self, "Build vehicle has no coordinate, merge skipped.")
+    return false
+  end
+
+  local mergeDist = mergeDistanceOverride or IRIS_MERGE_DISTANCE
+  if mergeDist <= 0 then mergeDist = 200 end
+  local systemGroup, systemDist = findNearestIrisSystemGroup(buildCoord, mergeDist)
+  if not systemGroup then
+    irisLog(self, string.format("No nearby system anchor for %s (role=%s).", tostring(cargoName), tostring(role)))
+    return false
+  end
+
+  local systemName = systemGroup:GetName()
+  local componentName = Vehicle:GetName() or "unknown"
+  if componentName == systemName then
+    irisLog(self, "Component group equals system group name, merge skipped.")
+    return false
+  end
+
+  local systemTemplate, mergeMode, baseErr = getIrisMergeBaseTemplate(systemGroup)
+  local componentTemplate = Vehicle:GetTemplate()
+  if not systemTemplate or not componentTemplate then
+    irisLog(self, string.format("Missing template for system/component, merge skipped. mode=%s err=%s", tostring(mergeMode), tostring(baseErr)))
+    if Group then MESSAGE:New("IRIS merge failed: missing template data.", 10):ToGroup(Group) end
+    return false
+  end
+
+  local sourceUnit = extractUnitTemplateForRole(componentTemplate, role)
+  if not sourceUnit then
+    irisLog(self, "No component unit template found for role " .. tostring(role))
+    if Group then MESSAGE:New("IRIS merge failed: no component template.", 10):ToGroup(Group) end
+    return false
+  end
+
+  local counts = countIrisRolesInTemplate(systemTemplate)
+  local nextIndex = (systemTemplate.units and #systemTemplate.units or 0) + 1
+  local anchorUnit = systemTemplate.units and systemTemplate.units[1] or nil
+  if not appendUnitTemplateWithOffset(systemTemplate, sourceUnit, anchorUnit, nextIndex) then
+    irisLog(self, "Failed to append merged unit template.")
+    if Group then MESSAGE:New("IRIS merge failed: append error.", 10):ToGroup(Group) end
+    return false
+  end
+  reflowIrisTemplateLayout(systemTemplate, anchorUnit)
+
+  local newSystemName = string.format("%s-%d", IRIS_SYSTEM_TEMPLATE, math.random(100000, 999999))
+  local mergedGroup, err = spawnMergedIrisSystemTemplate(systemTemplate, newSystemName)
+  if not mergedGroup then
+    irisLog(self, string.format("Spawn merged system failed: %s", tostring(err)))
+    if Group then MESSAGE:New("IRIS merge failed: spawn error.", 10):ToGroup(Group) end
+    return false
+  end
+
+  if systemGroup and systemGroup:IsAlive() then systemGroup:Destroy() end
+  if Vehicle and Vehicle:IsAlive() then Vehicle:Destroy() end
+
+  removeDroppedTroopGroupByName(self, systemName)
+  removeDroppedTroopGroupByName(self, componentName)
+  trackDroppedTroopGroup(self, mergedGroup)
+
+  local mergedName = mergedGroup:GetName() or newSystemName
+  syncGroundUnitsAfterIrisMerge(self, systemName, componentName, mergedName)
+
+  irisLog(self, string.format("Merged role=%s from %s into %s (dist=%.1f). New group=%s mode=%s",
+    tostring(role), tostring(componentName), tostring(systemName), systemDist or -1, tostring(mergedName), tostring(mergeMode)))
+  if Group then
+    MESSAGE:New(string.format("IRIS merge complete: added %s to nearby system.", tostring(role)), 10):ToGroup(Group)
+  end
+  return true
+end
 
 local function cargoTypeCanCaptureZone(cargoType)
     if cargoType == CTLD_CARGO.Enum.TROOPS then return true end
@@ -846,7 +1327,7 @@ for key, entry in pairs(c130AutoBuildCrates) do
             if helperGroup and helperGroup:IsAlive() then
               local helperUnit = helperGroup:GetUnits()[1]
               if helperUnit then
-                Foothold_ctld:_BuildCrates(helperGroup, helperUnit, true, true)
+                Foothold_ctld:_BuildCrates(helperGroup, helperUnit, true, true, GROUP:FindByName(set.groupName))
               end
               timer.scheduleFunction(function()
                 if helperGroup and helperGroup:IsAlive() then helperGroup:Destroy() end
@@ -854,7 +1335,6 @@ for key, entry in pairs(c130AutoBuildCrates) do
             end
           end, {}, timer.getTime() + 2)
 
-          notifyC130Auto(set, "[CTLD] Hercules drop auto-built nearby.")
           set.handoffStarted = true
           set.completed = true
           env.info(string.format("[FH-AUTOBUILD] set handoff set=%s required=%s", tostring(setId), tostring(set.required)))
@@ -1464,7 +1944,7 @@ processZoneSupplyDeliveries = function()
                       elseif (not entry.detached) and delta3D > (dim.detach or dim.width) then
                         entry.detached = true
                       end
-                      if entry.detached and inAir then
+                      if entry.detached and (inAir or CTLD_Logging) then
                         c130SupplyLogOnce(entry, key, "_fhLogDetach", "DETACHED")
                       end
                     end
@@ -1537,7 +2017,7 @@ processZoneSupplyDeliveries = function()
                       elseif (not entry.detached) and delta3D > (dim.detach or dim.width) then
                         entry.detached = true
                       end
-                      if entry.detached and inAir then
+                      if entry.detached and (inAir or CTLD_Logging) then
                         c130SupplyLogOnce(entry, key, "_fhLogDetach", "DETACHED")
                       end
                     end
@@ -1988,12 +2468,12 @@ zoneSupplyApplyOne = function(key)
     if staticObj and staticObj.IsAlive and staticObj:IsAlive() then
       zoneSupplyEnqueueRemoval(staticObj,0)
     end
-    sendZoneSupplyMessage(entry, string.format("%s delivered to %s (%s).", meta.label or "Supplies", zoneName, abName or "warehouse"))
     c130SupplyLogOnce(entry, key, "_fhLogDeliver", "DELIVER", string.format("zone=%s verb=warehouse", tostring(zoneName)))
     if not isCtldZone and not (entry.pickupZone and zoneName == entry.pickupZone) then
       local pname = resolveZoneSupplyPlayer(entry)
       local reward = meta.reward or ((meta.categories and #meta.categories > 1) and 100 or 50)
       if pname then
+        trigger.action.outTextForCoalition(2, string.format("%s delivered to %s by %s.", meta.label or "Supplies", zoneName, tostring(pname)), 15)
         if warehouseSupplyMissionTargetZone == zoneName and not warehouseSupplyMissionWinner then
           warehouseSupplyMissionWinner = pname
         end
@@ -2022,10 +2502,21 @@ zoneSupplyApplyOne = function(key)
     grantZoneBundle(zoneName)
     finalizeZoneSupplyDelivery(key, entry, zoneName, "upgraded", "Zone upgrade", ZONE_SUPPLY_UPGRADE_REWARD)
   else
+    grantZoneBundle(zoneName)
+
+    local pname = resolveZoneSupplyPlayer(entry)
+    local reward = (WAREHOUSE_SUPPLY_TYPES and WAREHOUSE_SUPPLY_TYPES["10 of everything CH-47"] and WAREHOUSE_SUPPLY_TYPES["10 of everything CH-47"].reward) or 150
+    if pname and bc.playerContributions[2][pname] ~= nil then
+      bc:addContribution(pname, 2, reward)
+      bc:addTempStat(pname, "Warehouse delivery", 1)
+      trigger.action.outTextForCoalition(2, string.format("10 of everything delivered to %s by %s.", zoneName, tostring(pname)), 15)
+    end
+
     if not entry.warnedNoNeed then
-      sendZoneSupplyMessage(entry, string.format("%s does not currently need zone supplies.", zoneName))
+      sendZoneSupplyMessage(entry, string.format("%s does not currently need zone supplies. Warehouse supplies were still applied.", zoneName))
       entry.warnedNoNeed = true
     end
+
     local sObj = (entry.cargo and entry.cargo.GetPositionable and entry.cargo:GetPositionable()) or entry.static
     if sObj and sObj.IsAlive and sObj:IsAlive() then
       zoneSupplyEnqueueRemoval(sObj,0) -- destroyed after ZONE_SUPPLY_DESTROY_DELAY
@@ -2377,6 +2868,24 @@ function Foothold_ctld:OnAfterCratesBuild(From, Event, To, Group, Unit, Vehicle)
           stock     = cargoData:GetStock()
           break
         end
+      end
+    end
+
+    local irisRole = resolveIrisComponentRole(Vehicle, cargoName)
+    if irisRole then
+      local mergeDistanceOverride = nil
+      if Group and Group.GetName then
+        local helperName = Group:GetName() or ""
+        if string.find(helperName, "^CTLD_C130_HELPER_") then
+          local engineerRange = tonumber(self.EngineerSearch)
+          if engineerRange and engineerRange > 0 then
+            mergeDistanceOverride = engineerRange
+          end
+        end
+      end
+      local merged = tryMergeIrisComponentIntoNearbySystem(self, Group, Vehicle, cargoName, irisRole, mergeDistanceOverride)
+      if merged then
+        return
       end
     end
 
@@ -3063,6 +3572,206 @@ function LoadFARPS()
   end
 end
 
+LoadIRISAugments = function()
+  local path = Foothold_ctld.filepath
+  local filename = Foothold_ctld.filename
+  local ok, lines = UTILS.LoadFromFile(path, filename)
+  if not ok or type(lines) ~= "table" then
+    irisLog(Foothold_ctld, string.format("IRIS restore skipped: failed reading %s.", tostring(filename)))
+    return {}
+  end
+
+  local function isIrisSystemSaveRow(parts)
+    local groupName = parts[1]
+    local cargoName = parts[5]
+    local cargoTemplates = parts[6]
+    return isIrisSystemTemplateText(cargoTemplates)
+      or isIrisSystemTemplateText(groupName)
+      or tostring(cargoName or "") == IRIS_SYSTEM_CARGO_NAME
+  end
+
+  local function parseStructureCounts(structureText)
+    local counts = { LN = 0, STR = 0, C2 = 0 }
+    for unitType, countText in string.gmatch(tostring(structureText or ""), "([%w_]+)==(%d+)") do
+      local role = roleFromUnitType(unitType)
+      if role then
+        counts[role] = tonumber(countText) or 0
+      end
+    end
+    return counts
+  end
+
+  local rows = {}
+  for i = 2, #lines do
+    local line = lines[i]
+    if line and tostring(line):gsub("%s+", "") ~= "" then
+      local parts = UTILS.Split(line, ",")
+      if isIrisSystemSaveRow(parts) then
+        local x = tonumber(parts[2])
+        local y = tonumber(parts[4])
+        local counts = parseStructureCounts(parts[10])
+        local lnExtra = math.max(0, (counts.LN or 0) - (IRIS_BASELINE_COUNTS.LN or 1))
+        local strExtra = math.max(0, (counts.STR or 0) - (IRIS_BASELINE_COUNTS.STR or 1))
+        local c2Extra = math.max(0, (counts.C2 or 0) - (IRIS_BASELINE_COUNTS.C2 or 1))
+        if x and y and (lnExtra > 0 or strExtra > 0 or c2Extra > 0) then
+          rows[#rows + 1] = {
+            x = x,
+            y = y,
+            ln_extra = lnExtra,
+            str_extra = strExtra,
+            c2_extra = c2Extra,
+          }
+        end
+      end
+    end
+  end
+
+  irisLog(Foothold_ctld, string.format("Loaded %d IRIS augment rows from CTLD save %s", #rows, tostring(filename)))
+  return rows
+end
+
+ApplyIRISAugments = function(rows)
+  if type(rows) ~= "table" or #rows == 0 then
+    return false
+  end
+
+  local candidates = {}
+  local seen = {}
+  for _, entry in ipairs(GroundUnits) do
+    local gName = entry and entry.groupName or nil
+    if gName and not seen[gName] and (entry.CargoName == IRIS_SYSTEM_CARGO_NAME or isIrisSystemGroupName(gName)) then
+      seen[gName] = true
+      local grp = GROUP:FindByName(gName)
+      if grp and grp:IsAlive() then
+        local coord = grp:GetCoordinate()
+        if coord then
+          candidates[#candidates + 1] = {
+            group = grp,
+            groupName = gName,
+            coord = coord,
+            matched = false,
+          }
+        end
+      end
+    end
+  end
+
+  if #candidates == 0 then
+    irisLog(Foothold_ctld, "No IRIS system candidates available while applying augments.")
+    return false
+  end
+
+  local applied = 0
+  local roleOrder = { "LN", "STR", "C2" }
+  local roleExtraKey = { LN = "ln_extra", STR = "str_extra", C2 = "c2_extra" }
+
+  for _, row in ipairs(rows) do
+    local rowCoord = COORDINATE:NewFromVec2({ x = row.x, y = row.y })
+    local best = nil
+    local bestDist = nil
+
+    for _, candidate in ipairs(candidates) do
+      if not candidate.matched then
+        local dist = rowCoord:Get2DDistance(candidate.coord)
+        if dist <= IRIS_MERGE_DISTANCE and (not bestDist or dist < bestDist) then
+          best = candidate
+          bestDist = dist
+        end
+      end
+    end
+
+    if best then
+      best.matched = true
+      local oldGroup = best.group
+      local oldGroupName = best.groupName
+      local template, mergeMode, baseErr = getIrisMergeBaseTemplate(oldGroup)
+      if template and type(template.units) == "table" and #template.units > 0 then
+        local counts = countIrisRolesInTemplate(template)
+        local anchorUnit = template.units[1]
+        local changed = false
+
+        for _, role in ipairs(roleOrder) do
+          local targetCount = (IRIS_BASELINE_COUNTS[role] or 1) + (row[roleExtraKey[role]] or 0)
+          local currentCount = counts[role] or 0
+          if targetCount > currentCount then
+            local sourceTemplate = extractUnitTemplateForRole(template, role)
+            if sourceTemplate then
+              for _ = 1, (targetCount - currentCount) do
+                local nextIndex = (template.units and #template.units or 0) + 1
+                if appendUnitTemplateWithOffset(template, sourceTemplate, anchorUnit, nextIndex) then
+                  counts[role] = (counts[role] or 0) + 1
+                  changed = true
+                end
+              end
+            end
+          end
+        end
+
+        if changed then
+          reflowIrisTemplateLayout(template, anchorUnit)
+          local spawnName = string.format("%s-%d", IRIS_SYSTEM_TEMPLATE, math.random(100000, 999999))
+          local mergedGroup, err = spawnMergedIrisSystemTemplate(template, spawnName)
+          if mergedGroup then
+            if oldGroup and oldGroup:IsAlive() then oldGroup:Destroy() end
+            removeDroppedTroopGroupByName(Foothold_ctld, oldGroupName)
+            trackDroppedTroopGroup(Foothold_ctld, mergedGroup)
+            syncGroundUnitsAfterIrisMerge(Foothold_ctld, oldGroupName, nil, mergedGroup:GetName() or spawnName)
+            applied = applied + 1
+            best.group = mergedGroup
+            best.groupName = mergedGroup:GetName() or spawnName
+            best.coord = mergedGroup:GetCoordinate() or best.coord
+            irisLog(Foothold_ctld, string.format("Applied IRIS augments at %.0f/%.0f (dist=%.1f) mode=%s.", row.x, row.y, bestDist or -1, tostring(mergeMode)))
+          else
+            irisLog(Foothold_ctld, string.format("Failed IRIS augment spawn for row %.0f/%.0f: %s", row.x, row.y, tostring(err)))
+          end
+        end
+      else
+        irisLog(Foothold_ctld, string.format("Skipped IRIS augment row %.0f/%.0f: no merge base template (mode=%s err=%s).", row.x, row.y, tostring(mergeMode), tostring(baseErr)))
+      end
+    end
+  end
+
+  if applied > 0 then
+    irisLog(Foothold_ctld, string.format("Applied %d IRIS augment rows.", applied))
+  end
+  return applied > 0
+end
+
+RunIrisOnePassStandaloneMerge = function(self)
+  local context = self or Foothold_ctld
+  local candidates = {}
+  local seen = {}
+
+  for _, entry in ipairs(GroundUnits) do
+    local groupName = entry and entry.groupName or nil
+    if groupName and not seen[groupName] then
+      seen[groupName] = true
+      local role = roleFromTemplateIdText(groupName) or isIrisComponentCargoName(entry and entry.CargoName or nil)
+      if role then
+        local grp = GROUP:FindByName(groupName)
+        if grp and grp:IsAlive() then
+          candidates[#candidates + 1] = {
+            group = grp,
+            cargoName = entry and entry.CargoName or nil,
+            role = role,
+          }
+        end
+      end
+    end
+  end
+
+  local merged = 0
+  for _, candidate in ipairs(candidates) do
+    local didMerge = tryMergeIrisComponentIntoNearbySystem(context, nil, candidate.group, candidate.cargoName, candidate.role)
+    if didMerge then
+      merged = merged + 1
+    end
+  end
+
+  irisLog(context, string.format("One-pass IRIS standalone merge checked=%d merged=%d.", #candidates, merged))
+  return merged > 0
+end
+
 local LoadFARPTimer = TIMER:New(LoadFARPS)
 LoadFARPTimer:Start(5)
 
@@ -3215,6 +3924,14 @@ end
       self.Loaded_Cargo[uName]=ld
     end
   end
+
+  timer.scheduleFunction(function()
+    local rows = LoadIRISAugments()
+    if rows and #rows > 0 then
+      ApplyIRISAugments(rows)
+    end
+    RunIrisOnePassStandaloneMerge(self)
+  end, {}, timer.getTime() + 5)
 end
 
 zoneSet = SET_ZONE:New()
@@ -3792,7 +4509,7 @@ end
 TIMER:New(RefillMissingWithCountTable):Start(60, 60)
 
 
-TIMER:New(tickZoneSupply):Start(15, 7)
+TIMER:New(tickZoneSupply):Start(15, 5)
 
 
 BASE:I("CTLD script initialized")

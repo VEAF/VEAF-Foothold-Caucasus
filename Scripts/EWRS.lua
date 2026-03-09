@@ -959,9 +959,9 @@ function ewrs.setGroupMeasurements(args)
   local newUnits = args[2]
   if oldUnits ~= newUnits then
     if newUnits == "metric" then
-      groupSettings.rangeLimit = UTILS.Round(groupSettings.rangeLimit * 1.852, -1)
+      groupSettings.rangeLimit = UTILS.Round((groupSettings.rangeLimit or 0) * 1.852, 0)
     else
-      groupSettings.rangeLimit = UTILS.Round(groupSettings.rangeLimit / 1.852, -1)
+      groupSettings.rangeLimit = UTILS.Round((groupSettings.rangeLimit or 0) / 1.852, 0)
     end
   end
   groupSettings.measurements = newUnits
@@ -1008,12 +1008,18 @@ function ewrs.buildF10Menu()
             missionCommands.addCommandForGroup(groupID,r.." "..u,sub, function(args)
               local gid=args[1]
               local range=args[2]
+              local selectedUnit=args[3]
               local settings = ewrs.getGroupSettingsTable(gid)
+              if selectedUnit == "km" then
+                settings.measurements = "metric"
+              elseif selectedUnit == "nm" then
+                settings.measurements = "imperial"
+              end
               settings.rangeLimit = range
               ewrs_flagSettingsDirty(settings)
-              trigger.action.outTextForGroup(gid,"Range set to "..range..u,ewrs.messageDisplayTime)
+              trigger.action.outTextForGroup(gid,"Range set to "..range..selectedUnit,ewrs.messageDisplayTime)
               ewrs.persistGroupSettings(gid)
-            end, {groupID,r})
+            end, {groupID,r,u})
           end
         end
         

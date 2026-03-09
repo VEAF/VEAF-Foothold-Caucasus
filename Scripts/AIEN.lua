@@ -17,12 +17,13 @@ if AIEN.config.uavNightScan == nil then AIEN.config.uavNightScan = true end     
 if AIEN.config.reactions == nil then AIEN.config.reactions = true end                               -- true/false. If true, when a mover group gets an hit, it will react accordingly to its skills and to its situational awareness, not staying there taking hits without doing nothing
 if AIEN.config.suppression == nil then AIEN.config.suppression = true end                           -- true/false. If true, once a group take fire from arty or air and it's not armoured, it will be suppressed for 15-45 seconds and won't return fire. Require reactions to be set as 'true'
 if AIEN.config.dismount == nil then AIEN.config.dismount = true end 		                        -- true/false. //BEWARE: CAN AFFECT PERFORMANCES ON LOW END SYSTEMS // Thanks to MBot's original script, if true AI ground units with infantry transport capabilities (mainly APC/IFV/Trucks) will dismount soldiers with rifle, rpg and sometimes mandpads when appropriate
+if AIEN.config.blueHitFireSupportOnly == nil then AIEN.config.blueHitFireSupportOnly = true end     -- true/false. If true, blue ground hit reactions are limited to artillery support/counter-battery only.
 if AIEN.config.initiative == nil then AIEN.config.initiative = true end                             -- true/false. If true, the ground groups will take limited initiative of attack or advance if intel and terrain allow them
 --AIEN.config.conquer 		    = true 		                                                        -- true/false. If true, the ground groups will look for nearby towns or DCS ground markers and will try to move there if intel and terrain allow them (this is limited in space cause it's designed to work appropriately with DSMC 2)
 
 -- User advanced customization 
 AIEN.config.AIEN_xcl_tag		= {"Hidden","hidden","supply","support","EscortGroup", "attack"} 	-- string, global, case sensitive. Can be dynamically changed by other script or triggers, since it's a global variable. used as a text format without spaces or special characters. only letters and numbers allowed. Any ground group with this 'tag' in its group name won't get AI enhancement behaviour, regardless of its coalition 
-AIEN.config.AIEN_xcl_tag_delegation		= {"Red SAM Dog Ear","Red SAM"} 	                        -- This will make the groups able to delegate attacks
+AIEN.config.AIEN_xcl_tag_delegation		= {"Red SAM"}  	                                            -- This will make the groups able to delegate attacks
 AIEN.config.AIEN_zoneFilter     = ""    	                                                        -- string, global, case sensitive. Can be dynamically changed by other script or triggers, since it's a global variable. used as a text format without spaces or special characters. only letters and numbers allowed, i.e. "AIEN" will fit. If left nil, or void string like "", won't be used. Only groups inside the named trigger zone will be affected by AIEN script behaviors of reaction, dismount and suppression, and vice versa. If no trigger zone with the specific name is in the mission, then all the groups will use AIEN features.
 if AIEN.config.message_feed == nil then AIEN.config.message_feed = true end 		                -- true/false. If true, each relevant AI action starting will also create a trigger message feedback for its coalition
 if AIEN.config.mark_on_f10_map == nil then AIEN.config.mark_on_f10_map = true end 	                -- true/false. If true, when an artillery fire mission is ongoing, a markpoint will appear on the map of the allied coalition to show the expected impact point
@@ -14211,11 +14212,15 @@ end
                         
                         local AI_consent = true
                         local db_group = groundgroupsDb[group:getID()]
+                        local blueFireOnly = false
                         if db_group and db_group.delegationOnly == true then
                             delegationOnly = true
                             if AIEN.config.AIEN_debugProcessDetail == true then
                                 env.info(("AIEN.event_hit, S_EVENT_HIT, group delegationOnly enabled: " .. tostring(group:getName()) ))
                             end
+                        end
+                        if group:getCoalition() == 2 and AIEN.config.blueHitFireSupportOnly == true then
+                            blueFireOnly = true
                         end
 
     
@@ -14258,7 +14263,7 @@ end
     
                             -- suppression part
 
-                            if AIEN.config.suppression == true and armoured and not delegationOnly then
+                            if AIEN.config.suppression == true and armoured and not delegationOnly and not blueFireOnly then
                                 local suppressEffects = false
                                 if shooter:hasAttribute("Air") or shooter:hasAttribute("Ships") or shooter:hasAttribute("Indirect fire") then
                                     suppressEffects = true
@@ -14272,7 +14277,7 @@ end
                             end
     
                             -- dismount part
-                            if AIEN.config.dismount == true and not delegationOnly then
+                            if AIEN.config.dismount == true and not delegationOnly and not blueFireOnly then
                                 if not underAttack[group:getID()] then
                                     if shooter:hasAttribute("Air") then
                                         timer.scheduleFunction(groupDeployManpad, group, timer.getTime() + aie_random(8, 15))
@@ -14298,7 +14303,7 @@ end
 
                                 -- Only stop the group on the first hit of the underAttack window.
                                 -- If we stop again on subsequent hits, reactions are skipped and the group can freeze.
-                                if not delegationOnly then trigger.action.groupStopMoving(group) end
+                                if not delegationOnly and not blueFireOnly then trigger.action.groupStopMoving(group) end
                                 
                                 if AIEN.config.AIEN_debugProcessDetail == true then
                                     env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) ))
@@ -14434,7 +14439,13 @@ end
                                         env.info(("AIEN.event_hit, S_EVENT_HIT, group " .. tostring(group:getName()) .. ", a_pos: " .. tostring(a_pos) ))
                                     end	
     
-                                    local av_ac = deepCopy(reactionsDb) 
+                                    local av_ac = deepCopy(reactionsDb)
+                                    if blueFireOnly == true then
+                                        av_ac = {}
+                                        if reactionsDb[10] then
+                                            av_ac[10] = reactionsDb[10]
+                                        end
+                                    end
     
                                     -- remove not doable actions due to missin informations
                                     if s_fireMis < 1 or AI_consent == false then -- shooter position is not sufficiently recent
@@ -14550,7 +14561,7 @@ end
                                         end
                                     end
 
-                                    if shooter and a_pos and s_detected and not counterBatteryDone then
+                                    if group:getCoalition() == 1 and shooter and a_pos and s_detected and not counterBatteryDone then
                                         local delegated = false
                                         if s_cat == 1 and (o_cls == "SAM" or o_cls == "SHORAD" or o_cls == "ARTY" or o_cls == "MLRS") then
                                             delegated = true

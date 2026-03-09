@@ -1,10 +1,10 @@
-# VEAF Foothold Caucasus v3.0.0
+# VEAF Foothold Caucasus v3.2.0
 
 ## Presentation
 
 This is a modification of the original [Foothold Caucasus](https://www.digitalcombatsimulator.com/en/files/3341245/) mission by Lekaa, that I adapted to make it load all the script files and config directly from the server.
 
-**Done using the latest version updated on 2026.02.23.**
+**Done using the latest version updated on 2026.03.09.**
 
 ## Update
 

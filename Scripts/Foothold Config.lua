@@ -1,4 +1,10 @@
--- Foothold mission configuration
+-- Version V1.0.1
+-- ** CHANGE LOG **
+--
+-- Fixed wrong name in the Max_At_Spawn for IRIS T - V1.0.1
+-- Added ShopCategoryLabels and ShopCategoryLabels.Order for easier shop category management and custom category addition - V1.0.1
+--
+-- Foothold mission
 --
 -- DO NOT TOUCH THIS BLOCK
 --
@@ -194,16 +200,16 @@ RewardContribution = {
 -- Shop prices.
 ShopPrices = {
 	smoke         = 20,   -- Smoke markers
-    flare         = 20,   -- flare markers
+    flare         = 20,   -- Flare markers
 	illum         = 100,  -- Illumination bomb
-	dynamiccap    = 500,  -- Dynamic CAP
+	dynamiccap    = 500,  -- CAP Flight
 	dynamicarco   = 1000,  -- Dynamic Tanker (Drogue)
 	dynamictexaco = 1000,  -- Dynamic Tanker (Boom)
-	dynamiccas    = 1000, -- Dynamic CAS
-	dynamicdecoy  = 300,  -- Dynamic Decoy
-	dynamicsead   = 500,  -- Dynamic SEAD
-	dynamicbomb   = 500,  -- Dynamic Bomb run
-	dynamicstatic = 500,  -- Dynamic building Strike
+	dynamiccas    = 1000, -- CAS Flight
+	dynamicdecoy  = 300,  -- TALD DECOY Flight
+	dynamicsead   = 500,  -- SEAD Flight
+	dynamicbomb   = 500,  -- Bomber Flight
+	dynamicstatic = 500,  -- Static structure Flight
 	cruisemsl     = 800,  -- Cruise Missile Strike
 	supplies2     = 200,  -- Resupply friendly Zone
 	supplies      = 1000, -- Fully Upgrade Friendly Zone
@@ -211,15 +217,15 @@ ShopPrices = {
 	["9lineam"]   = 0,    -- Jtac 9line AM
 	["9linefm"]   = 0,    -- Jtac 9line FM
 	jam           = 500,  -- Jam radars at zone
-	armor         = 100,  -- Deploy armor (for combined arms)
-	artillery     = 100,  -- Deploy artillery (for combined arms)
-	recon         = 50,   -- Deploy recon group (for combined arms)
-	airdef        = 150,  -- Deploy air defence (for combined arms)
-	capture       = 500,  -- Emergency capture zone
+	armor         = 100,  -- Deploy armor
+	artillery     = 100,  -- Deploy artillery
+	recon         = 50,   -- Deploy recon group
+	airdef        = 150,  -- Deploy air defence
+	capture       = 500,  -- Capture neutral zone
 	intel         = 150,  -- Intel on enemy zone
 	zinf          = 500,  -- Add infantry squad to zone
 	zsam          = 2000, -- Add Hawk/Nasams system to a zone
-	zlogc         = 2000, -- Upgrade zone to logistic center
+	zlogc         = 2000, -- Make a zone logistic center
 	zwh50         = 500,  -- Resupply warehouse with 50
 	zarm          = 1000, -- Add armor group to a zone
 	zpat          = 5000, -- Add Patriot system to zone
@@ -231,18 +237,18 @@ ShopPrices = {
 -- Shop ranks.
 ShopRankRequirements = {
 	jtac           = 2,  -- MQ-9 Reaper JTAC mission
-	dynamiccap     = 2,  -- Dynamic CAP
-	dynamiccas     = 5,  -- Dynamic CAS
-	dynamicbomb    = 4,  -- Dynamic Bomb run
-	dynamicsead    = 4,  -- Dynamic SEAD
-	dynamicdecoy   = 1,  -- Dynamic Decoy
-	dynamicstatic  = 4,  -- Dynamic building Strike
+	dynamiccap     = 2,  -- CAP Flight
+	dynamiccas     = 5,  -- CAS Flight
+	dynamicbomb    = 4,  -- Bomber Flight
+	dynamicsead    = 4,  -- SEAD Flight
+	dynamicdecoy   = 1,  -- TALD DECOY Flight
+	dynamicstatic  = 4,  -- Static structure Flight
 	dynamicarco    = 3,  -- Dynamic Tanker (Drogue)
 	dynamictexaco  = 3,  -- Dynamic Tanker (Boom)
 	farphere       = 4,  -- Deploy FARP
-	capture        = 1,  -- Emergency capture zone
+	capture        = 1,  -- Capture neutral zone
 	smoke          = 1,  -- Smoke markers
-	flare          = 1,  -- flare markers
+	flare          = 1,  -- Flare markers
 	illum          = 1,  -- Illumination bomb
 	intel          = 5,  -- Intel on enemy zone
 	supplies2      = 1,  -- Resupply friendly Zone
@@ -250,19 +256,41 @@ ShopRankRequirements = {
 	zinf           = 5,  -- Add infantry squad to zone
 	zarm           = 7,  -- Add armor group to a zone
 	zsam           = 6,  -- Add Hawk/Nasams system to a zone
-	zlogc          = 1,  -- Upgrade zone to logistic center
+	zlogc          = 1,  -- Make a zone logistic center
 	zwh50          = 2,  -- Resupply warehouse with 50
 	gslot          = 9,  -- Unlock extra upgrade slot
 	zpat           = 8,  -- Add Patriot system to zone
-	armor          = 3,  -- Deploy armor (for combined arms)
-	artillery      = 3,  -- Deploy artillery (for combined arms)
-	recon          = 3,  -- Deploy recon group (for combined arms)
-	airdef         = 3,  -- Deploy air defence (for combined arms)
+	armor          = 3,  -- Deploy armor
+	artillery      = 3,  -- Deploy artillery
+	recon          = 3,  -- Deploy recon group
+	airdef         = 3,  -- Deploy air defence
 	["9lineam"]    = 1,  -- Jtac 9line AM
 	["9linefm"]    = 1,  -- Jtac 9line FM
-	cruisemsl      = 10, -- Cruise Missile Strike
+	cruisemsl      = 10, -- Cruise Missile Strike -- This does not exist in some maps.
 	jam            = 4,  -- Jam radars at zone
     zhimars        = 8,  -- Add HIMARS to a zone
+}
+
+-- Support menu category labels and display order.
+-- Here, you can change the names if you want.
+ShopCategoryLabels = {
+	AIAttack = "AI Attack",
+	ZoneUpgrades = "Zone Upgrades",
+	JTACIntel = "JTAC & Intel",
+	MarkingTools = "Marking & Tools",
+	CombinedArms = "Combined Arms",
+	LogisticsStrategic = "Capture & resources",
+	OtherSupport = "Other Support",
+}
+-- here, you can reorder the menu. Don't change the names below, just rearange if you want to. you DON'T have to.
+ShopCategoryLabels.Order = {
+	ShopCategoryLabels.AIAttack,
+	ShopCategoryLabels.ZoneUpgrades,
+	ShopCategoryLabels.JTACIntel,
+	ShopCategoryLabels.MarkingTools, -- not used.
+	ShopCategoryLabels.CombinedArms,
+	ShopCategoryLabels.LogisticsStrategic,
+	ShopCategoryLabels.OtherSupport,
 }
 
 -- ============================================================================
@@ -275,6 +303,7 @@ ShopRankRequirements = {
 RewardFlightTime = true
 --
 -- Here you can define how much credits for each minutes flown.
+-- Note, when you land, you'll see  "15 + Flight time", the 15 are minutes, not credits.
 FlightTimeRewardPerMinute = 2
 --
 -- If you want to reward all players no mater what aircraft, then set this to true, if set to false, you can choose who get the reward.
@@ -309,10 +338,16 @@ AllowedFlightTimeReward  = {
 	['Hercules'] = true,
 }
 
-
 -- ============================================================================
 -- CTLD Settings
 -- ============================================================================
+--
+-- If false, CTLD crates/units are free.
+CTLDCost = true
+--
+-- If true, engineers can capture/upgrade zones via CTLD.
+-- If false, only regular troops can capture/upgrade zones.
+CaptureZoneWithEngineer = false
 --
 -- Define per-airframe CTLD load capabilities.
 --
@@ -325,6 +360,8 @@ AllowedFlightTimeReward  = {
 -- Trooplimit      = number      -- Max number of troops this unit can carry.
 -- Length          = number      -- Unit length (meters) used for load radius.
 -- Maxcargoweight  = number      -- Max cargo weight (kg) this unit can carry.
+--
+-- CAUTION, CHANGING VALUES IN THE TABLE BELOW WILL MOSTLY HAVE NEGETIVE IMPACT ON THE CTLD CODE.
 CTLDUnitCapabilities = {
     ["SA342Mistral"] = { false, true, 0, 2, 10, 400 },
     ["SA342L"] = { false, true, 0, 2, 10, 400 },
@@ -364,10 +401,10 @@ CTLDPrices = {
   ["HAWK Site"]              = { price = 750, reqRank = 3 },
   ["Nasam Site"]             = { price = 750, reqRank = 3 },
   ["FARP"]                   = { price = 500, reqRank = 1 },
-  ["IRIS T SLM STR"]         = { price = 750, reqRank = 3 },
-  ["IRIS T SLM LN"]          = { price = 500, reqRank = 3 },
-  ["IRIS T SLM C2"]          = { price = 500, reqRank = 3 },
-  ["IRIS T SLM System"]      = { price = 1800, reqRank = 3 },
+  ["IRIS T STR Add-on"]      = { price = 750, reqRank = 3 },
+  ["IRIS T LN Add-on"]       = { price = 500, reqRank = 3 },
+  ["IRIS T C2 Add-on"]       = { price = 500, reqRank = 3 },
+  ["IRIS T System"]          = { price = 1800, reqRank = 3 },
   ["C-RAM"]                  = { price = 500, reqRank = 2 },
   ["HIMARS GMLRRS HE GUIDED"] = { price = 1000, reqRank = 3 },
   ["FV-107 Scimitar"]        = { price = 250, reqRank = 2 },
@@ -396,10 +433,10 @@ MAX_AT_SPAWN = {
     ["Nasam Site"]              = 3,
     ["Tank Abrahams"]           = 0,
     ["FARP"]                    = 3,
-    ["IRIS T SLM STR"]          = 3,
-    ["IRIS T SLM LN"]           = 8,
-    ["IRIS T SLM C2"]           = 3,
-    ["IRIS T SLM System"]       = 2,
+    ["IRIS T STR Add-on"]       = 3,
+    ["IRIS T LN Add-on"]        = 8,
+    ["IRIS T C2 Add-on"]        = 3,
+    ["IRIS T System"]           = 2,
     ["C-RAM"]                   = 4,
     ["HIMARS GMLRRS HE GUIDED"] = 4,
     ["FV-107 Scimitar"]         = 2,
@@ -409,6 +446,12 @@ MAX_AT_SPAWN = {
 
 -- MAX_SAVED_FARPS is how many farps should load from the save file after the last session.
 MAX_SAVED_FARPS      = 3
+--
+-- IRIS merge behavior toggle.
+-- true  = merge from full template (destroyed IRIS units can come back on merge).
+-- false = merge from currently alive IRIS composition + the new added unit.
+-- Note: this is session-only merge behavior; CTLD save/load logic is unchanged.
+IRIS_RESTORE_UNIT_HEALTH_ON_MERGE = false
 
 -- ============================================================================
 -- CSAR Settings
@@ -428,8 +471,8 @@ AllowedCsar = {
     ["UH-60L"]        = 11,
     ["UH-60L_DAP"]    = 11,
     ["AH-64D_BLK_II"] = 0,
-    ["UH-1H"]         = 4,
-    ["Mi-8MT"]        = 11,
+    ["UH-1H"]         = 11,
+    ["Mi-8MT"]        = 24,
     ["OH58D"]         = 0,
     ["CH-47Fbl1"]     = 32,
     ["Bronco-OV-10A"] = 0,

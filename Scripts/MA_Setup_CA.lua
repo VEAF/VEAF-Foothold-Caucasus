@@ -337,8 +337,8 @@ local cwSwap = {
 	['Red Armour Group 2']   						= 'Red Armor Group9',
 	['Red Armour Group 3']  						= 'Red Armor Group6',
 	['Red Armour Group']  							= 'Red Armor Group7',
-	['Red SAM SHORAD Pantsir S1']  					= 'Red SAM SHORAD SA-8',
-	['Red SAM SHORAD Tor M2']  						= 'Red SAM SHORAD SA-8',
+	['Red SAM SHORAD Pantsir S1']  					= { mode='random', list={'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-13', 'Red SAM SHORAD SA-9', 'Red SAM SHORAD SA-15'} },
+	['Red SAM SHORAD Tor M2']  						= { mode='random', list={'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-13', 'Red SAM SHORAD SA-9', 'Red SAM SHORAD SA-15'} },
 	['Neustrashimy']  								= 'Molniya',
 	['blueArmor']  									= 'blueArmor-Coldwar',
 	['bluePD1']  									= 'blueHAWK-Coldwar',
@@ -363,9 +363,26 @@ local function deepSwap(t,s)
 				if sub == '' then
 					t[k] = nil
 				elseif type(sub)=='table' then
-					t[k] = sub[1]
-					for i=2,#sub do
-						table.insert(t,sub[i])
+					local mode = sub.mode
+					local list = sub.list
+					if type(list)=='table' then
+						if mode == 'random' then
+							if #list > 0 then
+								t[k] = list[math.random(1,#list)]
+							else
+								t[k] = nil
+							end
+						else
+							t[k] = list[1]
+							for i=2,#list do
+								table.insert(t,list[i])
+							end
+						end
+					else
+						t[k] = sub[1]
+						for i=2,#sub do
+							table.insert(t,sub[i])
+						end
 					end
 				else
 					t[k] = sub
@@ -382,39 +399,29 @@ end
 local SamSwap = {
 
 	['Red SAM SA-11 Fixed SAM-Lima']  				= 'Red SAM SA-3 Fixed SAM-Lima',
-	['Red SAM SA-11']  								= 'Red SAM SA-2',
-	['Red SAM SA-10']  								= 'Red SAM SA-2',
-	['Red SAM SHORAD SA-15']   						= 'Red SAM SHORAD SA-8',
-	['Red SAM SHORAD Pantsir S1']  					= 'Red SAM SHORAD SA-8',
-	['Red SAM SHORAD Tor M2']  						= 'Red SAM SHORAD SA-8',
-	['Red SAM SHORAD SA-15 Fixed ammunitiondepo']	= 'Red SAM SHORAD SA-8 Fixed ammunitiondepo',
+	['Red SAM SA-11']  								= { mode='random', list={'Red SAM SA-2', 'Red SAM SA-3', 'Red SAM SA-6'} },
+	['Red SAM SA-10']  								= { mode='random', list={'Red SAM SA-2', 'Red SAM SA-3', 'Red SAM SA-6'} },
 
 }
 
-local function deepSwapAgain(t,s)
-	for k,v in pairs(t) do
-		if type(v)=='table' then
-			deepSwapAgain(v,s)
-		else
-			local sub=s[v]
-			if sub~=nil then
-				if sub=='' then
-					t[k]=nil
-				elseif type(sub)=='table' then
-					t[k]=sub[1]
-					for i=2,#sub do
-						table.insert(t,sub[i])
-					end
-				else
-					t[k]=sub
-				end
-			end
-		end
-	end
-end
+local SamSwapNoTorM2AndPantsir = {
+	['Red SAM SHORAD Pantsir S1'] = { mode='random', list={'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-13', 'Red SAM SHORAD SA-9'} },
+	['Red SAM SHORAD Tor M2'] = { mode='random', list={'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-13', 'Red SAM SHORAD SA-9'} },
+}
+
+local SamSwapNoSA15 = {
+	['Red SAM SHORAD SA-15'] = { mode='random', list={'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-13', 'Red SAM SHORAD SA-9'} },
+	['Red SAM SHORAD SA-15 Fixed ammunitiondepo'] = 'Red SAM SHORAD SA-8 Fixed ammunitiondepo',
+}
 
 if NoSA10AndSA11 == true then
-	deepSwapAgain(upgrades,SamSwap)
+	deepSwap(upgrades,SamSwap)
+end
+if NoTorM2AndPantsir == true then
+	deepSwap(upgrades,SamSwapNoTorM2AndPantsir)
+end
+if NoSA15 == true then
+	deepSwap(upgrades,SamSwapNoSA15)
 end
 
 
@@ -470,7 +477,13 @@ if Era == 'Coldwar' then
 end
 
 if NoSA10AndSA11 == true then
-	deepSwapAgain(RandomRedPool, SamSwap)
+	deepSwap(RandomRedPool, SamSwap)
+end
+if NoTorM2AndPantsir == true then
+	deepSwap(RandomRedPool, SamSwapNoTorM2AndPantsir)
+end
+if NoSA15 == true then
+	deepSwap(RandomRedPool, SamSwapNoSA15)
 end
 
 ZoneSizeExclusions = {
@@ -3848,8 +3861,13 @@ DynamicHybridConfig = DynamicHybridConfig or {
 	runOnce = true,
 	airMaxNm = 120,
 	heloCasMaxNm = 40,
+	minGroundAttackNm = 10,
 	surfaceMaxNm = 30,
+	minTargetNm = 10,
 	filterDelaySec = 5,
+	minCapAttackNm = 35,
+	minPlaneAttackNm = 25,
+	minHeloAttackNm = 15,
 	log = true,
 }
 bc:startDynamicHybridFiller(DynamicHybridConfig)

@@ -84,6 +84,16 @@ PVE_Only = false -- If true, players can not spawn in red coalition zones.
 -- In the editor, Don't copy to all ships, make sure all planes in every warehouse are set to LIMITED!!!
 Era = "Modern" -- does not work in Afghanistan or kola
 
+-- If true: remove SA-10 and SA-11 (replaced by older SAMs).
+NoSA10AndSA11 = false
+
+-- There is no Pantsir or Tor M2 in the coldwar Era, but in modern, you can stil replace them.
+-- If true: Pantsir and Tor M2 will be replaced with random groups, including SA-15, SA-19, SA-8 and SA-13.
+NoTorM2AndPantsir = false
+
+-- If true: SA-15 will be replaced by random groups, including SA-19, SA-8, SA-13 and SA-9.
+NoSA15 = false
+
 -- If true, supports filling modded weapons via WarehouseLogistics
 -- (not compatible with Coldwar/Gulfwar).
 -- Keep in mind, adding mods midsession, while there is a save file, those weapons will not be added to current saved airbases.
@@ -117,13 +127,6 @@ ShowKills = true
 --   > 2000 cost requires  2000 earned
 --   > 3000 cost requires  3000 earned
 StoreLimit = true
-
--- If false, CTLD crates/units are free.
-CTLDCost = true
-
--- If true, engineers can capture/upgrade zones via CTLD troop flow (legacy behavior).
--- If false, only regular troops can capture/upgrade zones.
-CaptureZoneWithEngineer = false
 
 -- If false, everyone can access the full shop.
 RankingSystem = true
@@ -810,7 +813,9 @@ restrictedWeapons = {
     "weapons.bombs.KAB_1500LG",
     "weapons.bombs.KAB_1500T",
     "weapons.bombs.LS_6_100",
-    "weapons.bombs.GBU-43/B(MOAB)",}
+    "weapons.bombs.GBU-43/B(MOAB)",
+	"weapons.missiles.AGR_20A", -- laser rockets
+	"weapons.missiles.AGR_20_M282"} -- laser rockets
 
  -- Harrier is AV8BNA
  -- Strike eagle is F-15ESE

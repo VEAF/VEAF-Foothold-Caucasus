@@ -15,7 +15,7 @@ assert(loadfile(FOOTHOLD_DYNAMIC_SCRIPTS_PATH .. "mist.lua")) ()
 assert(loadfile(FOOTHOLD_DYNAMIC_SCRIPTS_PATH .. "veaf-scripts.lua")) ()
 
 -- configure the VEAF scripts
-veaf.config.MISSION_NAME = "Foothold_Sinai"
+veaf.config.MISSION_NAME = "Foothold_Caucasus"
 veaf.config.MISSION_EXPORT_PATH = nil -- use default folder
 veaf.loggers.get(veaf.Id):info("init - veafRadio")
 veafRadio.initialize(true, true)

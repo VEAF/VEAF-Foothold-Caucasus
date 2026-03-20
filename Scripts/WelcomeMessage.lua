@@ -107,6 +107,10 @@ end
 InitAllZones()
 InitAtisZones()
 
+if EscortTakeoffFromGround == nil then
+    EscortTakeoffFromGround = false
+end
+
 
 
 followID={}
@@ -877,24 +881,47 @@ function SetupATISMenu(client)
 
     local atisMenu = MENU_GROUP:New(group, "ATIS Information", mainMenu)
     MENU_GROUP_COMMAND:New(group, "Get Closest Friendly Airbase", mainMenu, getClosestFriendlyAirbaseInfo, client)
-    if IsThereACarrier() then
+    local hasMother = IsThereACarrier()
+    if hasMother then
     MENU_GROUP_COMMAND:New(group, "Get ATIS for Mother", atisMenu, sendATISInformation, client, group, "Carrier")
     end
     local currentMenu = atisMenu
-    local menuItemCount = 2
+    local menuItemCount = hasMother and 2 or 0
 
+    local entries = {}
     for zoneName, details in pairs(atisZones) do
         if not zoneName:find("Carrier") then
             local airbase = GetAirbaseByNameCached(details.airbaseName)
             if airbase and airbase:GetCoalitionName() == 'Blue' then
-                if menuItemCount >= 9 then
-                    currentMenu = MENU_GROUP:New(group, "Next Page...", atisMenu)
-                    menuItemCount = 0
-                end
-                MENU_GROUP_COMMAND:New(group, "Get ATIS for " .. zoneName, currentMenu, sendATISInformation, client, group, zoneName)
-                menuItemCount = menuItemCount + 1
+                local wpSuffix = (type(WaypointList) == "table" and WaypointList[zoneName]) or ""
+                local wpNum = tonumber(tostring(wpSuffix):match("%d+"))
+                entries[#entries + 1] = {
+                    zoneName = zoneName,
+                    wpSuffix = wpSuffix,
+                    wpNum = wpNum
+                }
             end
         end
+    end
+
+    table.sort(entries, function(a, b)
+        if a.wpNum and b.wpNum then
+            if a.wpNum ~= b.wpNum then return a.wpNum > b.wpNum end
+            return a.zoneName < b.zoneName
+        end
+        if a.wpNum then return true end
+        if b.wpNum then return false end
+        return a.zoneName < b.zoneName
+    end)
+
+    for _, entry in ipairs(entries) do
+        if menuItemCount >= 9 then
+            currentMenu = MENU_GROUP:New(group, "More", currentMenu)
+            menuItemCount = 0
+        end
+        local zoneDisplayName = entry.zoneName .. entry.wpSuffix
+        MENU_GROUP_COMMAND:New(group, "Get ATIS for " .. zoneDisplayName, currentMenu, sendATISInformation, client, group, entry.zoneName)
+        menuItemCount = menuItemCount + 1
     end
 end
 
@@ -1199,13 +1226,59 @@ function FindEscortTemplateWithAlias(clientGroup, alias)
     return templateName
 end
 
-function EscortClientGroup(clientGroup)
-    local groupName = clientGroup:GetName()
-    local spawnCount = spawnedGroups[groupName] and spawnedGroups[groupName].escortSpawnCount or 1
-    local playerName = clientGroup:GetUnit(1):GetPlayerName() or groupName
-    local safePlayerName = playerName:gsub("%s+", "_"):gsub("[^%w_%-]", "_")
-    local alias = groupName .. "_" .. safePlayerName .. "_Escort_" .. string.format("%03d", spawnCount)
-    local templateName = FindEscortTemplateWithAlias(clientGroup, alias)
+function GetClosestEscortAirdromeZone(clientGroup)
+    if not clientGroup then
+        return nil, nil
+    end
+    local zoneList = (bc and bc.zones) or zones
+    if type(zoneList) ~= "table" then
+        return nil, nil
+    end
+
+    local clientUnit = clientGroup:GetUnit(1)
+    if not clientUnit then
+        return nil, nil
+    end
+
+    local clientCoord = clientUnit:GetCoordinate()
+    if not clientCoord then
+        return nil, nil
+    end
+
+    local seenAirbases = {}
+    local closestZoneName = nil
+    local closestAirbase = nil
+    local closestDistance = math.huge
+
+    for _, zone in pairs(zoneList) do
+        if zone and zone.side == 2 and zone.active then
+            local airbaseName = zone.airbaseName
+            if type(airbaseName) == "string" and airbaseName ~= "" and not seenAirbases[airbaseName] then
+                local airbase = GetAirbaseByNameCached(airbaseName)
+                local sideOk = airbase:GetCoalition() == coalition.side.BLUE
+                if sideOk and airbase:IsAirdrome() then
+                    local airbaseCoord = airbase:GetCoordinate()
+                    if airbaseCoord then
+                        local distance = clientCoord:Get2DDistance(airbaseCoord)
+                        if distance and distance < closestDistance then
+                            closestDistance = distance
+                            closestZoneName = zone.zone
+                            closestAirbase = airbase
+                        end
+                    end
+                end
+                seenAirbases[airbaseName] = true
+            end
+        end
+    end
+
+    return closestZoneName, closestAirbase
+end
+
+function SpawnEscortInAirBehindClient(clientGroup, templateName, alias, onSpawn)
+    if not clientGroup or not templateName or not alias then
+        return nil
+    end
 
     local clientPos = clientGroup:GetPointVec3()
     local clientHeading = clientGroup:GetHeading()
@@ -1218,26 +1291,165 @@ function EscortClientGroup(clientGroup)
     local spawnPos = { x = clientPos.x - offsetX, y = UTILS.FeetToMeters(desiredAlt), z = clientPos.z - offsetZ }
     local coord = COORDINATE:NewFromVec3(spawnPos)
 
+    local spawnHeading = tonumber(clientHeading) or 0
+    spawnHeading = ((spawnHeading % 360) + 360) % 360
+
     local sp = SPAWN:NewWithAlias(templateName, alias)
-    sp:OnSpawnGroup(function(g)
-        escortGroup = FLIGHTGROUP:New(g)
+    sp:InitHeading(spawnHeading, spawnHeading)
+    if onSpawn then
+        sp:OnSpawnGroup(onSpawn)
+    end
+
+    return sp:SpawnFromCoordinate(coord)
+end
+
+function SpawnEscortFromGround(clientGroup, templateName, alias, onSpawn)
+    if not clientGroup or not templateName or not alias then
+        return nil
+    end
+
+    local _, homebase = GetClosestEscortAirdromeZone(clientGroup)
+    if not homebase then
+        return nil
+    end
+
+    local function GetEscortTemplateUnitCount(name)
+        local tpl = _DATABASE and _DATABASE.Templates and _DATABASE.Templates.Groups and _DATABASE.Templates.Groups[name]
+        tpl = tpl and tpl.Template or nil
+        if not tpl and FetchMETemplate then
+            tpl = FetchMETemplate(name)
+        end
+        local units = tpl and tpl.units
+        if type(units) == "table" and #units > 0 then
+            return #units
+        end
+        return 1
+    end
+
+    local function PickConsecutiveParkingIds(freeSpots, need)
+        if type(freeSpots) ~= "table" or #freeSpots < need then
+            return nil
+        end
+
+        table.sort(freeSpots, function(a, b)
+            return a.TerminalID < b.TerminalID
+        end)
+
+        local run = 1
+        for i = 2, #freeSpots do
+            if freeSpots[i].TerminalID == freeSpots[i - 1].TerminalID + 1 then
+                run = run + 1
+            else
+                run = 1
+            end
+            if run >= need then
+                local ids = {}
+                for j = i - run + 1, i do
+                    ids[#ids + 1] = freeSpots[j].TerminalID
+                end
+                return ids
+            end
+        end
+
+        local ids = {}
+        for i = 1, need do
+            ids[i] = freeSpots[i].TerminalID
+        end
+        return ids
+    end
+
+    local sp = SPAWN:NewWithAlias(templateName, alias)
+    if onSpawn then
+        sp:OnSpawnGroup(onSpawn)
+    end
+
+    local need = math.max(GetEscortTemplateUnitCount(templateName), 1)
+    local terminalType = AIRBASE.TerminalType.OpenMedOrBig
+    local freeSpots = homebase:GetFreeParkingSpotsTable(terminalType, false) or {}
+    if #freeSpots < need then
+        local freeSpotsWithTakeoff = homebase:GetFreeParkingSpotsTable(terminalType, true)
+        if type(freeSpotsWithTakeoff) == "table" and #freeSpotsWithTakeoff > #freeSpots then
+            freeSpots = freeSpotsWithTakeoff
+        end
+    end
+
+    local parkingIds = PickConsecutiveParkingIds(freeSpots, need)
+    local spawned = nil
+    if parkingIds then
+        spawned = sp:SpawnAtParkingSpot(homebase, parkingIds, SPAWN.Takeoff.Hot)
+    end
+    if not spawned then
+        spawned = sp:SpawnAtAirbase(homebase, SPAWN.Takeoff.Hot)
+    end
+
+    return spawned
+end
+
+function EscortClientGroup(clientGroup)
+    local groupName = clientGroup:GetName()
+    local spawnCount = spawnedGroups[groupName] and spawnedGroups[groupName].escortSpawnCount or 1
+    local playerName = clientGroup:GetUnit(1):GetPlayerName() or groupName
+    local safePlayerName = playerName:gsub("%s+", "_"):gsub("[^%w_%-]", "_")
+    local alias = groupName .. "_" .. safePlayerName .. "_Escort_" .. string.format("%03d", spawnCount)
+    local templateName = FindEscortTemplateWithAlias(clientGroup, alias)
+    local escortSpawnedFromGround = false
+
+    local function OnEscortSpawn(g)
+        local escortGroup = FLIGHTGROUP:New(g)
         escortGroup:GetGroup():CommandSetUnlimitedFuel(true):SetOptionRadarUsingForContinousSearch(true):SetOptionWaypointPassReport(false)
         escortGroups[groupName] = escortGroup
         local escortAuftrag = AUFTRAG:NewESCORT(clientGroup, { x = -100, y = 3048, z = 100 }, 40, { "Air" })
         escortGroup:AddMission(escortAuftrag)
-        MESSAGE:New("ESCORT IS ON ROUTE.\n\nYou can control the escort from the radio menu.", 20):ToGroup(clientGroup)
         RemoveRequestEscortMenu(clientGroup)
-        AddEscortMenu(clientGroup)
+        if escortSpawnedFromGround then
+            MESSAGE:New("Escort group is scrambling and about to taxi to the runway.\n\nWe'll join you shortly.", 20):ToGroup(clientGroup)
+            function escortGroup:OnAfterTakeoff(From, Event, To)
+                if clientGroup and clientGroup:IsAlive() then
+                    local escortAuftrag = AUFTRAG:NewESCORT(clientGroup, {x=-100, y=3048, z=300}, 40, {"Air"})
+                    escortAuftrag:SetMissionAltitude(25000)
+                    escortAuftrag:SetEngageDetected(40, {"Air"})
+                    escortAuftrag:SetMissionSpeed(600)
+                    escortAuftrag:SetROE(2)
+                    escortAuftrag:SetROT(3)
+                    self:AddMission(escortAuftrag)
+                    local currentMission = self:GetMissionCurrent()
+                    if currentMission then
+                        currentMission:__Cancel(5)
+                    end
+                    AddEscortMenu(clientGroup)
+                    SCHEDULER:New(nil, function()
+                        if clientGroup and clientGroup:IsAlive() then
+                            MESSAGE:New("Escort group is now airborne, heading to your position.", 20):ToGroup(clientGroup)
+                        end
+                    end, {}, 30)
+                end
+            end
+        else
+            MESSAGE:New("ESCORT IS ON ROUTE.\n\nYou can control the escort from the radio menu.", 20):ToGroup(clientGroup)
+            AddEscortMenu(clientGroup)
+        end
         function escortGroup:OnAfterDead(From, Event, To)
-            escortGroup:__Stop(1)
+            self:__Stop(1)
             escortGroups[groupName] = nil
             RemoveEscortMenu(clientGroup)
             if clientGroup and clientGroup:IsAlive() then
                 MESSAGE:New("Your escort group has been destroyed. Takeoff from an airfield to get a new one.", 10):ToGroup(clientGroup)
             end
         end
-    end)
-    sp:SpawnFromCoordinate(coord)
+    end
+
+    local spawned = nil
+    if EscortTakeoffFromGround == true then
+        escortSpawnedFromGround = true
+        spawned = SpawnEscortFromGround(clientGroup, templateName, alias, OnEscortSpawn)
+        if not spawned then
+            escortSpawnedFromGround = false
+        end
+    end
+    if not spawned then
+        escortSpawnedFromGround = false
+        spawned = SpawnEscortInAirBehindClient(clientGroup, templateName, alias, OnEscortSpawn)
+    end
 
     spawnedGroups[groupName].escortSpawnCount = spawnCount + 1
 end
@@ -1457,30 +1669,57 @@ function static:OnEventTakeoff(EventData)
 end
 
 function static:OnEventPlayerLeaveUnit(EventData)
-    if EventData.id == EVENTS.PlayerLeaveUnit or EventData.id == EVENTS.PilotDead then
+    local playerGroup = nil
+
+    local function cleanupEscortForGroupName(groupName)
+        if not groupName then return end
+
+        local escortGroup = escortGroups[groupName]
+        if escortGroup then
+            escortGroup:Destroy()
+            escortGroups[groupName] = nil
+        end
+
+        if escortMenus and escortMenus[groupName] then
+            escortMenus[groupName]:Remove()
+            escortMenus[groupName] = nil
+        end
+
+        if escortRequestMenus and escortRequestMenus[groupName] then
+            escortRequestMenus[groupName]:Remove()
+            escortRequestMenus[groupName] = nil
+        end
+
+        if menuEscortRequest and menuEscortRequest[groupName] then
+            menuEscortRequest[groupName]:Remove()
+            menuEscortRequest[groupName] = nil
+        end
+
+        if spawnedGroups and spawnedGroups[groupName] then
+            spawnedGroups[groupName] = nil
+        end
+    end
+
+    if EventData.id == EVENTS.PlayerLeaveUnit or EventData.id == EVENTS.PilotDead or EventData.id == EVENTS.Ejection then
         if EventData.IniUnit and EventData.IniPlayerName then
             local playerUnit = EventData.IniUnit
             playerGroup = playerUnit:GetGroup()
-            if playerGroup then
-                local groupName = playerGroup:GetName()
-                local escortGroup = escortGroups[groupName]
-                if escortGroup then
-                    escortGroup:Destroy()
-                    escortGroups[groupName] = nil
-                end
-            end
+            local groupName = playerGroup and playerGroup:GetName() or nil
 
             local playerName = EventData.IniPlayerName
+            if (not groupName) and globalCallsignAssignments[playerName] then
+                groupName = globalCallsignAssignments[playerName].groupName
+            end
+
+            cleanupEscortForGroupName(groupName)
+
             if followID and playerName and followID[playerName] then
                 followID[playerName]:Stop()
                 followID[playerName] = nil
             end
-            if activeCSMenus and playerGroup then
-                local groupName = playerGroup:GetName()
-                if activeCSMenus[groupName] then
-                    activeCSMenus[groupName]:Remove()
-                    activeCSMenus[groupName] = nil
-                end
+            if activeCSMenus and groupName and activeCSMenus[groupName] then
+                activeCSMenus[groupName]:Remove()
+                activeCSMenus[groupName] = nil
             end
 
             if globalCallsignAssignments[playerName] then
@@ -1504,6 +1743,7 @@ function static:OnEventPlayerLeaveUnit(EventData)
                 if not alivePlayers[playerName] then
                     local zoneName=callsignInfo.zoneName
                     local gname=callsignInfo.groupName
+                    cleanupEscortForGroupName(gname)
                     releaseSlot(playerName,zoneName)
                     if followID and followID[playerName] then followID[playerName]:Stop() followID[playerName]=nil end
                     if activeCSMenus and gname and activeCSMenus[gname] then activeCSMenus[gname]:Remove() activeCSMenus[gname]=nil end
@@ -1520,6 +1760,8 @@ end
 static:HandleEvent(EVENTS.Shot, static.OnEventShot)
 static:HandleEvent(EVENTS.BaseCaptured, static.onBaseCapture)
 static:HandleEvent(EVENTS.PlayerLeaveUnit, static.OnEventPlayerLeaveUnit)
+static:HandleEvent(EVENTS.PilotDead, static.OnEventPlayerLeaveUnit)
+static:HandleEvent(EVENTS.Ejection, static.OnEventPlayerLeaveUnit)
 static:HandleEvent(EVENTS.Takeoff, static.OnEventTakeoff)
 _SETTINGS:SetPlayerMenuOff()
 _SETTINGS:SetA2G_BR()

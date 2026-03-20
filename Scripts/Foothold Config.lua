@@ -1,10 +1,11 @@
--- Version V1.0.1
+-- Version V1.0.2
 -- ** CHANGE LOG **
 --
--- Fixed wrong name in the Max_At_Spawn for IRIS T - V1.0.1
--- Added ShopCategoryLabels and ShopCategoryLabels.Order for easier shop category management and custom category addition - V1.0.1
+-- Added supplyDifficultyScaling for separate supply mission difficulty scaling - V1.0.2
+-- Added NoSA15 - V1.0.2
+-- Added NoSA10AndSA11 - V1.0.2
+-- Added laser rockets to the restrictedWeapons. - V1.0.2
 --
--- Foothold mission
 --
 -- DO NOT TOUCH THIS BLOCK
 --
@@ -24,8 +25,8 @@ end
 -- Difficulty Scaling
 -- ============================================================================
 
--- Foothold spawn/respawn speed scaling (multiplier).
--- This value multiplies ALL AI respawn timers for that coalition.
+-- Foothold non-supply spawn/respawn speed scaling (multiplier).
+-- This value multiplies AI respawn timers for attack/patrol missions.
 -- 1.0 = default (no change)
 -- < 1.0 = faster spawns (shorter timers)   | 0.5 = 2x faster
 -- > 1.0 = slower spawns (longer timers)    | 1.5 = 50% slower
@@ -37,8 +38,13 @@ end
 -- Examples:
 -- Blue spawns twice as fast:  GlobalSettings.difficultyScaling = { [1]=1.0, [2]=0.5 }
 -- Red spawns 30% slower:      GlobalSettings.difficultyScaling = { [1]=1.3, [2]=1.0 }
+-- This does not affect the supply missions.
 GlobalSettings = GlobalSettings or {}
 GlobalSettings.difficultyScaling = { [1]=1.0, [2]=1.0 }
+
+-- Supply-only spawn/respawn speed scaling (multiplier).
+-- This value multiplies AI respawn timers for supply missions only.
+GlobalSettings.supplyDifficultyScaling = { [1]=1.0, [2]=1.0 }
 
 -- ============================================================================
 -- Difficulty Settings
@@ -67,6 +73,70 @@ AiGroundSkill = "Excellent"
 -- true     = always hidden on MFD (default)
 -- "random" = 50% chance hidden on each spawn
 HideSAMOnMFD = true -- if random, use "random" (string)
+
+-- ============================================================================
+-- RED Reactive Counterpressure
+-- ============================================================================
+-- RED Reactive Counterpressure (simple explanation):
+-- When BLUE players get close to RED frontline zones, RED starts reacting.
+-- RED reaction has 2 parts:
+-- 1) Soft reaction: RED speeds up some supply and CAP groups for pressured RED zones.
+-- 2) Hard reaction: RED can force-spawn attack groups to strike BLUE zones.
+-- The difficulty used here is the higher of:
+-- CapDifficulty and CasSeadDifficulty.
+-- Easy = system off.
+-- Medium/Hard = system on.
+
+RedReactiveConfig = {
+easy = {
+    enabled = false, -- false in easy.
+    minPressureSoft = 16, -- Minimum pressure needed for RED soft reaction (supply/CAP boost). With CapDifficulty="medium", this is usually 3+ counted CAP players.
+    minPressureHard = 15, -- Minimum pressure needed for RED hard reaction (attack push). With CapDifficulty="medium", this is usually 3+ counted CAP players.
+    captureHardWindowSec = 120, -- If BLUE captured a zone recently, Red side can be angry for this long in seconds, and dispatch attack.
+    hardZoneCooldownSec = 1800, -- After hard reaction is used for a pressured RED zone, wait this long before hard can happen there again
+    maxZonesPerTick = 1, -- Max number of pressured RED zones processed per check
+    softSupplyBoostPerZone = 0, -- Max number of RED supply groups to soft-boost per processed zone per check
+    softCapBoostPerZone = 0, -- Max number of RED CAP groups to soft-boost per processed zone per check
+    softSupplyCooldownSec = 1800, -- After a supply soft-boost in one RED zone, wait this long before supply soft-boost can happen there again
+    softCapCooldownSec = 1800, -- After a CAP soft-boost in one RED zone, wait this long before CAP soft-boost can happen there again
+    hardForcePerZone = 1, -- Max hard-forced attack groups for one processed pressured zone
+    hardForceTotalPerTick = 1, -- Total hard-forced attack groups allowed per check (all zones together)
+    groupReuseCooldownSec = 1600, -- After one attack group is hard-forced, wait this long before that same group can be hard-forced again
+},
+
+medium = {
+    enabled = true, -- Turn the reactive system on/off for this profile
+    minPressureSoft = 10, -- Minimum pressure needed for RED soft reaction (supply/CAP boost). With CapDifficulty="medium", this is usually 3+ counted CAP players.
+    minPressureHard = 12, -- Minimum pressure needed for RED hard reaction (attack push). With CapDifficulty="medium", this is usually 3+ counted CAP players.
+    captureHardWindowSec = 180, -- If BLUE captured a zone recently, Red side can be angry for this long in seconds, and dispatch attack.
+    hardZoneCooldownSec = 1800, -- After hard reaction is used for a pressured RED zone, wait this long before hard can happen there again
+    maxZonesPerTick = 1, -- Max number of pressured RED zones processed per check
+    softSupplyBoostPerZone = 1, -- Set to 0 to disable RED supply soft reaction. Applied only when minPressureSoft is met.
+    softCapBoostPerZone = 1, -- Set to 0 to disable RED CAP soft reaction. Applied only when minPressureSoft is met.
+    softSupplyCooldownSec = 1500, -- After a supply soft-boost in one RED zone, wait this long before supply soft-boost can happen there again
+    softCapCooldownSec = 1500, -- After a CAP soft-boost in one RED zone, wait this long before CAP soft-boost can happen there again
+    hardForcePerZone = 1, -- Max hard-forced attack groups for one processed pressured zone
+    hardForceTotalPerTick = 1, -- Total hard-forced attack groups allowed per check (all zones together)
+    groupReuseCooldownSec = 1200, -- After one attack group is hard-forced, wait this long before that same group can be hard-forced again
+
+},
+
+hard = {
+    enabled = true, -- Turn the reactive system on/off for this profile
+    startDelaySec = 120, -- Wait this many seconds after mission start before first reactive check
+    minPressureSoft = 6, -- Minimum pressure needed for RED soft reaction (supply/CAP boost). In hard profile, this starts earlier than medium.
+    minPressureHard = 12, -- Minimum pressure needed for RED hard reaction (attack push). This is usually around 3+ counted CAP players.
+    captureHardWindowSec = 240, -- If BLUE captured a zone recently, Red side can be angry for this long in seconds, and dispatch attack (Hard reaction)
+    hardZoneCooldownSec = 900, -- After hard reaction is used for a pressured RED zone, wait this long before hard can happen there again
+    maxZonesPerTick = 2, -- Max number of pressured RED zones processed per check
+    softSupplyBoostPerZone = 1, -- Set to 0 to disable RED supply soft reaction. Applied only when minPressureSoft is met.
+    softCapBoostPerZone = 1, -- Set to 0 to disable RED CAP soft reaction. Applied only when minPressureSoft is met.
+    softCapCooldownSec = 900, -- After a CAP soft-boost in one RED zone, wait this long before CAP soft-boost can happen there again
+    hardForcePerZone = 2, -- Max hard-forced attack groups for one processed pressured zone
+    hardForceTotalPerTick = 2, -- Total hard-forced attack groups allowed per check (all zones together)
+    groupReuseCooldownSec = 900, -- After one attack group is hard-forced, wait this long before that same group can be hard-forced again
+},
+}
 
 -- ============================================================================
 -- Mission Rules
@@ -112,9 +182,6 @@ RankLoseWhenKilled = true
 -- If you want to change the amount, you can do it here.
 RankLoseWhenKilledAmount = 100
 
--- If true: remove SA-10 and SA-11 (replaced by older SAMs) AND remove SA-15 and Pantsir.
-NoSA10AndSA11 = false
-
 -- If true, loads enhanced bomb blast effects (may cause stutters).
 SplashDamage = false
 
@@ -137,6 +204,10 @@ FriendlyFireRankPenalty = 500
 -- If true, A-10 is invisible to RED enemy planes.
 InvisibleA10 = false
 
+-- A-10 & C-130J-30 escort option for takeoff from the ground.
+-- If true, the escort will takeoff from the ground instead of airspawn.
+EscortTakeoffFromGround = true
+
 -- If true, C-130J-30 AND Chinook! Use the internal (Ground crew for the Chinook and C-130 loading system only (not CTLD menu load).
 UseC130LoadAndUnload = true -- need to be true if using Logisticsystem as the cargo need to be tracked.
 
@@ -151,6 +222,10 @@ WarehouseLogistics = true
 
 -- How much AI delivery brings per supply run.
 AIDeliveryamount = 20
+
+-- If true, smart weapons found in the WarehouseWeaponCaps table at the bottom, will be HALF what we add to the warehouse.
+-- This is to make the smart weapons harder to get.
+StrictSmartWeaponsInventory = false
 
 -- Every 15 minutes, BLUE zones gain this many resources (covers AI usage).
 AutoFillResources = 5
@@ -295,6 +370,14 @@ ShopCategoryLabels.Order = {
 	ShopCategoryLabels.LogisticsStrategic,
 	ShopCategoryLabels.OtherSupport,
 }
+-- If true, the AI attack groups will take off from ground instead of airspawn. 
+-- If false, AI will airspawn above friendly zone. Much faster engagements but less realistic.
+AIAttackTakeoffFromGround = true
+AIAttackTakeoffFromGroundExtraNM = 40 -- don't change this if you don't know what it is.
+
+-- If true, you can buy supplies upgrades and they will spawn right away. 
+-- If false, they will be delivered by helicopter.
+AllowScriptedSupplies = false
 
 -- ============================================================================
 -- FlightTime Reward Settings
@@ -835,6 +918,84 @@ restockAircraft = {
 "Bronco-OV-10A","JAS39Gripen_AG","MiG-31BM","JAS39Gripen","Su-35S","UH-60L","OH-6A","Su-35","JAS39Gripen_BVR","SK-60","T-45","UH-60L_DAP","MH-6J","AH-6J","A-4E-C",
 "Bell-47","Eurofighter","EurofighterT","F16A","F16A_AA","F111C","Hercules","M2000D","PUCARA","Su-25SM3"}
 
+-- This list can be used to add weapons you want to forbidd, This will forbidd all in the table in Modern era as well.
+-- For coldwar, you can still rely on restrictedWeapons.
+ForbiddWeaponsInAllEra = {
+    "weapons.bombs.RN-24", -- Nukes for the Mig-21
+    "weapons.bombs.RN-28", -- Nukes for the Mig-21
+}
+
+WarehouseWeaponCaps = {
+    -- A/A missiles
+    "weapons.missiles.AIM_54",
+    "weapons.missiles.AIM_54A_Mk47",
+    "weapons.missiles.AIM_54A_Mk60",
+    "weapons.missiles.AIM_54C_Mk47",
+    "weapons.missiles.AIM_54C_Mk60",
+    "weapons.missiles.Matra Super 530D",
+    "weapons.missiles.MMagicII",
+    "weapons.missiles.P_24R",
+    "weapons.missiles.P_24T",
+    "weapons.missiles.P_33E",
+    "weapons.missiles.P_40R",
+    "weapons.missiles.P_40T",
+    "weapons.missiles.PL-8A",
+    "weapons.missiles.PL-8B",
+    "weapons.missiles.R_530F_EM",
+    "weapons.missiles.R_530F_IR",
+    "weapons.missiles.R_550",
+    "weapons.missiles.R_550_M1",
+    "weapons.missiles.Rb 74",
+    "weapons.missiles.Super_530D",
+    "weapons.missiles.Super_530F",
+
+    -- A/G guided missiles
+    "weapons.missiles.ADM_141A",
+    "weapons.missiles.AGM_119",
+    "weapons.missiles.AGM_122",
+    "weapons.missiles.AGM_45A",
+    "weapons.missiles.AGM_45B",
+    "weapons.missiles.AGM_78A",
+    "weapons.missiles.AGM_78B",
+    "weapons.missiles.AGM_86",
+    "weapons.missiles.AGM_88",
+    "weapons.missiles.ALARM",
+    "weapons.missiles.HOT3_MBDA",
+    "weapons.missiles.Kh25MP_PRGS1VP",
+    "weapons.missiles.Kormoran",
+    "weapons.missiles.Rb 04E",
+    "weapons.missiles.Rb 05A",
+    "weapons.missiles.Rb 15F",
+    "weapons.missiles.Rb_04",
+    "weapons.missiles.S_25L",
+    "weapons.missiles.Sea_Eagle",
+    "weapons.missiles.X_22",
+    "weapons.missiles.X_25ML",
+    "weapons.missiles.X_25MP",
+    "weapons.missiles.X_25MR",
+    "weapons.missiles.X_28",
+    "weapons.missiles.X_29L",
+    "weapons.missiles.X_29T",
+    "weapons.missiles.X_31A",
+    "weapons.missiles.X_31P",
+    "weapons.missiles.X_41",
+    "weapons.missiles.X_58",
+
+    -- A/G guided bombs
+    "weapons.bombs.AGM_62",
+    "weapons.bombs.AGM_62_I",
+    "weapons.bombs.GBU_15_V_1_B",
+    "weapons.bombs.GBU_15_V_31_B",
+    "weapons.bombs.GBU_24",
+    "weapons.bombs.GBU_27",
+    "weapons.bombs.GBU_8_B",
+    "weapons.bombs.KAB_1500Kr",
+    "weapons.bombs.KAB_1500LG",
+    "weapons.bombs.KAB_1500T",
+    "weapons.bombs.KAB_500",
+    "weapons.bombs.KAB_500Kr",
+    "weapons.bombs.KAB_500KrOD",
+}
 
 
 -- ============================================================================

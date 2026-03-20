@@ -349,7 +349,6 @@ local cwSwap = {
 	['Fixed Ammunitiondepo Armor']  				= 'Fixed Ammunitiondepo Armor Coldwar',
 	['MiningFacility Fixed Group 1']  				= 'MiningFacility Fixed Group Coldwar',
 	['MiningFacility Fixed Group 2']  				= 'MiningFacility Fixed Group 2 Coldwar',
-	['Red SAM SHORAD SA-15 Fixed ammunitiondepo']	= 'Red SAM SHORAD SA-8 Fixed ammunitiondepo',
 
 }
 
@@ -412,6 +411,7 @@ local SamSwapNoTorM2AndPantsir = {
 local SamSwapNoSA15 = {
 	['Red SAM SHORAD SA-15'] = { mode='random', list={'Red SAM SHORAD SA-19', 'Red SAM SHORAD SA-8', 'Red SAM SHORAD SA-13', 'Red SAM SHORAD SA-9'} },
 	['Red SAM SHORAD SA-15 Fixed ammunitiondepo'] = 'Red SAM SHORAD SA-8 Fixed ammunitiondepo',
+
 }
 
 if NoSA10AndSA11 == true then
@@ -518,6 +518,7 @@ RandomUpgradeTemplatesBlue = {
 
 RandomGroundGroups = true
 RandomBlueGroups = true
+AllowScriptedSupplies = AllowScriptedSupplies ~= false
 
 
 bc = BattleCommander:new(filepath, 10, 60)
@@ -1063,7 +1064,7 @@ zones.nalchik:addGroups({
 zones.beslan:addGroups({
 	GroupCommander:new({name='Beslan-patrol-beslan', mission='patrol', template='CapPlaneTemplate', MissionType='CAP', targetzone='Beslan', Altitude = CapAltitude()}),
 	GroupCommander:new({name='Beslan-attack-mozdok', mission='attack', template='CasPlaneTemplate', MissionType='CAS', targetzone='Mozdok', Altitude = CasAltitude()}),
-	GroupCommander:new({name='Beslan-attack-Mineralnye', mission='attack', template='CapPlaneTemplate', MissionType='CAS', targetzone='Mineralnye', Altitude = CasAltitude()}),
+	GroupCommander:new({name='Beslan-attack-Mineralnye', mission='attack', template='CapPlaneTemplate', MissionType='CAP', targetzone='Mineralnye', Altitude = CapAltitude()}),
 	GroupCommander:new({name='Beslan-attack-Nalchik', mission='attack', template='CapPlaneTemplate', MissionType='CAS', targetzone='Nalchik', Altitude = CasAltitude()}),
 	GroupCommander:new({name='Beslan-supply-juliett', mission='supply', template='HeloSupplyTemplate', targetzone='Juliett'}),
 	GroupCommander:new({name='Beslan-supply-Mozdok', mission='supply', template='HeloSupplyTemplate', targetzone='Mozdok'}),
@@ -1928,9 +1929,37 @@ end
 ---------------------------------------------END DYNAMIC SHOP ------------------------------------------
 
 local upgradeMenu = nil
+local function clearFriendlySupplyMenu()
+    if upgradeMenu then
+        missionCommands.removeItemForCoalition(2, upgradeMenu)
+        upgradeMenu = nil
+    end
+end
+
 bc:registerShopItem('supplies2', 'Resupply friendly Zone', ShopPrices.supplies2, function(sender)
     if upgradeMenu then
         return 'Choose zone from F10 menu'
+    end
+
+    if not AllowScriptedSupplies and NoAIBlueSupplies == true then
+        return 'Blue AI supplies are disabled'
+    end
+
+    if not AllowScriptedSupplies then
+        local cost = ShopPrices.supplies2
+        local allow = bc:buildFriendlySupplyAllowTable()
+        if not next(allow) then
+            trigger.action.outTextForCoalition(2, 'No friendly zones currently need resupply.', 10)
+            return 'No friendly zones need resupply'
+        end
+
+        trigger.action.outTextForCoalition(2, 'Select zone from F10 menu', 15)
+        upgradeMenu = bc:showTargetZoneMenu(2, 'Select Zone for Friendly resupply',
+        function(zonename)
+            local chosenZone = bc:getZoneByName(zonename)
+            return bc:requestFriendlySupplyMission(chosenZone, cost, clearFriendlySupplyMenu)
+        end, 2, true, allow)
+        return nil
     end
 
     local upgradeZone = function(target)
@@ -1947,17 +1976,25 @@ bc:registerShopItem('supplies2', 'Resupply friendly Zone', ShopPrices.supplies2,
     end
 
     upgradeMenu = bc:showTargetZoneMenu(2, 'Select Zone to resupply', upgradeZone, 2, true)
-    
     trigger.action.outTextForCoalition(2, 'Supplies prepared. Choose zone from F10 menu', 15)
 end,
 function(sender, params)
-if params.zone and params.zone.side == 2 and not params.zone.suspended then
+    if not AllowScriptedSupplies then
+        if NoAIBlueSupplies == true then
+            return 'Blue AI supplies are disabled'
+        end
+        if params.zone then
+            return bc:requestFriendlySupplyMission(params.zone)
+        end
+        return 'Can only target friendly zone'
+    elseif params.zone and params.zone.side == 2 and not params.zone.suspended then
         params.zone:upgrade()
     else
         return 'Can only target friendly zone'
     end
 end)
 
+if AllowScriptedSupplies then
 local fullyUpgradeMenu=nil
 bc:registerShopItem('supplies','Fully Upgrade Friendly Zone',ShopPrices.supplies,
 function(sender)
@@ -2044,6 +2081,7 @@ function(sender,params)
         return'Can only target friendly zone'
     end
 end)
+end
 
 Group.getByName('ca-tanks-Coldwar'):destroy()
 Group.getByName('ca-tanks'):destroy()
@@ -3703,7 +3741,9 @@ bc:addShopItem(2, 'airdef', -1, 4, ShopRankRequirements.airdef, ShopCats.Combine
 -- Logistics & Strategic
 bc:addShopItem(2, 'capture', -1, 1, ShopRankRequirements.capture, ShopCats.LogisticsStrategic) -- emergency capture
 bc:addShopItem(2, 'supplies2', -1, 2, ShopRankRequirements.supplies2, ShopCats.LogisticsStrategic) -- upgrade friendly zone
-bc:addShopItem(2, 'supplies', -1, 3, ShopRankRequirements.supplies, ShopCats.LogisticsStrategic) -- fully upgrade friendly zone
+if AllowScriptedSupplies then
+    bc:addShopItem(2, 'supplies', -1, 3, ShopRankRequirements.supplies, ShopCats.LogisticsStrategic) -- fully upgrade friendly zone
+end
 if WarehouseLogistics then
     bc:addShopItem(2, 'zlogc', -1, 4, ShopRankRequirements.zlogc, ShopCats.LogisticsStrategic) -- upgrade zone to logistic center
     bc:addShopItem(2, 'zwh50', -1, 5, ShopRankRequirements.zwh50, ShopCats.LogisticsStrategic) -- resupply warehouse with 50
@@ -3762,6 +3802,11 @@ if not bc.saveLoaded then
 	applyRandomRedUpgrades()
 	applyRandomBlueUpgrades()
 end
+
+if RedReactiveConfig.enabled then
+	bc:startRedReactiveCounterpressure(RedReactiveConfig)
+end
+
 bc:init()
 budgetAI = BudgetCommander:new({ battleCommander = bc, side=1, decissionFrequency=20*60, decissionVariance=10*60, skipChance = 10})
 budgetAI:init()
@@ -3796,65 +3841,7 @@ GlobalSettings.autoSuspendNmRed = 95   		-- suspend red zones deeper than this n
 
 evc = EventCommander:new({ decissionFrequency=15*60, decissionVariance=10*60, skipChance = 15})
 evc:init()
-
 mc = MissionCommander:new({side = 2, battleCommander = bc, checkFrequency = 60})
-
-local function _rrDiffRank(v)
-	v = string.lower(tostring(v or "medium"))
-	if v == "easy" then return 1 end
-	if v == "hard" then return 3 end
-	return 2
-end
-
-local rrLevel = math.max(_rrDiffRank(CapDifficulty), _rrDiffRank(CasSeadDifficulty))
-
-if rrLevel == 1 then
-	RedReactiveConfig = {
-		enabled = false,
-		log = false,
-	}
-elseif rrLevel == 2 then
-	RedReactiveConfig = {
-		enabled = true,
-		startDelaySec = 120,
-		tickSec = 60,
-		minPressureSoft = 3,
-		minPressureHard = 12,
-		captureHardWindowSec = 180,
-		hardZoneCooldownSec = 1200,
-		maxZonesPerTick = 2,
-		softSupplyBoostPerZone = 1,
-		softCapBoostPerZone = 1,
-		hardForcePerZone = 1,
-		hardForceTotalPerTick = 1,
-		groupReuseCooldownSec = 300,
-		hardSourceMode = "attack_plus_cap_attack",
-		log = false,
-	}
-else
-	-- hard: current/aggressive
-	RedReactiveConfig = {
-		enabled = true,
-		startDelaySec = 120,
-		tickSec = 45,
-		minPressureSoft = 3,
-		minPressureHard = 10,
-		captureHardWindowSec = 180,
-		hardZoneCooldownSec = 900,
-		maxZonesPerTick = 3,
-		softSupplyBoostPerZone = 1,
-		softCapBoostPerZone = 1,
-		hardForcePerZone = 1,
-		hardForceTotalPerTick = 2,
-		groupReuseCooldownSec = 300,
-		hardSourceMode = "attack_plus_cap_attack",
-		log = false,
-	}
-end
-
-if RedReactiveConfig.enabled then
-	bc:startRedReactiveCounterpressure(RedReactiveConfig)
-end
 
 DynamicHybridConfig = DynamicHybridConfig or {
 	enabled = true,
@@ -4256,83 +4243,16 @@ mc:trackMission({
 })
 
 ---------------------------------------- End of Escort mission --------------------------------------
-local MULTI_FRONT_TARGET_LIMIT = 2
-
-attackTargets = attackTargets or {}
-resupplyTargets = resupplyTargets or {}
-attackTarget = attackTarget or nil
-resupplyTarget = resupplyTarget or nil
-
-local function _copyList(list)
-	local out = {}
-	if type(list) ~= "table" then return out end
-	for i = 1, #list do out[i] = list[i] end
-	return out
-end
-
-local function _appendUnique(list, value)
-	if not list or value == nil then return false end
-	for _, existing in ipairs(list) do
-		if existing == value then return false end
-	end
-	list[#list + 1] = value
-	return true
-end
-
-local function _containsValue(list, value)
-	for _, existing in ipairs(list or {}) do
-		if existing == value then return true end
-	end
-	return false
-end
-
-local function _syncAttackTargetAlias()
-	attackTarget = (type(attackTargets) == "table" and attackTargets[1]) or nil
-end
-
-local function _syncResupplyTargetAlias()
-	resupplyTarget = (type(resupplyTargets) == "table" and resupplyTargets[1]) or nil
-end
-
-local function _refreshZoneLabel(zoneName)
-	if not zoneName then return end
-	local z = bc:getZoneByName(zoneName)
-	if z then z:updateLabel() end
-end
-
-local function _addMissionTag(zoneName, missionType)
-	if not zoneName or not missionType then return end
-	local current = ActiveCurrentMission[zoneName]
-	if type(current) ~= "table" then
-		local tags = {}
-		if current ~= nil then tags[tostring(current)] = true end
-		current = tags
-		ActiveCurrentMission[zoneName] = current
-	end
-	current[missionType] = true
-end
-
-local function _removeMissionTag(zoneName, missionType)
-	if not zoneName or not missionType then return end
-	local current = ActiveCurrentMission[zoneName]
-	if type(current) == "table" then
-		current[missionType] = nil
-		if not next(current) then ActiveCurrentMission[zoneName] = nil end
-	elseif current == missionType then
-		ActiveCurrentMission[zoneName] = nil
-	end
-end
-
-local function _formatZoneListWithWaypoints(zones)
-	local out = {}
-	for _, zoneName in ipairs(zones or {}) do
-		local wp = WaypointList[zoneName] or ""
-		out[#out + 1] = zoneName .. wp
-	end
-	if #out == 0 then return "none" end
-	return table.concat(out, ", ")
-end
-
+attackTarget1 = nil
+attackTarget2 = nil
+resupplyTarget1 = nil
+resupplyTarget2 = nil
+attackCombinedStart1 = nil
+attackCombinedStart2 = nil
+attackSuppressStart2 = nil
+resupplyCombinedStart1 = nil
+resupplyCombinedStart2 = nil
+resupplySuppressStart2 = nil
 local function _isFrontlineConnectionEligible(from, to)
 	return from and to and from.side ~= to.side and from.side ~= 0 and to.side ~= 0 and
 		((not to.suspended) or from.suspended)
@@ -4348,107 +4268,10 @@ local function _isValidAttackMissionZone(zone)
 		not lname:find('delta') and not lname:find('bravo') and not lname:find('hotel')
 end
 
-local function _collectAttackFrontCandidates()
-	local validzones = {}
-	local seen = {}
-	local redByBlue = {}
-
-	local function addCandidate(zoneName)
-		if not zoneName or seen[zoneName] then return end
-		seen[zoneName] = true
-		validzones[#validzones + 1] = zoneName
-	end
-
-	local function addBlueLink(blueZoneName, redZoneName)
-		if not blueZoneName or not redZoneName then return end
-		redByBlue[blueZoneName] = redByBlue[blueZoneName] or {}
-		_appendUnique(redByBlue[blueZoneName], redZoneName)
-	end
-
-	for _, connection in ipairs(bc.connections or {}) do
-		local from, to = bc:getConnectionZones(connection)
-		if _isFrontlineConnectionEligible(from, to) then
-			if _isValidAttackMissionZone(from) then
-				addCandidate(from.zone)
-				if to and to.side == 2 then addBlueLink(to.zone, from.zone) end
-			end
-			if _isValidAttackMissionZone(to) then
-				addCandidate(to.zone)
-				if from and from.side == 2 then addBlueLink(from.zone, to.zone) end
-			end
-		end
-	end
-
-	return validzones, redByBlue
-end
-
-local function _buildSecondAttackPool(firstTarget, redByBlue)
-	local pool = {}
-	local seen = {}
-	for _, redList in pairs(redByBlue or {}) do
-		local hasFirst = false
-		for _, zoneName in ipairs(redList) do
-			if zoneName == firstTarget then
-				hasFirst = true
-				break
-			end
-		end
-		if hasFirst then
-			for _, zoneName in ipairs(redList) do
-				if zoneName ~= firstTarget and not seen[zoneName] then
-					seen[zoneName] = true
-					pool[#pool + 1] = zoneName
-				end
-			end
-		end
-	end
-	return pool
-end
-
-local function _pruneAttackTargets()
-	local kept = {}
-	local seen = {}
-	for _, zoneName in ipairs(type(attackTargets) == "table" and attackTargets or {}) do
-		if zoneName and not seen[zoneName] then
-			seen[zoneName] = true
-			local targetzn = bc:getZoneByName(zoneName)
-			if targetzn and targetzn.side == 1 and targetzn.active and not targetzn.suspended then
-				kept[#kept + 1] = zoneName
-			else
-				_removeMissionTag(zoneName, "Attack")
-				_refreshZoneLabel(zoneName)
-			end
-		end
-	end
-	attackTargets = kept
-	_syncAttackTargetAlias()
-	return #attackTargets > 0
-end
-
-local function _pruneResupplyTargets()
-	local kept = {}
-	local seen = {}
-	for _, zoneName in ipairs(type(resupplyTargets) == "table" and resupplyTargets or {}) do
-		if zoneName and not seen[zoneName] then
-			seen[zoneName] = true
-			local targetzn = bc:getZoneByName(zoneName)
-			if targetzn and targetzn.side == 2 and targetzn:canRecieveSupply() then
-				kept[#kept + 1] = zoneName
-			else
-				_removeMissionTag(zoneName, "Resupply")
-				_refreshZoneLabel(zoneName)
-			end
-		end
-	end
-	resupplyTargets = kept
-	_syncResupplyTargetAlias()
-	return #resupplyTargets > 0
-end
-
 local function _getAttackAnchorZones()
 	local anchors = {}
 	local seen = {}
-	for _, zoneName in ipairs(type(attackTargets) == "table" and attackTargets or {}) do
+	for _, zoneName in ipairs({ attackTarget1, attackTarget2 }) do
 		if zoneName and not seen[zoneName] then
 			local targetzn = bc:getZoneByName(zoneName)
 			if targetzn and targetzn.zone and targetzn.side == 1 then
@@ -4457,15 +4280,8 @@ local function _getAttackAnchorZones()
 			end
 		end
 	end
-	if #anchors == 0 and attackTarget then
-		local targetzn = bc:getZoneByName(attackTarget)
-		if targetzn and targetzn.zone and targetzn.side == 1 then
-			anchors[#anchors + 1] = targetzn.zone
-		end
-	end
 	return anchors
 end
-
 local function _minDistanceToAttackAnchors(anchors, zoneName)
 	local minDist = nil
 	for _, anchorZone in ipairs(anchors or {}) do
@@ -4477,91 +4293,203 @@ local function _minDistanceToAttackAnchors(anchors, zoneName)
 	return minDist
 end
 
-if attackTarget and #attackTargets == 0 then attackTargets[1] = attackTarget end
-if resupplyTarget and #resupplyTargets == 0 then resupplyTargets[1] = resupplyTarget end
-_syncAttackTargetAlias()
-_syncResupplyTargetAlias()
-
 mc:trackMission({
 	title = function()
-		return "Resupply " .. _formatZoneListWithWaypoints(resupplyTargets)
+		local wp = WaypointList[resupplyTarget1] or ""
+		return "Resupply " .. resupplyTarget1 .. wp
 	end,
 	description = function()
-		return "Deliver supplies to " .. _formatZoneListWithWaypoints(resupplyTargets)
+		return "Deliver supplies to " .. resupplyTarget1
 	end,
-	messageStart = function()
-		return "New mission: Resupply " .. _formatZoneListWithWaypoints(resupplyTargets)
-	end,
+	messageStart = nil,
 	messageEnd = function()
-		return "Mission ended: Resupply " .. _formatZoneListWithWaypoints(resupplyTargets)
+		return "Mission ended: Resupply " .. resupplyTarget1
 	end,
 	startAction = function()
-		for _, zoneName in ipairs(resupplyTargets) do
-			_addMissionTag(zoneName, "Resupply")
-			_refreshZoneLabel(zoneName)
+		local MissionType = "Resupply"
+		ActiveCurrentMission[resupplyTarget1] = MissionType
+		local z = bc:getZoneByName(resupplyTarget1) ; if z then z:updateLabel() end
+		local wp = WaypointList[resupplyTarget1] or ""
+		if resupplyCombinedStart1 == resupplyTarget1 and resupplyCombinedStart2 == resupplyTarget2 and resupplyTarget2 then
+			local wp2 = WaypointList[resupplyTarget2] or ""
+			trigger.action.outTextForCoalition(2, "New mission: Resupply " .. resupplyTarget1 .. wp .. ", " .. resupplyTarget2 .. wp2, 30)
+			resupplySuppressStart2 = resupplyTarget2
+			resupplyCombinedStart1 = nil
+			resupplyCombinedStart2 = nil
+		else
+			trigger.action.outTextForCoalition(2, "New mission: Resupply " .. resupplyTarget1 .. wp, 30)
 		end
 		if not missionCompleted and trigger.misc.getUserFlag(180) == 0 then
 			trigger.action.outSoundForCoalition(2, "ding.ogg")
 		end
 	end,
 	endAction = function()
-		local toClear = _copyList(resupplyTargets)
-		if #toClear == 0 and resupplyTarget then toClear[1] = resupplyTarget end
-		for _, zoneName in ipairs(toClear) do
-			_removeMissionTag(zoneName, "Resupply")
-			_refreshZoneLabel(zoneName)
+		local MissionType = "Resupply"
+		if ActiveCurrentMission[resupplyTarget1] == MissionType then
+			ActiveCurrentMission[resupplyTarget1] = nil
 		end
-		resupplyTargets = {}
-		_syncResupplyTargetAlias()
+		local z = bc:getZoneByName(resupplyTarget1) ; if z then z:updateLabel() end
+		resupplyTarget1 = nil
 		if not missionCompleted and trigger.misc.getUserFlag(180) == 0 then
 			trigger.action.outSoundForCoalition(2, "cancel.ogg")
 		end
 	end,
 	isActive = function()
-		return _pruneResupplyTargets()
+		if not resupplyTarget1 then return false end
+		local targetzn = bc:getZoneByName(resupplyTarget1)
+		return targetzn and targetzn.side == 2 and targetzn:canRecieveSupply()
 	end
 })
 
 mc:trackMission({
 	title = function()
-		return "Attack " .. _formatZoneListWithWaypoints(attackTargets)
+		local wp = WaypointList[resupplyTarget2] or ""
+		return "Resupply " .. resupplyTarget2 .. wp
 	end,
 	description = function()
-		return "Destroy enemy forces at " .. _formatZoneListWithWaypoints(attackTargets)
+		return "Deliver supplies to " .. resupplyTarget2
 	end,
-	messageStart = function()
-		return "New mission: Attack " .. _formatZoneListWithWaypoints(attackTargets)
-	end,
+	messageStart = nil,
 	messageEnd = function()
-		return "Mission ended: Attack " .. _formatZoneListWithWaypoints(attackTargets)
+		return "Mission ended: Resupply " .. resupplyTarget2
 	end,
 	startAction = function()
-		for _, zoneName in ipairs(attackTargets) do
-			_addMissionTag(zoneName, "Attack")
-			_refreshZoneLabel(zoneName)
+		local MissionType = "Resupply"
+		ActiveCurrentMission[resupplyTarget2] = MissionType
+		local z = bc:getZoneByName(resupplyTarget2) ; if z then z:updateLabel() end
+		resupplyCombinedStart1 = nil
+		resupplyCombinedStart2 = nil
+		if resupplySuppressStart2 == resupplyTarget2 then
+			resupplySuppressStart2 = nil
+		else
+			local wp = WaypointList[resupplyTarget2] or ""
+			trigger.action.outTextForCoalition(2, "New mission: Resupply " .. resupplyTarget2 .. wp, 30)
+			if not missionCompleted and trigger.misc.getUserFlag(180) == 0 then
+				trigger.action.outSoundForCoalition(2, "ding.ogg")
+			end
+		end
+	end,
+	endAction = function()
+		local MissionType = "Resupply"
+		if ActiveCurrentMission[resupplyTarget2] == MissionType then
+			ActiveCurrentMission[resupplyTarget2] = nil
+		end
+		local z = bc:getZoneByName(resupplyTarget2) ; if z then z:updateLabel() end
+		resupplyTarget2 = nil
+		if not missionCompleted and trigger.misc.getUserFlag(180) == 0 then
+			trigger.action.outSoundForCoalition(2, "cancel.ogg")
+		end
+	end,
+	isActive = function()
+		if not resupplyTarget2 then return false end
+		local targetzn = bc:getZoneByName(resupplyTarget2)
+		return targetzn and targetzn.side == 2 and targetzn:canRecieveSupply()
+	end
+})
+
+mc:trackMission({
+	title = function()
+		local wp = WaypointList[attackTarget1] or ""
+		return "Attack " .. attackTarget1 .. wp
+	end,
+	description = function()
+		local wp = WaypointList[attackTarget1] or ""
+		return "Destroy enemy forces at " .. attackTarget1
+	end,
+	messageStart = nil,
+	messageEnd = function()
+		return "Mission ended: Attack " .. attackTarget1
+	end,
+	startAction = function()
+		ActiveCurrentMission[attackTarget1] = ActiveCurrentMission[attackTarget1] or {}
+		ActiveCurrentMission[attackTarget1]["Attack"] = true
+		local z = bc:getZoneByName(attackTarget1) if z then z:updateLabel() end
+		local wp = WaypointList[attackTarget1] or ""
+		if attackCombinedStart1 == attackTarget1 and attackCombinedStart2 == attackTarget2 and attackTarget2 then
+			local wp2 = WaypointList[attackTarget2] or ""
+			trigger.action.outTextForCoalition(2, "New mission: Attack " .. attackTarget1 .. wp .. ", " .. attackTarget2 .. wp2, 30)
+			attackSuppressStart2 = attackTarget2
+			attackCombinedStart1 = nil
+			attackCombinedStart2 = nil
+		else
+			trigger.action.outTextForCoalition(2, "New mission: Attack " .. attackTarget1 .. wp, 30)
 		end
 		if not missionCompleted and trigger.misc.getUserFlag(180) == 0 then
 			trigger.action.outSoundForCoalition(2, "cas.ogg")
 		end
 	end,
 	endAction = function()
-		local toClear = _copyList(attackTargets)
-		if #toClear == 0 and attackTarget then toClear[1] = attackTarget end
-		for _, zoneName in ipairs(toClear) do
-			_removeMissionTag(zoneName, "Attack")
-			_refreshZoneLabel(zoneName)
+		local t = (type(ActiveCurrentMission) == 'table') and ActiveCurrentMission[attackTarget1] or nil
+		if type(t) == 'table' then
+			t["Attack"] = nil
+			if not next(t) then ActiveCurrentMission[attackTarget1] = nil end
 		end
-		attackTargets = {}
-		_syncAttackTargetAlias()
+		local z = bc:getZoneByName(attackTarget1) if z then z:updateLabel() end
+		attackTarget1 = nil
 		if not missionCompleted and trigger.misc.getUserFlag(180) == 0 then
 			trigger.action.outSoundForCoalition(2, "cancel.ogg")
 		end
 	end,
 	isActive = function()
-		return _pruneAttackTargets()
+		if not attackTarget1 then return false end
+		local targetzn = bc:getZoneByName(attackTarget1)
+		if targetzn and targetzn.zone and targetzn.side == 1 then
+			return not targetzn.suspended
+		end
+		return false
 	end
 })
 
+mc:trackMission({
+	title = function()
+		local wp = WaypointList[attackTarget2] or ""
+		return "Attack " .. attackTarget2 .. wp
+	end,
+	description = function()
+		local wp = WaypointList[attackTarget2] or ""
+		return "Destroy enemy forces at " .. attackTarget2
+	end,
+	messageStart = nil,
+	messageEnd = function()
+		return "Mission ended: Attack " .. attackTarget2
+	end,
+	startAction = function()
+		ActiveCurrentMission[attackTarget2] = ActiveCurrentMission[attackTarget2] or {}
+		ActiveCurrentMission[attackTarget2]["Attack"] = true
+		local z = bc:getZoneByName(attackTarget2) if z then z:updateLabel() end
+		attackCombinedStart1 = nil
+		attackCombinedStart2 = nil
+		if attackSuppressStart2 == attackTarget2 then
+			attackSuppressStart2 = nil
+		else
+			local wp = WaypointList[attackTarget2] or ""
+			trigger.action.outTextForCoalition(2, "New mission: Attack " .. attackTarget2 .. wp, 30)
+			if not missionCompleted and trigger.misc.getUserFlag(180) == 0 then
+				trigger.action.outSoundForCoalition(2, "cas.ogg")
+			end
+		end
+	end,
+	endAction = function()
+		local t = (type(ActiveCurrentMission) == 'table') and ActiveCurrentMission[attackTarget2] or nil
+		if type(t) == 'table' then
+			t["Attack"] = nil
+			if not next(t) then ActiveCurrentMission[attackTarget2] = nil end
+		end
+		local z = bc:getZoneByName(attackTarget2) if z then z:updateLabel() end
+		attackTarget2 = nil
+		if not missionCompleted and trigger.misc.getUserFlag(180) == 0 then
+			trigger.action.outSoundForCoalition(2, "cancel.ogg")
+		end
+	end,
+	isActive = function()
+		if not attackTarget2 then return false end
+		local targetzn = bc:getZoneByName(attackTarget2)
+		if targetzn and targetzn.zone and targetzn.side == 1 then
+			return not targetzn.suspended
+		end
+		return false
+	end
+})
 captureTarget = nil
 mc:trackMission({
     title = function()
@@ -4801,9 +4729,31 @@ mc:trackMission({
 		end
 
 		if reconMissionCompleted and target and reconMissionWinner then
-			bc:addTempStat(reconMissionWinner, "Recon mission", 1)
+			local reward = 100
+			bc:addContribution(reconMissionWinner, 2, reward)
+			local jp = bc.jointPairs and bc.jointPairs[reconMissionWinner]
+			if jp and bc:_jointPartnerAlive(reconMissionWinner) and bc:_jointPartnerAlive(jp) and bc.playerContributions[2][jp] ~= nil then
+				bc:addContribution(jp, 2, reward)
+				bc:addTempStat(jp, "Recon mission (Joint mission)", 1)
+				bc:addTempStat(reconMissionWinner, "Recon mission (Joint mission)", 1)
+				trigger.action.outTextForCoalition(2, "[" .. reconMissionWinner .. "] and [" .. jp .. "] completed recon at " .. target .. "!\nReward pending: " .. reward .. " credits each (land to redeem).\nIntel active for 10 minutes.", 20)
+				local jgn = bc.groupNameByPlayer[jp]
+				local jgr = Group.getByName(jgn)
+				if jgr then
+					local ju = jgr:getUnit(1)
+					if ju and not Utils.isInAir(ju) then
+						SCHEDULER:New(nil, function()
+							if ju and ju:isExist() then
+								world.onEvent({id=world.event.S_EVENT_LAND,time=timer.getAbsTime(),initiator=ju,initiatorPilotName=jp,initiator_unit_type=ju:getTypeName(),initiator_coalition=ju:getCoalition(),skipRewardMsg=true})
+							end
+						end, {}, 5, 0)
+					end
+				end
+			else
+				bc:addTempStat(reconMissionWinner, "Recon mission", 1)
+				trigger.action.outTextForCoalition(2, "[" .. reconMissionWinner .. "] completed recon at " .. target .. ".\nReward pending: " .. reward .. " credits (land to redeem).\nIntel active for 10 minutes.", 20)
+			end
 			startZoneIntel(target, 10 * 60)
-			trigger.action.outTextForCoalition(2, "[" .. reconMissionWinner .. "] completed recon at " .. target .. ".\nIntel active for 10 minutes.", 20)
 			reconMissionCooldownUntil = timer.getTime() + 900
 		end
 
@@ -4817,6 +4767,7 @@ mc:trackMission({
 		end
 	end,
 	isActive = function()
+		if reconMissionCompleted then return false end
 		if not reconMissionTarget then return false end
 		local targetzn = bc:getZoneByName(reconMissionTarget)
 		return targetzn and targetzn.side == 1 and targetzn.active and not targetzn.suspended
@@ -4847,42 +4798,115 @@ end
 
 function generateAttackMission()
     if missionCompleted then return true end
-    if #attackTargets > 0 then
-		_syncAttackTargetAlias()
-		return true
+
+	local validzones = {}
+	local validSeen = {}
+	local redByBlue = {}
+	local created1 = false
+	local created2 = false
+
+	for _, v in ipairs(bc.connections) do
+		local from, to = bc:getConnectionZones(v)
+
+		local function checkValid(zone)
+			local lname = zone.zone:lower()
+			return zone.side == 1 and zone.active and not zone.suspended and not zone.isHidden and
+				not isZoneUnderSEADMission(zone.zone) and
+				not lname:find('hidden') and not lname:find('sam') and not lname:find('defence') and
+				not lname:find('papa') and not lname:find('juliett') and not lname:find('india') and
+				not lname:find('delta') and not lname:find('bravo') and not lname:find('hotel')
+		end
+
+		if from and to and from.side ~= to.side and from.side ~= 0 and to.side ~= 0 and
+			((not to.suspended) or from.suspended) then
+
+			if checkValid(from) and not validSeen[from.zone] then
+				validSeen[from.zone] = true
+				table.insert(validzones, from.zone)
+			end
+			if checkValid(to) and not validSeen[to.zone] then
+				validSeen[to.zone] = true
+				table.insert(validzones, to.zone)
+			end
+
+			if checkValid(from) and to and to.side == 2 then
+				redByBlue[to.zone] = redByBlue[to.zone] or {}
+				local found = false
+				for _, zoneName in ipairs(redByBlue[to.zone]) do
+					if zoneName == from.zone then found = true break end
+				end
+				if not found then table.insert(redByBlue[to.zone], from.zone) end
+			end
+			if checkValid(to) and from and from.side == 2 then
+				redByBlue[from.zone] = redByBlue[from.zone] or {}
+				local found = false
+				for _, zoneName in ipairs(redByBlue[from.zone]) do
+					if zoneName == to.zone then found = true break end
+				end
+				if not found then table.insert(redByBlue[from.zone], to.zone) end
+			end
+		end
 	end
 
-	local validzones, redByBlue = _collectAttackFrontCandidates()
-	if #validzones == 0 then return false end
+    if #validzones == 0 then return false end
 
-	local selected = {}
-	local firstTarget = validzones[math.random(1, #validzones)]
-	selected[#selected + 1] = firstTarget
+	if not attackTarget1 then
+		local pool = {}
+		for _, zoneName in ipairs(validzones) do
+			if zoneName ~= attackTarget2 then
+				table.insert(pool, zoneName)
+			end
+		end
+		if #pool > 0 then
+			attackTarget1 = pool[math.random(1, #pool)]
+			created1 = true
+		end
+	end
 
-	if #validzones > 1 and MULTI_FRONT_TARGET_LIMIT > 1 then
-		local secondPool = _buildSecondAttackPool(firstTarget, redByBlue)
-		local secondTarget = nil
-		if #secondPool > 0 then
-			secondTarget = secondPool[math.random(1, #secondPool)]
-		else
-			local fallbackPool = {}
-			for _, zoneName in ipairs(validzones) do
-				if zoneName ~= firstTarget then
-					fallbackPool[#fallbackPool + 1] = zoneName
+	if not attackTarget2 then
+		local pool = {}
+		local seenPool = {}
+		local anchor = attackTarget1 or attackTarget2
+		if anchor then
+			for _, redList in pairs(redByBlue) do
+				local hasAnchor = false
+				for _, zoneName in ipairs(redList) do
+					if zoneName == anchor then
+						hasAnchor = true
+						break
+					end
+				end
+				if hasAnchor then
+					for _, zoneName in ipairs(redList) do
+						if zoneName ~= attackTarget1 and zoneName ~= attackTarget2 and not seenPool[zoneName] then
+							seenPool[zoneName] = true
+							table.insert(pool, zoneName)
+						end
+					end
 				end
 			end
-			if #fallbackPool > 0 then
-				secondTarget = fallbackPool[math.random(1, #fallbackPool)]
+		end
+		if #pool == 0 then
+			for _, zoneName in ipairs(validzones) do
+				if zoneName ~= attackTarget1 and zoneName ~= attackTarget2 then
+					table.insert(pool, zoneName)
+				end
 			end
 		end
-		if secondTarget then
-			selected[#selected + 1] = secondTarget
+		if #pool > 0 then
+			attackTarget2 = pool[math.random(1, #pool)]
+			created2 = true
 		end
 	end
 
-	attackTargets = selected
-	_syncAttackTargetAlias()
-	return true
+	attackCombinedStart1 = nil
+	attackCombinedStart2 = nil
+	if created1 and created2 and attackTarget1 and attackTarget2 then
+		attackCombinedStart1 = attackTarget1
+		attackCombinedStart2 = attackTarget2
+	end
+
+	return attackTarget1 ~= nil or attackTarget2 ~= nil
 end
 
 ---------------------------------------------------------------------
@@ -5276,66 +5300,96 @@ end,
 --                      END OF RUN WAY STRIKE MISSION              --
 
 function generateSupplyMission()
-	if #resupplyTargets > 0 then
-		_syncResupplyTargetAlias()
-		return true
-	end
-		
 	local preferred = {}
 	local validzones = {}
 	local attackFrontSet = {}
-	for _, zoneName in ipairs(_getAttackAnchorZones()) do
-		attackFrontSet[zoneName] = true
-	end
+	local created1 = false
+	local created2 = false
+	if attackTarget1 then attackFrontSet[attackTarget1] = true end
+	if attackTarget2 then attackFrontSet[attackTarget2] = true end
 
 	for _, connection in ipairs(bc.connections or {}) do
 		local from, to = bc:getConnectionZones(connection)
-		if _isFrontlineConnectionEligible(from, to) then
+		if from and to and from.side ~= to.side and from.side ~= 0 and to.side ~= 0 and
+			((not to.suspended) or from.suspended) then
 			if from and to and attackFrontSet[from.zone] and to.side == 2 and to:canRecieveSupply() then
-				_appendUnique(preferred, to.zone)
+				local found = false
+				for _, zoneName in ipairs(preferred) do
+					if zoneName == to.zone then found = true break end
+				end
+				if not found then table.insert(preferred, to.zone) end
 			end
 			if from and to and attackFrontSet[to.zone] and from.side == 2 and from:canRecieveSupply() then
-				_appendUnique(preferred, from.zone)
+				local found = false
+				for _, zoneName in ipairs(preferred) do
+					if zoneName == from.zone then found = true break end
+				end
+				if not found then table.insert(preferred, from.zone) end
 			end
 		end
 	end
 
 	for _, v in ipairs(bc.zones) do
 		if v.side == 2 and v:canRecieveSupply() then
-			_appendUnique(validzones, v.zone)
+			local found = false
+			for _, zoneName in ipairs(validzones) do
+				if zoneName == v.zone then found = true break end
+			end
+			if not found then table.insert(validzones, v.zone) end
 		end
 	end
 
 	if #validzones == 0 then return false end
 
-	local selected = {}
-	local prefPool = _copyList(preferred)
-	while #selected < MULTI_FRONT_TARGET_LIMIT and #prefPool > 0 do
-		local idx = math.random(1, #prefPool)
-		_appendUnique(selected, prefPool[idx])
-		table.remove(prefPool, idx)
-	end
-
-	if #selected < MULTI_FRONT_TARGET_LIMIT then
-		local fallbackPool = {}
-		for _, zoneName in ipairs(validzones) do
-			if not _containsValue(selected, zoneName) then
-				fallbackPool[#fallbackPool + 1] = zoneName
+	if not resupplyTarget1 then
+		local pool = {}
+		for _, zoneName in ipairs(preferred) do
+			if zoneName ~= resupplyTarget2 then
+				table.insert(pool, zoneName)
 			end
 		end
-		while #selected < MULTI_FRONT_TARGET_LIMIT and #fallbackPool > 0 do
-			local idx = math.random(1, #fallbackPool)
-			_appendUnique(selected, fallbackPool[idx])
-			table.remove(fallbackPool, idx)
+		if #pool == 0 then
+			for _, zoneName in ipairs(validzones) do
+				if zoneName ~= resupplyTarget2 then
+					table.insert(pool, zoneName)
+				end
+			end
+		end
+		if #pool > 0 then
+			resupplyTarget1 = pool[math.random(1, #pool)]
+			created1 = true
 		end
 	end
 
-	if #selected == 0 then return false end
-	resupplyTargets = selected
-	_syncResupplyTargetAlias()
-	return true
-end
+	if not resupplyTarget2 then
+		local pool = {}
+		for _, zoneName in ipairs(preferred) do
+			if zoneName ~= resupplyTarget1 then
+				table.insert(pool, zoneName)
+			end
+		end
+		if #pool == 0 then
+			for _, zoneName in ipairs(validzones) do
+				if zoneName ~= resupplyTarget1 then
+					table.insert(pool, zoneName)
+				end
+			end
+		end
+		if #pool > 0 then
+			resupplyTarget2 = pool[math.random(1, #pool)]
+			created2 = true
+		end
+	end
 
+	resupplyCombinedStart1 = nil
+	resupplyCombinedStart2 = nil
+	if created1 and created2 and resupplyTarget1 and resupplyTarget2 then
+		resupplyCombinedStart1 = resupplyTarget1
+		resupplyCombinedStart2 = resupplyTarget2
+	end
+
+	return resupplyTarget1 ~= nil or resupplyTarget2 ~= nil
+end
 function checkAndGenerateReconMissionV2()
 	if reconMissionTarget ~= nil or timer.getTime() < reconMissionCooldownUntil then
 		return true
@@ -5875,3 +5929,6 @@ airbaseStatics = {
 }
 
 env.info("Mission Setup : is completed!")
+
+
+

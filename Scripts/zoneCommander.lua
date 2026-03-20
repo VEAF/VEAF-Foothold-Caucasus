@@ -16,6 +16,7 @@ ReconMissionClientSet = ReconMissionClientSet or nil
 _awacsRepositionSched = nil
 FlightTimeRewardPerMinute = FlightTimeRewardPerMinute or 1
 flightTimeTakeoffByPlayer = flightTimeTakeoffByPlayer or {}
+ForbiddWeaponsInAllEra = type(ForbiddWeaponsInAllEra) == "table" and ForbiddWeaponsInAllEra or {}
 local escortFarpToZone={}
 
 local zoneByName = nil
@@ -179,8 +180,8 @@ end
 
 function PrecomputeLandingSpots(maxPerZone, attemptsPerZone, maxSlopeDeg)
     maxPerZone = maxPerZone or 5
-    attemptsPerZone = attemptsPerZone or 300
-    maxSlopeDeg = maxSlopeDeg or 15
+    attemptsPerZone = attemptsPerZone or 600
+    maxSlopeDeg = maxSlopeDeg or 10
 	_resetLandingSpotPoolCaches()
 
     for _, z in ipairs(env.mission.triggers.zones or {}) do
@@ -1027,8 +1028,8 @@ do
 		return slopes[math.floor(#slopes/2)+1]
 	end
 
-		function Utils.getRandomFormation()
-    return formations[math.random(1, #formations)]
+	function Utils.getRandomFormation()
+    	return formations[math.random(1, #formations)]
 	end
 
 	function Utils.getPointOnSurface(point)
@@ -2576,18 +2577,43 @@ do
 	end
 	
 	function GlobalSettings.setDifficultyScaling(value, coalition)
+		GlobalSettings.appliedDifficultyScaling[coalition] = value
 		GlobalSettings.resetDifficultyScaling(coalition)
-		for i,v in pairs(GlobalSettings.respawnTimers[coalition]) do
-			for i2,v2 in pairs(v) do
-				GlobalSettings.respawnTimers[coalition][i][i2] = math.floor(GlobalSettings.respawnTimers[coalition][i][i2] * value)
+		local nonSupplyScale = GlobalSettings.appliedDifficultyScaling[coalition] or 1.0
+		local supplyScale = GlobalSettings.appliedSupplyDifficultyScaling[coalition] or nonSupplyScale
+		for missionName, missionTimers in pairs(GlobalSettings.respawnTimers[coalition]) do
+			local scale = (missionName == 'supply') and supplyScale or nonSupplyScale
+			for timerState, timerSeconds in pairs(missionTimers) do
+				GlobalSettings.respawnTimers[coalition][missionName][timerState] = math.floor(timerSeconds * scale)
+			end
+		end
+	end
+
+	function GlobalSettings.setSupplyDifficultyScaling(value, coalition)
+		GlobalSettings.appliedSupplyDifficultyScaling[coalition] = value
+		GlobalSettings.resetDifficultyScaling(coalition)
+		local nonSupplyScale = GlobalSettings.appliedDifficultyScaling[coalition] or 1.0
+		local supplyScale = GlobalSettings.appliedSupplyDifficultyScaling[coalition] or nonSupplyScale
+		for missionName, missionTimers in pairs(GlobalSettings.respawnTimers[coalition]) do
+			local scale = (missionName == 'supply') and supplyScale or nonSupplyScale
+			for timerState, timerSeconds in pairs(missionTimers) do
+				GlobalSettings.respawnTimers[coalition][missionName][timerState] = math.floor(timerSeconds * scale)
 			end
 		end
 	end
 	
 	GlobalSettings.resetDifficultyScaling()
-	if GlobalSettings.difficultyScaling then
-		if GlobalSettings.difficultyScaling[1] and GlobalSettings.difficultyScaling[1] ~= 1.0 then GlobalSettings.setDifficultyScaling(GlobalSettings.difficultyScaling[1], 1) end
-		if GlobalSettings.difficultyScaling[2] and GlobalSettings.difficultyScaling[2] ~= 1.0 then GlobalSettings.setDifficultyScaling(GlobalSettings.difficultyScaling[2], 2) end
+	GlobalSettings.appliedDifficultyScaling = GlobalSettings.appliedDifficultyScaling or {}
+	GlobalSettings.appliedSupplyDifficultyScaling = GlobalSettings.appliedSupplyDifficultyScaling or {}
+	for coalition = 1,2 do
+		local nonSupplyScale = (GlobalSettings.difficultyScaling and GlobalSettings.difficultyScaling[coalition]) or 1.0
+		local supplyScale = (GlobalSettings.supplyDifficultyScaling and GlobalSettings.supplyDifficultyScaling[coalition])
+		if supplyScale == nil then supplyScale = nonSupplyScale end
+		GlobalSettings.appliedDifficultyScaling[coalition] = nonSupplyScale
+		GlobalSettings.appliedSupplyDifficultyScaling[coalition] = supplyScale
+		if nonSupplyScale ~= 1.0 or supplyScale ~= 1.0 then
+			GlobalSettings.setDifficultyScaling(nonSupplyScale, coalition)
+		end
 	end
 end
 
@@ -2756,6 +2782,8 @@ function RegisterScoreTarget(flag,obj,reward,stat,setCustomOnComplete)
 		refreshStrikeMenusOnMissionFlag(flag, setCustomOnComplete)
 	end
 end
+
+ScoreTargetTimerActive = ScoreTargetTimerActive or false
 
 function SetUpCAP_DefaultAA(group)
 	group:getController():setOption(AI.Option.Air.id.PROHIBIT_AG, true)
@@ -5313,9 +5341,32 @@ function BattleCommander:addShopItem(coalition,id,ammount,prio,reqRank,category)
 		list[#list+1] = entry
 	end
 
+	StrictSmartWeaponsInventory = StrictSmartWeaponsInventory or false
+	WarehouseWeaponCaps = WarehouseWeaponCaps or {}
+
+	function _isStrictSmartWeapon(itemName)
+		if type(itemName) ~= "string" or type(WarehouseWeaponCaps) ~= "table" then
+			return false
+		end
+		for i = 1, #WarehouseWeaponCaps do
+			if WarehouseWeaponCaps[i] == itemName then
+				return true
+			end
+		end
+		return false
+	end
+
+	function _getWarehouseRefillAmount(itemName, baseAmount)
+		local amount = math.max(0, math.floor(tonumber(baseAmount) or 0))
+		if amount <= 0 then return 0 end
+		if StrictSmartWeaponsInventory == true and _isStrictSmartWeapon(itemName) then
+			amount = math.floor(amount / 2)
+		end
+		return amount
+	end
+
 	function BattleCommander:CopyWarehouse(FName, fromSave)
 		if not FName then return end
-		if not (STORAGE and STORAGE.FindByName and WEAPONSLIST and WEAPONSLIST.GetAllItems) then return end
 		local dstStore = STORAGE:FindByName(FName)
 		if not dstStore then return end
 
@@ -5332,15 +5383,22 @@ function BattleCommander:addShopItem(coalition,id,ammount,prio,reqRank,category)
 			end
 		end
 
+		local forbiddenWeaponsInAllEraSet = {}
+		for _, forbiddenWeapon in ipairs(ForbiddWeaponsInAllEra or {}) do
+			forbiddenWeaponsInAllEraSet[forbiddenWeapon] = true
+		end
+
 		for _, ammoName in ipairs(WEAPONSLIST.GetAllItems() or {}) do
-			if WarehouseLogistics == true and fromSave == true then
-				safeSet(ammoName, 0)
-			elseif WarehouseLogistics == true then
-				local qty = 30
-				if rocketSet and rocketSet[ammoName] then qty = qty * 3 end
-				safeSet(ammoName, qty)
-			else
-				safeSet(ammoName, 1073741823)
+			if not forbiddenWeaponsInAllEraSet[ammoName] then
+				if WarehouseLogistics == true and fromSave == true then
+					safeSet(ammoName, 0)
+				elseif WarehouseLogistics == true then
+					local qty = 30
+					if rocketSet and rocketSet[ammoName] then qty = qty * 3 end
+					safeSet(ammoName, qty)
+				else
+					safeSet(ammoName, 1073741823)
+				end
 			end
 		end
 
@@ -6147,6 +6205,64 @@ function findNearestAvailableSupplyCommander(chosenZone)
 		return nil,nil
 	end
 
+function BattleCommander:buildFriendlySupplyAllowTable()
+	local allow = {}
+	for _, z in ipairs(self:getZones()) do
+		if z.side == 2 and not z.suspended and z:canRecieveSupply() then
+			allow[z.zone] = true
+		end
+	end
+	return allow
+end
+
+function BattleCommander:requestFriendlySupplyMission(chosenZone, cost, onDone)
+	local function finish()
+		if onDone then
+			onDone()
+		end
+	end
+
+	local function fail(msg, text)
+		if cost and cost > 0 then
+			self:addFunds(2, cost)
+		end
+		finish()
+		if text then
+			trigger.action.outTextForCoalition(2, text, 10)
+		end
+		return msg
+	end
+
+	if not chosenZone then
+		return fail('Zone not found', 'Zone not found, purchase refunded')
+	end
+
+	if chosenZone.side ~= 2 or chosenZone.suspended then
+		return fail('Zone not friendly', 'Zone is not a valid friendly zone, purchase refunded')
+	end
+
+	if not chosenZone:canRecieveSupply() then
+		return fail('Zone does not need resupply', 'Zone '..chosenZone.zone..' does not need resupply, purchase refunded')
+	end
+
+	local bestCommander, status = findNearestAvailableSupplyCommander(chosenZone)
+	if not bestCommander then
+		if status == 'inprogress' then
+			return fail('Supply mission in progress for this zone', 'Supply to '..chosenZone.zone..' already in progress, purchase refunded')
+		end
+		return fail('No available supply convoys', 'No suitable supply group found for '..chosenZone.zone..', purchase refunded')
+	end
+
+	bestCommander.targetzone = chosenZone.zone
+	bestCommander.state = 'preparing'
+	bestCommander.urgent = true
+	bestCommander.lastStateTime = timer.getAbsTime() - 999999
+
+	finish()
+	trigger.action.outTextForCoalition(2, 'Friendly resupply from '..bestCommander.name..' heading to '..chosenZone.zone, 10)
+	return nil
+end
+
 
 
 
@@ -6630,7 +6746,6 @@ end
     end
 
     states.accounts = self.accounts
-    states.difficultyModifier = self.difficultyModifier
 
     local shopState = {}
     for side,items in pairs(self.shops) do
@@ -8268,23 +8383,104 @@ local RED_REACTIVE_BOOST_STATES = {
 	dead = true,
 }
 
+local function _rrDiffRank(v)
+	v = string.lower(tostring(v or "medium"))
+	if v == "easy" then return 1 end
+	if v == "hard" then return 3 end
+	return 2
+end
+
+do
+	local rrLevel = math.max(_rrDiffRank(CapDifficulty), _rrDiffRank(CasSeadDifficulty))
+	local rrProfile = "medium"
+	if rrLevel == 1 then
+		rrProfile = "easy"
+	elseif rrLevel == 3 then
+		rrProfile = "hard"
+	end
+
+	local fallbackProfiles = {
+		easy = {
+			enabled = false,
+			log = false,
+		},
+	medium = {
+		enabled = true,
+		startDelaySec = 120,
+		tickSec = 120,
+		minPressureSoft = 10,
+		minPressureHard = 12,
+		captureHardWindowSec = 180,
+		hardZoneCooldownSec = 1800,
+		maxZonesPerTick = 1,
+		softSupplyBoostPerZone = 1,
+		softCapBoostPerZone = 1,
+		softSupplyCooldownSec = 1500,
+		softCapCooldownSec = 1500,
+		hardForcePerZone = 1,
+		hardForceTotalPerTick = 1,
+		groupReuseCooldownSec = 1200,
+		hardSourceMode = "attack_plus_cap_attack",
+		log = false,
+	},
+	hard = {
+		enabled = true,
+		startDelaySec = 120,
+		tickSec = 60,
+		minPressureSoft = 6,
+		minPressureHard = 12,
+		captureHardWindowSec = 240,
+		hardZoneCooldownSec = 900,
+		maxZonesPerTick = 2,
+		softSupplyBoostPerZone = 1,
+		softCapBoostPerZone = 1,
+		softSupplyCooldownSec = 900,
+		softCapCooldownSec = 900,
+		hardForcePerZone = 2,
+		hardForceTotalPerTick = 2,
+		groupReuseCooldownSec = 900,
+		hardSourceMode = "attack_plus_cap_attack",
+		log = false,
+	},
+	}
+
+	if type(RedReactiveConfig) == "table" and (type(RedReactiveConfig.easy) == "table" or type(RedReactiveConfig.medium) == "table" or type(RedReactiveConfig.hard) == "table") then
+		RedReactiveConfig = RedReactiveConfig[rrProfile] or RedReactiveConfig.medium or RedReactiveConfig.easy or RedReactiveConfig.hard or fallbackProfiles[rrProfile]
+	elseif type(RedReactiveConfig) ~= "table" then
+		RedReactiveConfig = fallbackProfiles[rrProfile]
+	end
+end
+
 function BattleCommander:_redReactiveNormalizeConfig(cfg)
 	cfg = cfg or {}
 	cfg.enabled = cfg.enabled ~= false
-	cfg.startDelaySec = cfg.startDelaySec or 120
-	cfg.tickSec = cfg.tickSec or 45
-	cfg.minPressureSoft = cfg.minPressureSoft or 1
-	cfg.minPressureHard = cfg.minPressureHard or 2
+
+	-- medium-style defaults for values still configurable
+	cfg.minPressureSoft = cfg.minPressureSoft or 10
+	cfg.minPressureHard = cfg.minPressureHard or 12
 	cfg.captureHardWindowSec = cfg.captureHardWindowSec or 180
-	cfg.hardZoneCooldownSec = cfg.hardZoneCooldownSec or 600
-	cfg.maxZonesPerTick = cfg.maxZonesPerTick or 3
+	cfg.hardZoneCooldownSec = cfg.hardZoneCooldownSec or 1800
 	cfg.softSupplyBoostPerZone = cfg.softSupplyBoostPerZone or 1
 	cfg.softCapBoostPerZone = cfg.softCapBoostPerZone or 1
+	cfg.maxZonesPerTick = cfg.maxZonesPerTick or 1
+	cfg.groupReuseCooldownSec = cfg.groupReuseCooldownSec or 1200
+	cfg.softSupplyCooldownSec = cfg.softSupplyCooldownSec or 1500
+	cfg.softCapCooldownSec = cfg.softCapCooldownSec or 1500
 	cfg.hardForcePerZone = cfg.hardForcePerZone or 1
-	cfg.hardForceTotalPerTick = cfg.hardForceTotalPerTick or 2
-	cfg.groupReuseCooldownSec = cfg.groupReuseCooldownSec or 300
-	cfg.hardSourceMode = cfg.hardSourceMode or "attack_plus_cap_attack"
-	if cfg.log == nil then cfg.log = true end
+	cfg.hardForceTotalPerTick = cfg.hardForceTotalPerTick or 1
+
+	-- forced values (config can omit these)
+	cfg.startDelaySec = 120
+	cfg.hardSourceMode = "attack_plus_cap_attack"
+	cfg.log = false
+
+	local rrLevel = math.max(_rrDiffRank(CapDifficulty), _rrDiffRank(CasSeadDifficulty))
+	if rrLevel == 3 then
+		cfg.tickSec = 60
+	else
+		cfg.tickSec = 120
+	end
+
 	return cfg
 end
 
@@ -8294,6 +8490,8 @@ function BattleCommander:_redReactiveEnsureState(cfg)
 	r.config = self:_redReactiveNormalizeConfig(cfg or r.config)
 	r.hardCooldownByZone = r.hardCooldownByZone or {}
 	r.groupCooldownByName = r.groupCooldownByName or {}
+	r.softSupplyCooldownByZone = r.softSupplyCooldownByZone or {}
+	r.softCapCooldownByZone = r.softCapCooldownByZone or {}
 	return r
 end
 
@@ -8349,32 +8547,125 @@ function BattleCommander:_redReactiveFastForwardGroup(gc, now)
 	return false
 end
 
+function BattleCommander:_redReactiveGetEffectiveSupplyScale(coalition)
+	local supplyScale = GlobalSettings.appliedSupplyDifficultyScaling and GlobalSettings.appliedSupplyDifficultyScaling[coalition]
+	if supplyScale == nil then
+		supplyScale = GlobalSettings.supplyDifficultyScaling and GlobalSettings.supplyDifficultyScaling[coalition]
+	end
+	if supplyScale == nil then
+		supplyScale = GlobalSettings.difficultyScaling and GlobalSettings.difficultyScaling[coalition]
+	end
+	if supplyScale == nil then
+		supplyScale = 1.0
+	end
+	return supplyScale
+end
+
+function BattleCommander:_redReactiveGetSupplyDelayWindow(gc, now)
+	local coalition = gc.side
+	local isUrgent = type(gc.urgent) == "function" and gc.urgent() or gc.urgent
+	local respawnTimers = isUrgent and GlobalSettings.urgentRespawnTimers or (GlobalSettings.respawnTimers[coalition] and GlobalSettings.respawnTimers[coalition][gc.mission])
+	if not respawnTimers then
+		return nil
+	end
+
+	local stateDelay
+	if gc.state == 'inhangar' then
+		stateDelay = respawnTimers.hangar
+	elseif gc.state == 'preparing' then
+		stateDelay = respawnTimers.preparing
+	elseif gc.state == 'dead' then
+		stateDelay = respawnTimers.dead
+	else
+		return nil
+	end
+
+	local spawnDelayFactor = gc.spawnDelayFactor or 1
+	if gc.mission == 'supply' and not isUrgent and coalition == 1 then
+		local pc = getBluePlayersCount()
+		if gc.type == 'air' or gc.type == 'carrier_air' then
+			if pc == 0 then
+				spawnDelayFactor = spawnDelayFactor * 1.5
+			elseif pc == 1 then
+				spawnDelayFactor = spawnDelayFactor * 1.3
+			end
+		else
+			if pc == 0 then
+				spawnDelayFactor = spawnDelayFactor * 3
+			elseif pc == 1 then
+				spawnDelayFactor = spawnDelayFactor * 2.5
+			elseif pc == 2 then
+				spawnDelayFactor = spawnDelayFactor * 2
+			elseif pc == 3 then
+				spawnDelayFactor = spawnDelayFactor * 1.5
+			end
+		end
+	end
+
+	local delayWindow = stateDelay * spawnDelayFactor
+	local elapsed = now - gc.lastStateTime
+	local remaining = delayWindow - elapsed
+	if remaining < 0 then
+		remaining = 0
+	end
+	return delayWindow, remaining
+end
+
+function BattleCommander:_redReactiveFastForwardSupplyGroup(gc, now)
+	local supplyScale = self:_redReactiveGetEffectiveSupplyScale(gc.side)
+	if supplyScale <= 1.0 then
+		return self:_redReactiveFastForwardGroup(gc, now)
+	end
+
+	local delayWindow, remaining = self:_redReactiveGetSupplyDelayWindow(gc, now)
+	if not delayWindow then
+		return self:_redReactiveFastForwardGroup(gc, now)
+	end
+
+	local reducedRemaining = remaining / supplyScale
+	local elapsedAfterBoost = delayWindow - reducedRemaining
+	gc.lastStateTime = now - elapsedAfterBoost
+	return true
+end
+
 function BattleCommander:_redReactiveApplySoftBoostForZone(redZoneName, now)
 	local r = self.redReactive
 	local boostedSupply = 0
 	local boostedCap = 0
+	local supplyCooldownAt = r.softSupplyCooldownByZone[redZoneName] or 0
+	local capCooldownAt = r.softCapCooldownByZone[redZoneName] or 0
+	local supplyAllowed = now >= supplyCooldownAt
+	local capAllowed = now >= capCooldownAt
+	local supplyTarget = supplyAllowed and r.config.softSupplyBoostPerZone or 0
+	local capTarget = capAllowed and r.config.softCapBoostPerZone or 0
 	for _, zc in ipairs(self.zones) do
-		if boostedSupply >= r.config.softSupplyBoostPerZone and boostedCap >= r.config.softCapBoostPerZone then
+		if boostedSupply >= supplyTarget and boostedCap >= capTarget then
 			break
 		end
 		if zc.side == 1 and zc.active and not zc.suspended and not zc.isHidden then
 			for _, gc in ipairs(zc.groups or {}) do
 				if gc.side == 1 and gc.targetzone == redZoneName and RED_REACTIVE_BOOST_STATES[gc.state] then
-					if gc.mission == 'supply' and boostedSupply < r.config.softSupplyBoostPerZone then
-						if self:_redReactiveFastForwardGroup(gc, now) then
+					if gc.mission == 'supply' and supplyAllowed and boostedSupply < supplyTarget then
+						if self:_redReactiveFastForwardSupplyGroup(gc, now) then
 							boostedSupply = boostedSupply + 1
 						end
-					elseif gc.mission == 'patrol' and gc.MissionType == 'CAP' and boostedCap < r.config.softCapBoostPerZone then
+					elseif gc.mission == 'patrol' and gc.MissionType == 'CAP' and capAllowed and boostedCap < capTarget then
 						if self:_redReactiveFastForwardGroup(gc, now) then
 							boostedCap = boostedCap + 1
 						end
 					end
 				end
-				if boostedSupply >= r.config.softSupplyBoostPerZone and boostedCap >= r.config.softCapBoostPerZone then
+				if boostedSupply >= supplyTarget and boostedCap >= capTarget then
 					break
 				end
 			end
 		end
+	end
+	if boostedSupply > 0 and r.config.softSupplyCooldownSec > 0 then
+		r.softSupplyCooldownByZone[redZoneName] = now + r.config.softSupplyCooldownSec
+	end
+	if boostedCap > 0 and r.config.softCapCooldownSec > 0 then
+		r.softCapCooldownByZone[redZoneName] = now + r.config.softCapCooldownSec
 	end
 	return boostedSupply, boostedCap
 end
@@ -11272,19 +11563,21 @@ local hunter   = SPAWN:NewWithAlias(template, hunterAlias)
     Intercept:SetMissionAltitude(25000)
     Intercept:SetMissionSpeed(500)
     Hunt:MissionStart(Intercept)
-	function Hunt:OnAfterTakeoff(from,event,to)
+
+	function Hunt:OnAfterTakeoff(from, event, to)
 		local currentMission = self:GetMissionCurrent()
-		 if (not unit:IsAlive()) and currentMission then
-			currentMission:__Cancel(5) 
+		if not unit:IsAlive() then
+			if currentMission then
+				currentMission:__Cancel(5)
+			end
+			return
 		end
-	end
-	function Hunt:OnAfterTakeoff(from,event,to)
 		trigger.action.outTextForCoalition(2, pname..', Enemy is scrambling 2 jets to hunt you down!', 30)
-	local BlueVictory = USERSOUND:New( "Watch your six.ogg" )
-	local PlayerUnit = CLIENT:FindByPlayerName(pname)
-	if PlayerUnit then
-	BlueVictory:ToClient( PlayerUnit )
-	end
+		local BlueVictory = USERSOUND:New("Watch your six.ogg")
+		local PlayerUnit = CLIENT:FindByPlayerName(pname)
+		if PlayerUnit then
+			BlueVictory:ToClient(PlayerUnit)
+		end
 	end
 	function Hunt:OnAfterDead(from,event,to)
 	bc.huntDone[pname]=nil ; bc.huntKills[pname]=0
@@ -11595,12 +11888,13 @@ function BattleCommander:startRewardPlayerContribution(defaultReward, rewards)
 									self.context.lossPenaltySkipByPlayer[tgtPlayer] = true
 								end
 								local msg = '!! FRIENDLY FIRE !!\n['..pname..'] killed friendly '..(tgtPlayer and tgtPlayer ~= '' and ('player: '..tgtPlayer) or ('unit: '..tgtName))
+								local ffPenaltyArmed = self.context.lossPenaltyArmByPlayer and self.context.lossPenaltyArmByPlayer[pname] == true
 
-								if RankingSystem == true then
+								if RankingSystem == true and ffPenaltyArmed then
 									FriendlyFireRankPenalty = FriendlyFireRankPenalty or 500
 									if FriendlyFireRankPenalty > 0 then
 										self.context:addPlayerRankCredits(pname, -FriendlyFireRankPenalty)
-										msg = msg..' (Lost '..tostring(FriendlyFireRankPenalty)..' in ranking)'
+										msg = msg..'\n['..pname..'] lost '..tostring(FriendlyFireRankPenalty)..' in ranking'
 									end
 								end
 								trigger.action.outTextForCoalition(side,msg,10)
@@ -11807,53 +12101,66 @@ function BattleCommander:startRewardPlayerContribution(defaultReward, rewards)
 						end
 					end
 				end
-				if event.id==29 and next(ScoreTargets) then
-					if self.context.playerContributions[side][pname] ~= nil then
-						for flag,st in pairs(ScoreTargets) do
-							for i,obj in ipairs(st.objects) do
-								if obj and obj:GetRelativeLife()<=50 then
-									st.objects[i]=nil
-									st.remaining=st.remaining-1
-								end
+				if event.id==29 and next(ScoreTargets) and event.comment == 'general' and (event.amount or 0) == 0 then
+					if self.context.playerContributions[side][pname] ~= nil and not ScoreTargetTimerActive then
+						ScoreTargetTimerActive = true
+						local awardPlayer = pname
+						local awardSide = side
+						local jointPartner = jp
+						local ctx = self.context
+
+						timer.scheduleFunction(function()
+							ScoreTargetTimerActive = false
+							if ctx.playerContributions[awardSide][awardPlayer] == nil then
+								return
 							end
-							if st.remaining==0 then
-								bc:addContribution(pname,side,st.reward)
-								if jp and self.context:_jointPartnerAlive(pname) and self.context:_jointPartnerAlive(jp) then
-									if self.context.playerContributions[side][jp] ~= nil then
-										bc:addContribution(jp,side,st.reward)
-										bc:addTempStat(jp,st.stat..' (Joint mission)',1)
+
+							for flag,st in pairs(ScoreTargets) do
+								for i,obj in ipairs(st.objects) do
+									if obj and obj:GetRelativeLife()<=50 then
+										st.objects[i]=nil
+										st.remaining=st.remaining-1
 									end
-									bc:addTempStat(pname,st.stat..' (Joint mission)',1)
-									trigger.action.outTextForCoalition(2,st.stat..' destroyed by '..pname..' and '..jp..'. +'..st.reward..' credits each - land to redeem.',15)
-									local jgn = self.context.groupNameByPlayer[jp]
-									if jgn then
-										local jgr = Group.getByName(jgn)
-										if jgr then
-											local ju = jgr:getUnit(1)
-											if ju and not Utils.isInAir(ju) then
-												SCHEDULER:New(nil,function()
-													if ju and ju:isExist() then
-														world.onEvent({id=world.event.S_EVENT_LAND,time=timer.getAbsTime(),initiator=ju,initiatorPilotName=jp,initiator_unit_type=ju:getTypeName(),initiator_coalition=ju:getCoalition(),skipRewardMsg=true})
-													end
-												end,{},5,0)
+								end
+								if st.remaining==0 then
+									bc:addContribution(awardPlayer,awardSide,st.reward)
+									if jointPartner and ctx:_jointPartnerAlive(awardPlayer) and ctx:_jointPartnerAlive(jointPartner) then
+										if ctx.playerContributions[awardSide][jointPartner] ~= nil then
+											bc:addContribution(jointPartner,awardSide,st.reward)
+											bc:addTempStat(jointPartner,st.stat..' (Joint mission)',1)
+										end
+										bc:addTempStat(awardPlayer,st.stat..' (Joint mission)',1)
+										trigger.action.outTextForCoalition(2,st.stat..' destroyed by '..awardPlayer..' and '..jointPartner..'. +'..st.reward..' credits each - land to redeem.',15)
+										local jgn = ctx.groupNameByPlayer[jointPartner]
+										if jgn then
+											local jgr = Group.getByName(jgn)
+											if jgr then
+												local ju = jgr:getUnit(1)
+												if ju and not Utils.isInAir(ju) then
+													SCHEDULER:New(nil,function()
+														if ju and ju:isExist() then
+															world.onEvent({id=world.event.S_EVENT_LAND,time=timer.getAbsTime(),initiator=ju,initiatorPilotName=jointPartner,initiator_unit_type=ju:getTypeName(),initiator_coalition=ju:getCoalition(),skipRewardMsg=true})
+														end
+													end,{},5,0)
+												end
 											end
 										end
+									else
+										bc:addTempStat(awardPlayer,st.stat,1)
+										trigger.action.outTextForCoalition(2,st.stat..' destroyed by '..awardPlayer..'. +'..st.reward..' credits - land to redeem.',15)
 									end
-								else
-									bc:addTempStat(pname,st.stat,1)
-									trigger.action.outTextForCoalition(2,st.stat..' destroyed by '..pname..'. +'..st.reward..' credits - land to redeem.',15)
+									trigger.action.outSoundForCoalition(2,'cancel.ogg')
+									if MissionMarks[flag] then trigger.action.removeMark(MissionMarks[flag]) MissionMarks[flag]=nil end
+									local wasActive = ActiveMission[flag] == true
+									if st.custom then CustomFlags[flag]=true end
+									if ActiveMission[flag] then ActiveMission[flag] = nil end
+									if wasActive then
+										refreshStrikeMenusOnMissionFlag(flag, st.custom)
+									end
+									ScoreTargets[flag]=nil
 								end
-								trigger.action.outSoundForCoalition(2,'cancel.ogg')
-								if MissionMarks[flag] then trigger.action.removeMark(MissionMarks[flag]) MissionMarks[flag]=nil end
-								local wasActive = ActiveMission[flag] == true
-								if st.custom then CustomFlags[flag]=true end
-								if ActiveMission[flag] then ActiveMission[flag] = nil end
-								if wasActive then
-									refreshStrikeMenusOnMissionFlag(flag, st.custom)
-								end
-								ScoreTargets[flag]=nil
 							end
-						end
+						end, {}, timer.getTime() + 3)
 					end
 					return
 				end
@@ -14614,9 +14921,9 @@ function BattleCommander:addWarehouseItemsAtZone(zoneObj, coalition, amountPerIt
         return false, "[Warehouse] WarehouseLogistics is disabled."
     end
 
-    local storage = STORAGE and STORAGE.FindByName and STORAGE:FindByName(abName) or nil
+    local storage = STORAGE:FindByName(abName) or nil
     if not storage and zoneName and abName ~= zoneName then
-        storage = STORAGE and STORAGE.FindByName and STORAGE:FindByName(zoneName) or nil
+        storage = STORAGE:FindByName(zoneName) or nil
         if storage then
             abName = zoneName
         end
@@ -14628,18 +14935,27 @@ function BattleCommander:addWarehouseItemsAtZone(zoneObj, coalition, amountPerIt
     local amount = tonumber(amountPerItem) or 50
     amount = math.max(1, math.floor(amount))
 
-    local items = (WEAPONSLIST and WEAPONSLIST.GetAllItems and WEAPONSLIST.GetAllItems()) or {}
+    local items = WEAPONSLIST.GetAllItems()
     local added = 0
 
-    for _, item in ipairs(items) do
-        -- Always respect Coldwar restrictions
-        if not (Era == "Coldwar" and WEAPONSLIST and WEAPONSLIST.IsRestricted and WEAPONSLIST.IsRestricted(item)) then
-            local addAmount = amount
-            if rocketSet and rocketSet[item] then addAmount = addAmount * 3 end
-            storage:AddItem(item, addAmount)
-            added = added + 1
-        end
-    end
+	local forbiddenWeaponsInAllEraSet = {}
+	for _, forbiddenWeapon in ipairs(ForbiddWeaponsInAllEra or {}) do
+		forbiddenWeaponsInAllEraSet[forbiddenWeapon] = true
+	end
+
+	for _, item in ipairs(items) do
+		if not forbiddenWeaponsInAllEraSet[item] then
+			if not (Era == "Coldwar" and WEAPONSLIST.IsRestricted(item)) then
+				local addAmount = amount
+				if rocketSet and rocketSet[item] then addAmount = addAmount * 3 end
+				addAmount = _getWarehouseRefillAmount(item, addAmount)
+				if addAmount > 0 then
+					storage:AddItem(item, addAmount)
+					added = added + 1
+				end
+			end
+		end
+	end
 
     return true, string.format("[Warehouse] Added %d item types x%d to %s (zone: %s).",added, amount, tostring(abName), tostring(zoneName or "unknown"))
 end
@@ -14679,7 +14995,7 @@ local function _prefillLogisticCenterFromResourceMap(airbaseName, fillAmount)
     if not airbaseName then return end
     local resMap = _getWarehouseResourceMap()
     if not resMap then return end
-    local storage = STORAGE and STORAGE.FindByName and STORAGE:FindByName(airbaseName) or nil
+    local storage = STORAGE:FindByName(airbaseName) or nil
     if not storage then return end
 
     local fill = tonumber(fillAmount) or 1000
@@ -14701,11 +15017,15 @@ local function _prefillLogisticCenterFromResourceMap(airbaseName, fillAmount)
 
     local allowModFill = (Era == "Modern" and AllowMods == true)
     local addedCount = 0
+    local forbiddenWeaponsInAllEraSet = {}
+    for _, forbiddenWeapon in ipairs(ForbiddWeaponsInAllEra or {}) do
+        forbiddenWeaponsInAllEraSet[forbiddenWeapon] = true
+    end
 
     for itemName, ws in pairs(resMap) do
         if type(ws) == "table" and ws[1] == 4 then
             if not (restrictedWeaponSet and restrictedWeaponSet[itemName]) then
-                if not known[itemName] then
+                if not known[itemName] and not forbiddenWeaponsInAllEraSet[itemName] then
                     -- If mods are not allowed (Coldwar or AllowMods false), skip mod items
                     if allowModFill or not mods[itemName] then
                         local amt = storage:GetItemAmount(itemName)
@@ -16323,22 +16643,26 @@ function GroupCommander:_assignHeloLogisticsRoute(groupName, targetZoneName, own
 	local spawnCoord = nil
 	local prefix = ownZone and (ownZone .. "-land") or nil
 	local pooledLand = prefix and _getLandingSpotPoolForPrefix(prefix) or nil
+	if ownZone and (not pooledLand or #pooledLand == 0) then
+		pooledLand = _getForcedLandingSpotPool(ownZone)
+	end
 	local lastSpawn = self._lastGroundSpawnSpot and self._lastGroundSpawnSpot.zone or nil
 	if pooledLand and #pooledLand > 0 then
 		local pick = _pickRandomLandingSpot(pooledLand, lastSpawn)
 		if pick then
-		spawnCoord = COORDINATE:New(pick.x, 0, pick.z)
+			spawnCoord = COORDINATE:New(pick.x, 0, pick.z)
 		end
 	else
+		local unitType = un and un.getTypeName and un:getTypeName() or nil
+		local caps =  CTLD.UnitTypeCapabilities and unitType and CTLD.UnitTypeCapabilities[unitType] or nil
+		local spawnDist = ((caps and caps.length) or 20) + 2
 		local heading = un and un.getHeading and un:getHeading() or 0
-		local behind = (heading + math.pi) % (2 * math.pi)
-		local azDeg = math.deg(behind)
-		spawnCoord = COORDINATE:New(pos.x, pos.y, pos.z):Translate(20, azDeg)
+		local azDeg = math.deg(heading)
+		spawnCoord = COORDINATE:New(pos.x, pos.y, pos.z):Translate(spawnDist, azDeg)
 	end
 	if not spawnCoord then
 		local heading = un and un.getHeading and un:getHeading() or 0
-		local behind = (heading + math.pi) % (2 * math.pi)
-		local azDeg = math.deg(behind)
+		local azDeg = math.deg(heading)
 		spawnCoord = COORDINATE:New(pos.x, pos.y, pos.z):Translate(20, azDeg)
 	end
 
@@ -16386,8 +16710,8 @@ function GroupCommander:_assignHeloLogisticsRoute(groupName, targetZoneName, own
 	end
 
 	if not destx and not useAirbase then
-		local lz = self:_findFlatLZ(targetZoneName.."-", 200, math.tan(math.rad(15)))
-		if not lz then lz = self:_findFlatLZ(targetZoneName, 200, math.tan(math.rad(15))) end
+		local lz = self:_findFlatLZ(targetZoneName.."-", 200, math.tan(math.rad(12)))
+		if not lz then lz = self:_findFlatLZ(targetZoneName, 200, math.tan(math.rad(12))) end
 		if lz then destx, desty = lz.x, lz.z end
 	end
 	if not destx and not useAirbase then return end
@@ -16468,17 +16792,23 @@ function GroupCommander:_adjustWarehouseStock(zoneName, deltaPerItem)
 	if not storage then return end
 
 	local items = WEAPONSLIST.GetAllItems() or {}
-	for _, item in ipairs(items) do
-		local current = 0
-		local amt = storage:GetItemAmount(item)
-		if type(amt) == "number" then
-			current = amt
-		end
-		local target = current + deltaPerItem
-		if target < 0 then target = 0 end
-		pcall(function() storage:SetItem(item, target) end)
+	local forbiddenWeaponsInAllEraSet = {}
+	for _, forbiddenWeapon in ipairs(ForbiddWeaponsInAllEra or {}) do
+		forbiddenWeaponsInAllEraSet[forbiddenWeapon] = true
 	end
 
+	for _, item in ipairs(items) do
+		if not forbiddenWeaponsInAllEraSet[item] then
+			local current = 0
+			local amt = storage:GetItemAmount(item)
+			if type(amt) == "number" then
+				current = amt
+			end
+			local target = current + deltaPerItem
+			if target < 0 then target = 0 end
+			pcall(function() storage:SetItem(item, target) end)
+		end
+	end
 	env.info(string.format("Group [%s] adjusted warehouse [%s] by %+d per item (zone=%s)", tostring(self.name), tostring(abName), deltaPerItem, tostring(zoneName)))
 end
 
@@ -17757,7 +18087,6 @@ function startReconMissionZoneTracker(targetName)
 			reconMissionWinner = playerName
 			reconMissionCompleted = true
 			reconMissionCompletedTarget = tracker.targetName
-			reconMissionTarget = nil
 			tracker.active = false
 			tracker.enteredBy = {}
 		end
@@ -18389,7 +18718,6 @@ function GroupCommander:_spawnFromGroundAt(resolved, originZone, targetZone, hot
         sp = sp:OnSpawnGroup(function(g) bc:EngageCasMission(self.targetzone, g:GetName(), nil, nil, self.Altitude or self.AltitudeFt, self._landUnitID) end)
     end
     return sp:Spawn()
-
 end
 
 function GroupCommander:_getAirTemplate(resolved)
@@ -23167,8 +23495,7 @@ function removeMissionMenuForAll(zoneName, groupID, destroyIfActive)
 end
 
 function removeMenusForGroupID(groupID)
-    local trackedGroup = Group.getByID(groupID)
-    if not trackedGroup then return end
+	if not missionMenus[groupID] then return end
     if missionMenus[groupID] then
         if missionMenus[groupID].restartMenu then
             missionCommands.removeItemForGroup(groupID, missionMenus[groupID].restartMenu)
@@ -24110,14 +24437,227 @@ function isZoneSafeForSpawn(friendlyZoneName, minDistNM)
     return true
 end
 
+local function _useAIAttackGroundTakeoff()
+    return AIAttackTakeoffFromGround == true
+end
+
+local function _getAIAttackGroundTakeoffExtraNM()
+    local extra = tonumber(AIAttackTakeoffFromGroundExtraNM)
+    if not extra or extra < 0 then
+        return 20
+    end
+    return extra
+end
+
+local function _getAIAttackRequiredSpawnDistanceNM(minDistNM)
+    local required = tonumber(minDistNM) or 0
+    if _useAIAttackGroundTakeoff() then
+        required = required + _getAIAttackGroundTakeoffExtraNM()
+    end
+    return required
+end
+
+local function _getDynamicSupportTemplateCopy(templateName)
+    local tpl = _DATABASE and _DATABASE.Templates and _DATABASE.Templates.Groups and _DATABASE.Templates.Groups[templateName]
+    tpl = tpl and tpl.Template or nil
+    if tpl then
+        return UTILS.DeepCopy(tpl)
+    end
+    return FetchMETemplate(templateName)
+end
+
+local function _getDynamicSupportTemplateUnitCount(templateName)
+    local tpl = _getDynamicSupportTemplateCopy(templateName)
+    local units = tpl and tpl.units
+    if type(units) == "table" and #units > 0 then
+        return #units
+    end
+    return 1
+end
+
+local function _pickConsecutiveParkingIds(freeSpots, need)
+    if type(freeSpots) ~= "table" or #freeSpots < need then return nil end
+    table.sort(freeSpots, function(a, b) return a.TerminalID < b.TerminalID end)
+    local run = 1
+    for i = 2, #freeSpots do
+        if freeSpots[i].TerminalID == freeSpots[i - 1].TerminalID + 1 then
+            run = run + 1
+        else
+            run = 1
+        end
+        if run >= need then
+            local ids = {}
+            for j = i - run + 1, i do
+                ids[#ids + 1] = freeSpots[j].TerminalID
+            end
+            return ids
+        end
+    end
+    local ids = {}
+    for i = 1, need do
+        ids[i] = freeSpots[i].TerminalID
+    end
+    return ids
+end
+
+local function _pickFriendlySupportAirbase(originCoord, side, templateName, termType)
+    if not originCoord then return nil end
+    local need = math.max(_getDynamicSupportTemplateUnitCount(templateName), 1)
+    local terminalType = termType or AIRBASE.TerminalType.OpenMedOrBig
+    local candidates = {}
+    local seen = {}
+
+    for _, z in ipairs((bc and bc.zones) or {}) do
+        if z.side == side and z.active then
+            local abName = z.airbaseName
+            if abName and not seen[abName] then
+                local ab = getAirbaseByName(abName)
+                local sideOk = ab and ((side == 1 and ab:GetCoalition() == coalition.side.RED) or (side == 2 and ab:GetCoalition() == coalition.side.BLUE))
+                if sideOk and ab:IsAirdrome() then
+                    candidates[#candidates + 1] = {
+                        ab = ab,
+                        d = originCoord:Get2DDistance(ab:GetCoordinate())
+                    }
+                    seen[abName] = true
+                end
+            end
+        end
+    end
+
+    table.sort(candidates, function(a, b) return a.d < b.d end)
+
+    for _, candidate in ipairs(candidates) do
+        local free = candidate.ab:GetFreeParkingSpotsTable(terminalType, false) or {}
+        if #free < need then
+            local free2 = candidate.ab:GetFreeParkingSpotsTable(terminalType, true)
+            if type(free2) == "table" and #free2 > #free then
+                free = free2
+            end
+        end
+        local ids = _pickConsecutiveParkingIds(free, need)
+        if ids then
+            return candidate.ab, ids
+        end
+    end
+
+    return nil
+end
+
+local function _resolveDynamicSupportSpawnGroup(groupLike)
+    if not groupLike then return nil end
+    if type(groupLike) == "string" then
+        return GROUP:FindByName(groupLike)
+    end
+    if groupLike.ClassName == "GROUP" then
+        return groupLike
+    end
+    local name = groupLike.getName and groupLike:getName() or (groupLike.GetName and groupLike:GetName()) or nil
+    if not name then return nil end
+    return GROUP:FindByName(name)
+end
+
+local function _getDynamicSupportOriginLabel(fallbackZoneName, homebase)
+    local label = fallbackZoneName
+    if not homebase then return label end
+
+    local abName = homebase.GetName and homebase:GetName() or nil
+    if not abName then return label end
+
+    for _, z in ipairs((bc and bc.zones) or {}) do
+        if z and z.airbaseName == abName and z.zone then
+            return z.zone
+        end
+    end
+
+    return label or abName
+end
+
+local function _attachDynamicSupportTakeoffMenuRefresh(flightGroup, airborneMessage)
+    if not flightGroup or not _useAIAttackGroundTakeoff() then return end
+    function flightGroup:OnAfterTakeoff(From, Event, To)
+        if buildCapControlMenu then
+            buildCapControlMenu()
+        end
+        if airborneMessage then
+            trigger.action.outTextForCoalition(2, airborneMessage, 15)
+        end
+    end
+end
+
+local function _getDynamicSupportIngressAnchorCoord(originZoneName, forcedHomebase)
+    local originZone = originZoneName and ZONE:FindByName(originZoneName) or nil
+    local originCoord = originZone and originZone:GetCoordinate() or nil
+    if originCoord then
+        return originCoord
+    end
+    return forcedHomebase and forcedHomebase.GetCoordinate and forcedHomebase:GetCoordinate() or nil
+end
+
+local function _setDynamicSupportGroundIngress(mission, originZoneName, forcedHomebase, targetCoord, attackOffsetNM, missionAltitudeFeet, missionSpeedKnots)
+    if not mission or not forcedHomebase or not targetCoord then return end
+
+    local baseOffsetNM = tonumber(attackOffsetNM) or 0
+    if baseOffsetNM <= 0 then return end
+
+    local extraNM = _getAIAttackGroundTakeoffExtraNM()
+    if extraNM <= 0 then return end
+
+    local anchorCoord = _getDynamicSupportIngressAnchorCoord(originZoneName, forcedHomebase)
+    if not anchorCoord then return end
+
+    local ingressOffsetNM = baseOffsetNM + extraNM
+    local headingFromTarget = targetCoord:GetAngleDegrees(targetCoord:GetDirectionVec3(anchorCoord))
+    local ingressCoord = targetCoord:Translate(UTILS.NMToMeters(ingressOffsetNM), headingFromTarget, true)
+
+    mission:SetMissionIngressCoord(ingressCoord, missionAltitudeFeet, missionSpeedKnots)
+end
+
+local function _refreshDynamicSupportMenuOnSpawn(usedGroundSpawn)
+    if usedGroundSpawn then return end
+    if buildCapControlMenu then
+        buildCapControlMenu()
+    end
+end
+
+local function _spawnDynamicSupportFromGround(templateName, spawnName, originCoord, onSpawnGroup, skill, termType)
+    if not _useAIAttackGroundTakeoff() then return nil end
+
+    local homebase, spots = _pickFriendlySupportAirbase(originCoord, 2, templateName, termType)
+    if not homebase or not spots then return nil end
+
+	local tpl = _getDynamicSupportTemplateCopy(templateName)
+	if not tpl then return nil end
+
+	local sp = SPAWN:NewFromTemplate(tpl, templateName, spawnName, true)
+
+    if skill then
+        sp = sp:InitSkill(skill)
+    end
+    if onSpawnGroup then
+        sp = sp:OnSpawnGroup(function(g)
+            onSpawnGroup(g, homebase)
+        end)
+    else
+        sp = sp:OnSpawnGroup(function(g)
+        end)
+    end
+
+    local spawned = sp:SpawnAtParkingSpot(homebase, spots, SPAWN.Takeoff.Hot)
+    if not spawned then
+        spawned = sp:SpawnAtAirbase(homebase, SPAWN.Takeoff.Hot)
+    end
+    return spawned
+end
+
 function findClosestBlueZoneOutside(targetZoneName,minDistNM)
+    local requiredMinNM = _getAIAttackRequiredSpawnDistanceNM(minDistNM)
     local bestZone,bestDist=nil,nil
     local altZone,altDist=nil,0
     for _,z in ipairs(bc.zones) do
         if z.side==2 and isZoneSafeForSpawn(z.zone,20) then
             local d=UTILS.MetersToNM(ZONE_DISTANCES[z.zone][targetZoneName])
             if d then
-                if d>=minDistNM then
+                if d>=requiredMinNM then
                     if not bestDist or d<bestDist then
                         bestZone,bestDist=z.zone,d
                     end
@@ -24146,14 +24686,14 @@ function spawnCapAt(zoneName, heading, leg)
     local coordVec3 = zone:GetCoordinate():GetVec3()
 	local SpawnCords = zone:GetCoordinate()
 	local coord = COORDINATE:NewFromVec3(coordVec3, heading)
-	local g = Respawn.SpawnAtPoint( capTemplate, coord, heading, 2, 28000 )
-	if not g then return end
-	timer.scheduleFunction(function(group, time)
-		local spawnedGroup = GROUP:FindByName(group:getName())
+    local function setupCap(spawnedGroupLike, forcedHomebase)
+		local spawnedGroup = _resolveDynamicSupportSpawnGroup(spawnedGroupLike)
+		if not spawnedGroup then return end
         capGroup = FLIGHTGROUP:New(spawnedGroup)
 		capGroup:GetGroup():CommandSetUnlimitedFuel(true):SetOptionRadarUsingForContinousSearch(true):SetOptionRadioSilence(true)
 		capGroup:SetOutOfAAMRTB(true):SetSpeed(600)
-		local homebase, distance = SpawnCords:GetClosestAirbase(0, 2)
+		local homebase = forcedHomebase or select(1, SpawnCords:GetClosestAirbase(0, 2))
+		local originLabel = _getDynamicSupportOriginLabel(zoneName, forcedHomebase)
 		if homebase then
 			capGroup:SetHomebase(homebase)
 		end
@@ -24182,6 +24722,7 @@ function spawnCapAt(zoneName, heading, leg)
 			capGroup:AddMission(CapMissionPatrol)
 			capGroup:MissionStart(CapMissionPatrol)
 		end
+		_attachDynamicSupportTakeoffMenuRefresh(capGroup)
 
 		function capGroup:OnAfterLanded(From, Event, To)
     	self:ScheduleOnce(5, function() self:Destroy() end)
@@ -24206,18 +24747,36 @@ function spawnCapAt(zoneName, heading, leg)
 			end
 		end
 
-		local msg = (leg == 0)
-            and ("CAP on station orbiting at " .. zoneName .. ".")
-            or  ("CAP on station at " .. zoneName .. ", setting up racetrack " .. heading .. "°, " .. tostring(leg) .. " miles leg.")
+		local msg
+		if forcedHomebase then
+			msg = (leg == 0)
+				and ("CAP scrambling from " .. originLabel .. " to establish orbit at " .. zoneName .. ".")
+				or  ("CAP scrambling from " .. originLabel .. " to establish racetrack at " .. zoneName .. ", heading " .. heading .. "°, " .. tostring(leg) .. " miles leg.")
+		else
+			msg = (leg == 0)
+				and ("CAP on station orbiting at " .. zoneName .. ".")
+				or  ("CAP on station at " .. zoneName .. ", setting up racetrack " .. heading .. "°, " .. tostring(leg) .. " miles leg.")
+		end
 		MESSAGE:New(msg, 20):ToAll()
 
 		if capParentMenu then
 		missionCommands.removeItemForCoalition(2, capParentMenu)
 		capParentMenu = nil
 		end
-	end, g, timer.getTime() + 1)
+    end
+
+	local capSpawnName = capTemplate .. tostring(capSpawnIndex)
+	local spawned = _spawnDynamicSupportFromGround(capTemplate, capSpawnName, SpawnCords, setupCap, nil, AIRBASE.TerminalType.OpenMedOrBig)
+	local usedGroundSpawn = spawned ~= nil
+	if not spawned then
+		local g = Respawn.SpawnAtPoint(capTemplate, coord, heading, 2, 28000)
+		if not g then return end
+		timer.scheduleFunction(function(group, time)
+			setupCap(group)
+		end, g, timer.getTime() + 1)
+	end
     capActive = true
-	buildCapControlMenu()
+	_refreshDynamicSupportMenuOnSpawn(usedGroundSpawn)
 
 
 	capSpawnIndex = capSpawnIndex + 1
@@ -24566,96 +25125,115 @@ function spawnCasAt(zoneName, targetZoneName, offsetNM)
 	coord = coord:Translate(UTILS.NMToMeters(offsetNM), heading + 180, true)
 	end
     local casSpawnName = casTemplate .. tostring(casSpawnIndex)
-    local tpl = UTILS.DeepCopy(_DATABASE.Templates.Groups[casTemplate].Template)
-    local casSpawn = SPAWN:NewFromTemplate(tpl, casSpawnName, nil, true)
-   casSpawn:InitHeading(heading):InitSkill("Excellent"):OnSpawnGroup(function(spawnedGroup)
-	casGroup = FLIGHTGROUP:New(spawnedGroup)
-	casGroup:GetGroup():CommandSetUnlimitedFuel(true):SetOptionRadioSilence(true)
-	casGroup:SetOutOfAGMRTB(true):SetSpeed(600)
-	local homebase, distance = SpawnCords:GetClosestAirbase(0, 2)
-	if homebase then
-		casGroup:SetHomebase(homebase)
-	end
-    local setGroup   = SET_GROUP:New()
-    local setStatic = SET_STATIC:New()
-    local zn = bc.indexedZones[targetZoneName]
-    if zn.built then
-        for _, v in pairs(zn.built) do
-            local grp = GROUP:FindByName(v)
-            if grp then
-                setGroup:AddGroup(grp)
-            end
-            local st = STATIC:FindByName(v,false)
-            if st then
-                setStatic:AddStatic(st)
+    local function setupCas(spawnedGroupLike, forcedHomebase)
+	    local spawnedGroup = _resolveDynamicSupportSpawnGroup(spawnedGroupLike)
+	    if not spawnedGroup then return end
+	    casGroup = FLIGHTGROUP:New(spawnedGroup)
+	    casGroup:GetGroup():CommandSetUnlimitedFuel(true):SetOptionRadioSilence(true)
+	    casGroup:SetOutOfAGMRTB(true):SetSpeed(600)
+	    local homebase = forcedHomebase or select(1, SpawnCords:GetClosestAirbase(0, 2))
+	    local originLabel = _getDynamicSupportOriginLabel(zoneName, forcedHomebase)
+	    if homebase then
+		    casGroup:SetHomebase(homebase)
+	    end
+        local setGroup   = SET_GROUP:New()
+        local setStatic = SET_STATIC:New()
+        local zn = bc.indexedZones[targetZoneName]
+        if zn.built then
+            for _, v in pairs(zn.built) do
+                local grp = GROUP:FindByName(v)
+                if grp then
+                    setGroup:AddGroup(grp)
+                end
+                local st = STATIC:FindByName(v,false)
+                if st then
+                    setStatic:AddStatic(st)
+                end
             end
         end
+
+    local CasMission = AUFTRAG:NewBAI(setGroup, 27000)
+	    local casAttackOffsetNM = 14
+	    CasMission.missionWaypointOffsetNM= casAttackOffsetNM
+	    
+	    CasMission:AddConditionSuccess(function() return bc.indexedZones[targetZoneName].side == 0 end)
+	    CasMission:SetWeaponExpend(AI.Task.WeaponExpend.ONE)
+	    CasMission:SetEngageAsGroup(false)
+	    CasMission:SetMissionSpeed(600)
+	    _setDynamicSupportGroundIngress(CasMission, zoneName, forcedHomebase, targetCoord, casAttackOffsetNM, 27000, 700)
+	    CasMission:SetMissionAltitude(27000)
+		casGroup:AddMission(CasMission)
+	    function CasMission:OnAfterExecuting(From, Event, To)
+		    casGroup:SwitchROE(2)
+		    CasMission:SetFormation(131075)
+		    CasMission:SetMissionSpeed(380)
+	    end
+	    function CasMission:OnAfterSuccess(From, Event, To)
+		    if setStatic:Count() < 0 then
+			    trigger.action.outTextForCoalition(2, "CAS group has successfully completed its mission", 15)
+		    end
+	    end
+	    _attachDynamicSupportTakeoffMenuRefresh(casGroup, "CAS group airborne, flying toward ingress for " .. targetZoneName .. ".")
+    if setStatic:Count() > 0 then
+        local auftragstatic = AUFTRAG:NewBAI(setStatic, 25000)
+		    auftragstatic.missionWaypointOffsetNM = 14
+		    auftragstatic:SetWeaponExpend(AI.Task.WeaponExpend.ONE)
+		    auftragstatic:SetEngageAsGroup(false)
+		    auftragstatic:SetMissionSpeed(600)
+		    casGroup:AddMission(auftragstatic)
+		    function auftragstatic:OnAfterExecuting(From, Event, To)
+			    casGroup:SwitchROE(1)
+			    auftragstatic:SetFormation(131075)
+			    auftragstatic:SetMissionSpeed(380)
+		    end
+		    function auftragstatic:OnAfterSuccess(From, Event, To)
+			    trigger.action.outTextForCoalition(2, "CAS group has successfully completed its mission", 15)
+		    end
     end
+	    function casGroup:OnAfterLanded(From, Event, To)
+		    self:ScheduleOnce(5, function() self:Destroy() end)
+	    end
+	    function casGroup:OnAfterOutOfMissilesAG(From, Event, To)
+		    if casGroup then
+		    casGroup:SwitchROE(2)
+		    trigger.action.outTextForCoalition(2, "CAS group is Winchester, returning to base", 15)
+		    end
+	    end
+	    function casGroup:OnAfterDead(From, Event, To)
+		    local landed = (From=="Landed") or (From=="Arrived")
+		    self:__Stop(1)
+		    casGroup = nil
+		    casActive = false
+		    buildCapControlMenu()
+		    if landed then
+			    trigger.action.outText("CAS group have landed",20)
+		    else
+			    trigger.action.outText("CAS group have been killed",20)
+		    end
+	    end
 
-local CasMission = AUFTRAG:NewBAI(setGroup, 27000)
-	CasMission.missionWaypointOffsetNM= 14
-	CasMission:SetMissionAltitude(27000)
-	CasMission:AddConditionSuccess(function() return bc.indexedZones[targetZoneName].side == 0 end)
-	CasMission:SetWeaponExpend(AI.Task.WeaponExpend.ONE)
-	CasMission:SetEngageAsGroup(false)
-	CasMission:SetMissionSpeed(700)
-	casGroup:AddMission(CasMission)
-	casGroup:MissionStart(CasMission)
-	function CasMission:OnAfterExecuting(From, Event, To)
-		casGroup:SwitchROE(2)
-		CasMission:SetFormation(131075)
-		CasMission:SetMissionSpeed(380)
-	end
-	function CasMission:OnAfterSuccess(From, Event, To)
-		if setStatic:Count() < 0 then
-			trigger.action.outTextForCoalition(2, "CAS group has successfully completed its mission", 15)
-		end
-	end
-if setStatic:Count() > 0 then
-    local auftragstatic = AUFTRAG:NewBAI(setStatic, 25000)
-	auftragstatic.missionWaypointOffsetNM = 14
-	auftragstatic:SetWeaponExpend(AI.Task.WeaponExpend.ONE)
-	auftragstatic:SetEngageAsGroup(false)
-	auftragstatic:SetMissionSpeed(600)
-	casGroup:AddMission(auftragstatic)
-	function auftragstatic:OnAfterExecuting(From, Event, To)
-		casGroup:SwitchROE(1)
-		auftragstatic:SetFormation(131075)
-		auftragstatic:SetMissionSpeed(380)
-	end
-	function auftragstatic:OnAfterSuccess(From, Event, To)
-		trigger.action.outTextForCoalition(2, "CAS group has successfully completed its mission", 15)
-	end
-end
-	function casGroup:OnAfterLanded(From, Event, To)
-		self:ScheduleOnce(5, function() self:Destroy() end)
-	end
-	function casGroup:OnAfterOutOfMissilesAG(From, Event, To)
-		if casGroup then
-		casGroup:SwitchROE(2)
-		trigger.action.outTextForCoalition(2, "CAS group is Winchester, returning to base", 15)
-		end
-	end
-	function casGroup:OnAfterDead(From, Event, To)
-		local landed = (From=="Landed") or (From=="Arrived")
-		self:__Stop(1)
-		casGroup = nil
-		casActive = false
-		buildCapControlMenu()
-		if landed then
-			trigger.action.outText("CAS group have landed",20)
-		else
-			trigger.action.outText("CAS group have been killed",20)
-		end
-	end
-
-    trigger.action.outTextForCoalition(2, "CAS flight launched from " .. zoneName .. " to attack " .. targetZoneName, 15)
-	end)
+        if forcedHomebase then
+            trigger.action.outTextForCoalition(2, "CAS flight scrambling from " .. originLabel .. " to attack " .. targetZoneName, 15)
+        else
+            trigger.action.outTextForCoalition(2, "CAS flight launched from " .. zoneName .. " to attack " .. targetZoneName, 15)
+        end
+    end
+    local spawned = _spawnDynamicSupportFromGround(casTemplate, casSpawnName, SpawnCords, setupCas, "Excellent", AIRBASE.TerminalType.OpenMedOrBig)
+    local usedGroundSpawn = spawned ~= nil
+    if not spawned then
+        local tpl = _getDynamicSupportTemplateCopy(casTemplate)
+        if not tpl then return end
+        local casSpawn = SPAWN:NewFromTemplate(tpl, casSpawnName, nil, true)
+        casSpawn:InitHeading(heading):InitSkill("Excellent"):OnSpawnGroup(function(spawnedGroup)
+	        setupCas(spawnedGroup)
+	    end)
+        spawned = casSpawn:SpawnFromCoordinate(coord)
+        if not spawned then return end
+    end
     casGroup = nil
     casActive = true
-    casSpawn:SpawnFromCoordinate(coord)
     casSpawnIndex = casSpawnIndex + 1
-	buildCapControlMenu()
+	_refreshDynamicSupportMenuOnSpawn(usedGroundSpawn)
 end
 -- decoy
 decoyActive = false
@@ -24701,86 +25279,121 @@ function spawnDecoyAt(zoneName, targetZoneName, offsetNM, altitude)
 	if offsetNM and offsetNM > 0 then
 	coord = coord:Translate(UTILS.NMToMeters(offsetNM), heading + 180, true)
 	end
-	local g = Respawn.SpawnAtPoint( decoyTemplate, coord, heading, 5 ,altitude,600)
-	if not g then return end
-	timer.scheduleFunction(function(group, time)
-    decoyGroup = FLIGHTGROUP:New(group:getName())
-	decoyGroup:GetGroup():SetOptionRadioSilence(true)
-    local homebase, distance = SpawnCords:GetClosestAirbase(0, 2)
-    if homebase then
-        decoyGroup:SetHomebase(homebase)
-    end
-    local decoyTargets = SET_GROUP:New()
-    local zn = bc.indexedZones[targetZoneName]
-    if zn and zn.built then
-        for _, v in pairs(zn.built) do
-            local group = GROUP:FindByName(v)
-            if group then
-                decoyTargets:AddGroup(group)
+    local function setupDecoy(spawnedGroupLike, forcedHomebase)
+        local spawnedGroup = _resolveDynamicSupportSpawnGroup(spawnedGroupLike)
+        if not spawnedGroup then return end
+        decoyGroup = FLIGHTGROUP:New(spawnedGroup)
+	    decoyGroup:GetGroup():SetOptionRadioSilence(true)
+        local homebase = forcedHomebase or select(1, SpawnCords:GetClosestAirbase(0, 2))
+        local originLabel = _getDynamicSupportOriginLabel(zoneName, forcedHomebase)
+        if homebase then
+            decoyGroup:SetHomebase(homebase)
+        end
+        local decoyTargets = SET_GROUP:New()
+        local zn = bc.indexedZones[targetZoneName]
+        if zn and zn.built then
+            for _, v in pairs(zn.built) do
+                local group = GROUP:FindByName(v)
+                if group then
+                    decoyTargets:AddGroup(group)
+                end
             end
         end
-    end
-	local missionAlt = altitude - 1000
-	--local DecoyMission = AUFTRAG:NewCASENHANCED(targetZone,27000,550,35,nil,"Air Defence")
-	local DecoyMission = AUFTRAG:NewBAI(decoyTargets, missionAlt)
-	local offsetNM = 35
-	for _, u in pairs(decoyTargets:GetSet()) do
-		if string.find(u:GetTypeName(), "RPC_5N62V") then
-			offsetNM = 35
-			break
-		end
-	end
-	DecoyMission.missionWaypointOffsetNM = offsetNM
-	DecoyMission:SetWeaponExpend(AI.Task.WeaponExpend.ALL)
-	DecoyMission.engageWeaponType=ENUMS.WeaponType.Any
-	local decoyMissionSpeed = 750
-	DecoyMission:SetMissionSpeed(decoyMissionSpeed)
-	DecoyMission:SetEngageAsGroup(true)
-	timer.scheduleFunction(function()
-		local fireCoord = targetCoord:Translate(UTILS.NMToMeters(offsetNM), heading + 180, true)
-		local totalDist = coord:Get2DDistance(fireCoord)
-		local eta = math.floor(totalDist / (decoyMissionSpeed / 3.6)) - 30
-		if eta < 0 then eta = 0 end
-		local minutes = math.floor(eta / 60)
-		local seconds = eta % 60
-		trigger.action.outTextForCoalition(2, "Decoy group: ETA to fire "..minutes.." minutes and "..seconds.." seconds.", 15)
-	end, nil, timer.getTime() + 15)
+	    local missionAlt = altitude - 1000
+	    local DecoyMission = AUFTRAG:NewBAI(decoyTargets, missionAlt)
+	    local attackOffsetNM = 35
+	    for _, u in pairs(decoyTargets:GetSet()) do
+		    if string.find(u:GetTypeName(), "RPC_5N62V") then
+			    attackOffsetNM = 35
+			    break
+		    end
+	    end
+	    DecoyMission.missionWaypointOffsetNM = attackOffsetNM
+	    DecoyMission:SetWeaponExpend(AI.Task.WeaponExpend.ALL)
+	    DecoyMission.engageWeaponType=ENUMS.WeaponType.Any
+	    local decoyMissionSpeed = 750
+	    DecoyMission:SetMissionSpeed(decoyMissionSpeed)
+	    DecoyMission:SetEngageAsGroup(true)
+	    _setDynamicSupportGroundIngress(DecoyMission, zoneName, forcedHomebase, targetCoord, attackOffsetNM, missionAlt, decoyMissionSpeed)
 
-	decoyGroup:AddMission(DecoyMission)
-	function DecoyMission:OnAfterStarted(From, Event, To)
-	DecoyMission:SetFormation(65538)
-    end
-    function DecoyMission:OnAfterExecuting(From, Event, To)
-    DecoyMission:SetROE(1)
-	DecoyMission:SetMissionSpeed(450)
-    end
-    function decoyGroup:OnAfterLanded(From, Event, To)
-        self:ScheduleOnce(5, function() self:Destroy() end)
-    end
-	function DecoyMission:OnAfterSuccess(From, Event, To)
-		trigger.action.outTextForCoalition(2, "Decoy Group has successfully completed its mission", 15)
-	end
-    function decoyGroup:OnAfterOutOfMissilesAG(From, Event, To)
-		if decoyGroup then
-        trigger.action.outTextForCoalition(2, "Decoy group: All ducks away. Returning to base.", 15)
-		end
-    end
-    function decoyGroup:OnAfterDead(From, Event, To)
-		local landed = (From=="Landed") or (From=="Arrived")
-			self:__Stop(1)
-			decoyActive = false
-			decoyGroup = nil
-			buildCapControlMenu()
-            if landed then
-                trigger.action.outText("Decoy group have landed", 20)
-            else
-                trigger.action.outText("Decoy group have been killed", 20)
-            end
+	    local function reportDecoyEta(sourceCoord)
+		    local reportCoord = sourceCoord or coord
+		    local fireCoord = targetCoord:Translate(UTILS.NMToMeters(attackOffsetNM), heading + 180, true)
+		    local totalDist = reportCoord:Get2DDistance(fireCoord)
+		    local eta = math.floor(totalDist / (decoyMissionSpeed / 3.6)) - 30
+		    if eta < 0 then eta = 0 end
+		    local minutes = math.floor(eta / 60)
+		    local seconds = eta % 60
+		    trigger.action.outTextForCoalition(2, "Decoy group: ETA to fire "..minutes.." minutes and "..seconds.." seconds.", 15)
+	    end
+
+	    decoyGroup:AddMission(DecoyMission)
+	    _attachDynamicSupportTakeoffMenuRefresh(decoyGroup, "Decoy group airborne, flying toward ingress for " .. targetZoneName .. ".")
+	    function DecoyMission:OnAfterStarted(From, Event, To)
+	    DecoyMission:SetFormation(65538)
         end
-    trigger.action.outTextForCoalition(2, "Decoy flight launched from " .. zoneName .. " to attack " .. targetZoneName, 15)
-	end, g, timer.getTime() + 1)
+	    local decoyIngressReported = false
+	    function decoyGroup:OnAfterPassingWaypoint(From, Event, To, Waypoint)
+		    if decoyIngressReported or not forcedHomebase or not Waypoint then return end
+		    local missionWaypointUID = DecoyMission:GetGroupWaypointIndex(decoyGroup)
+		    if not missionWaypointUID then return end
+		    local missionWaypointIndex = decoyGroup:GetWaypointIndex(missionWaypointUID)
+		    if not missionWaypointIndex or missionWaypointIndex <= 1 then return end
+		    local ingressWaypoint = decoyGroup:GetWaypointByIndex(missionWaypointIndex - 1)
+		    if ingressWaypoint and ingressWaypoint.uid == Waypoint.uid then
+			    decoyIngressReported = true
+			    reportDecoyEta(decoyGroup:GetCoordinate())
+		    end
+	    end
+        function DecoyMission:OnAfterExecuting(From, Event, To)
+        DecoyMission:SetROE(1)
+	    DecoyMission:SetMissionSpeed(450)
+        end
+        function decoyGroup:OnAfterLanded(From, Event, To)
+            self:ScheduleOnce(5, function() self:Destroy() end)
+        end
+	    function DecoyMission:OnAfterSuccess(From, Event, To)
+		    trigger.action.outTextForCoalition(2, "Decoy Group has successfully completed its mission", 15)
+	    end
+        function decoyGroup:OnAfterOutOfMissilesAG(From, Event, To)
+		    if decoyGroup then
+            trigger.action.outTextForCoalition(2, "Decoy group: All ducks away. Returning to base.", 15)
+		    end
+        end
+        function decoyGroup:OnAfterDead(From, Event, To)
+		    local landed = (From=="Landed") or (From=="Arrived")
+			    self:__Stop(1)
+			    decoyActive = false
+			    decoyGroup = nil
+			    buildCapControlMenu()
+                if landed then
+                    trigger.action.outText("Decoy group have landed", 20)
+                else
+                    trigger.action.outText("Decoy group have been killed", 20)
+                end
+        end
+        if forcedHomebase then
+            trigger.action.outTextForCoalition(2, "Decoy flight scrambling from " .. originLabel .. " to attack " .. targetZoneName, 15)
+        else
+            timer.scheduleFunction(function()
+		        reportDecoyEta(coord)
+	        end, nil, timer.getTime() + 15)
+            trigger.action.outTextForCoalition(2, "Decoy flight launched from " .. zoneName .. " to attack " .. targetZoneName, 15)
+        end
+    end
+    local decoySpawnName = decoyTemplate .. tostring(decoySpawnIndex)
+    local spawned = _spawnDynamicSupportFromGround(decoyTemplate, decoySpawnName, SpawnCords, setupDecoy, nil, AIRBASE.TerminalType.OpenMedOrBig)
+    local usedGroundSpawn = spawned ~= nil
+    if not spawned then
+	    local g = Respawn.SpawnAtPoint(decoyTemplate, coord, heading, 5, altitude, 600)
+	    if not g then return end
+	    timer.scheduleFunction(function(group, time)
+            setupDecoy(group)
+	    end, g, timer.getTime() + 1)
+    end
     decoyActive = true
-    buildCapControlMenu()
+    decoySpawnIndex = decoySpawnIndex + 1
+    _refreshDynamicSupportMenuOnSpawn(usedGroundSpawn)
 end
 
 
@@ -24812,110 +25425,124 @@ function spawnSeadAt(zoneName, targetZoneName, offsetNM,altitude)
 		coord = coord:Translate(UTILS.NMToMeters(offsetNM), heading + 180, true)
 	end
     local seadSpawnName = seadTemplate .. tostring(seadSpawnIndex)
-    local g = Respawn.SpawnAtPoint(seadTemplate, coord, heading, 5, altitude, 600)
-	if not g then return end
-	timer.scheduleFunction(function(group, time)
-		local SpawnGroup = GROUP:FindByName(group:getName())
+    local function setupSead(spawnedGroupLike, forcedHomebase)
+		local SpawnGroup = _resolveDynamicSupportSpawnGroup(spawnedGroupLike)
+		if not SpawnGroup then return end
 		seadGroup = FLIGHTGROUP:New(SpawnGroup)
 		seadGroup:GetGroup():CommandSetUnlimitedFuel(true):SetOptionRadioSilence(true)
 		seadGroup:SetOutOfAGMRTB(true):SetSpeed(600)
-		local homebase, distance = SpawnCords:GetClosestAirbase(0, 2)
+		local homebase = forcedHomebase or select(1, SpawnCords:GetClosestAirbase(0, 2))
+		local originLabel = _getDynamicSupportOriginLabel(zoneName, forcedHomebase)
 		if homebase then
 			seadGroup:SetHomebase(homebase)
 		end	
 		
-	local fallbackUnits = {}
-	local seadTargets = SET_UNIT:New()
-	local zn = bc.indexedZones[targetZoneName]
-	for _, v in pairs(zn.built) do
-		local group = GROUP:FindByName(v)
-		if group then
-				local units = group:GetUnits()
-				for _, unit in ipairs(units or {}) do  
-				if unit:HasAttribute('SAM TR')
-				or unit:HasAttribute('SAM SR')
-				or unit:HasAttribute('SR SAM')
-				or unit:HasAttribute('MR SAM')
-				or unit:HasAttribute('AAA')
-				or unit:HasAttribute('LR SAM') then
-				seadTargets:AddUnit(unit)
-				else
-				table.insert(fallbackUnits, unit)
-				end
-			end
-		end	
-	end
-	seadTargets:ForEachUnit(function(unit)end)
-	local missionAlt = altitude - 1000
-	local SeadMission
-	if seadTargets:Count() > 0 then
-		SeadMission = AUFTRAG:NewBAI(seadTargets, missionAlt)
-		
-	else
-		for _, u in ipairs(fallbackUnits) do
-			seadTargets:AddUnit(u)
-		end
-		SeadMission = AUFTRAG:NewBAI(seadTargets, missionAlt)
-	end
-	if seadTargets:Count() == 0 and #fallbackUnits == 0 then
-		trigger.action.outTextForCoalition(2, "No valid SEAD targets in "..targetZoneName.." Refunded 500 credits", 15)
-		timer.scheduleFunction(function()
-			seadGroup:Despawn()
-		end, nil, timer.getTime() + 5)
-		bc:addFunds(2, 500)
-	else
-		local offsetNM = 25
-		for _, u in pairs(seadTargets:GetSet()) do
-			if string.find(u:GetTypeName(), "40B6M") then
-				offsetNM = 35
-				break
-			elseif string.find(u:GetTypeName(), "RPC_5N62V") then
-				offsetNM = 60
-				break
-			end
-		end
-		SeadMission.missionWaypointOffsetNM = offsetNM
-	end
-	fallbackUnits = nil
-	SeadMission:SetWeaponExpend(AI.Task.WeaponExpend.ALL)
-	SeadMission.engageWeaponType=ENUMS.WeaponType.Any
-	SeadMission:SetMissionSpeed(600)
-	seadGroup:AddMission(SeadMission)
-	function SeadMission:OnAfterExecuting(From, Event, To)
-	seadGroup:SwitchROE(1)
-	--SeadMission:SetEngageDetected(15)
-	seadGroup:SwitchROT(3)
-	SeadMission:SetMissionSpeed(450)
-	end
-	function SeadMission:OnAfterSuccess(From, Event, To)
-		trigger.action.outTextForCoalition(2, "SEAD Group has successfully completed its mission", 15)
-	end
-	function seadGroup:OnAfterLanded(From, Event, To)
-
-		self:ScheduleOnce(5, function() self:Destroy() end)
-	end
-	function seadGroup:OnAfterOutOfMissilesAG(From, Event, To)
-		if seadGroup then
-		seadGroup:SwitchROE(2)
-		trigger.action.outTextForCoalition(2, "SEAD Group is now RTB", 15)
-		end
-	end
-	function seadGroup:OnAfterDead(From, Event, To)
-		local landed = (From=="Landed") or (From=="Arrived")
-		self:__Stop(1)
-		seadGroup  = nil
-		seadActive = false
-		buildCapControlMenu()
-		if landed then
-			trigger.action.outTextForCoalition(2, "SEAD Group have landed", 15)
-		else
-			trigger.action.outTextForCoalition(2, "SEAD Group have been killed", 15)
-		end
-	end
-	trigger.action.outTextForCoalition(2, "SEAD flight launched from " .. zoneName .. " to attack " .. targetZoneName, 15)
-  end, g, timer.getTime() + 1)
+	    local fallbackUnits = {}
+	    local seadTargets = SET_UNIT:New()
+	    local zn = bc.indexedZones[targetZoneName]
+	    for _, v in pairs(zn.built) do
+		    local group = GROUP:FindByName(v)
+		    if group then
+			    local units = group:GetUnits()
+			    for _, unit in ipairs(units or {}) do  
+				    if unit:HasAttribute('SAM TR')
+				    or unit:HasAttribute('SAM SR')
+				    or unit:HasAttribute('SR SAM')
+				    or unit:HasAttribute('MR SAM')
+				    or unit:HasAttribute('AAA')
+				    or unit:HasAttribute('LR SAM') then
+					    seadTargets:AddUnit(unit)
+				    else
+					    table.insert(fallbackUnits, unit)
+				    end
+			    end
+		    end	
+	    end
+	    seadTargets:ForEachUnit(function(unit) end)
+	    local missionAlt = altitude - 1000
+	    local SeadMission
+	    if seadTargets:Count() > 0 then
+		    SeadMission = AUFTRAG:NewBAI(seadTargets, missionAlt)
+	    else
+		    for _, u in ipairs(fallbackUnits) do
+			    seadTargets:AddUnit(u)
+		    end
+		    SeadMission = AUFTRAG:NewBAI(seadTargets, missionAlt)
+	    end
+	    local attackOffsetNM = nil
+	    if seadTargets:Count() == 0 and #fallbackUnits == 0 then
+		    trigger.action.outTextForCoalition(2, "No valid SEAD targets in "..targetZoneName.." Refunded 500 credits", 15)
+		    timer.scheduleFunction(function()
+			    seadGroup:Despawn()
+		    end, nil, timer.getTime() + 5)
+		    bc:addFunds(2, 500)
+	    else
+		    attackOffsetNM = 25
+		    for _, u in pairs(seadTargets:GetSet()) do
+			    if string.find(u:GetTypeName(), "40B6M") then
+				    attackOffsetNM = 35
+				    break
+			    elseif string.find(u:GetTypeName(), "RPC_5N62V") then
+				    attackOffsetNM = 60
+				    break
+			    end
+		    end
+		    SeadMission.missionWaypointOffsetNM = attackOffsetNM
+	    end
+	    fallbackUnits = nil
+	    SeadMission:SetWeaponExpend(AI.Task.WeaponExpend.ALL)
+	    SeadMission.engageWeaponType=ENUMS.WeaponType.Any
+	    SeadMission:SetMissionSpeed(600)
+	    SeadMission:SetEngageAsGroup(true)
+	    _setDynamicSupportGroundIngress(SeadMission, zoneName, forcedHomebase, targetCoord, attackOffsetNM, missionAlt, 600)
+	    seadGroup:AddMission(SeadMission)
+	    _attachDynamicSupportTakeoffMenuRefresh(seadGroup, "SEAD group airborne, flying toward ingress for " .. targetZoneName .. ".")
+	    function SeadMission:OnAfterExecuting(From, Event, To)
+	    seadGroup:SwitchROE(1)
+	    seadGroup:SwitchROT(3)
+	    SeadMission:SetMissionSpeed(450)
+	    end
+	    function SeadMission:OnAfterSuccess(From, Event, To)
+		    trigger.action.outTextForCoalition(2, "SEAD Group has successfully completed its mission", 15)
+	    end
+	    function seadGroup:OnAfterLanded(From, Event, To)
+		    self:ScheduleOnce(5, function() self:Destroy() end)
+	    end
+	    function seadGroup:OnAfterOutOfMissilesAG(From, Event, To)
+		    if seadGroup then
+		    seadGroup:SwitchROE(2)
+		    trigger.action.outTextForCoalition(2, "SEAD Group is now RTB", 15)
+		    end
+	    end
+	    function seadGroup:OnAfterDead(From, Event, To)
+		    local landed = (From=="Landed") or (From=="Arrived")
+		    self:__Stop(1)
+		    seadGroup  = nil
+		    seadActive = false
+		    buildCapControlMenu()
+		    if landed then
+			    trigger.action.outTextForCoalition(2, "SEAD Group have landed", 15)
+		    else
+			    trigger.action.outTextForCoalition(2, "SEAD Group have been killed", 15)
+		    end
+	    end
+	    if forcedHomebase then
+	        trigger.action.outTextForCoalition(2, "SEAD flight scrambling from " .. originLabel .. " to attack " .. targetZoneName, 15)
+	    else
+	        trigger.action.outTextForCoalition(2, "SEAD flight launched from " .. zoneName .. " to attack " .. targetZoneName, 15)
+	    end
+    end
+    local spawned = _spawnDynamicSupportFromGround(seadTemplate, seadSpawnName, SpawnCords, setupSead, nil, AIRBASE.TerminalType.OpenMedOrBig)
+    local usedGroundSpawn = spawned ~= nil
+	if not spawned then
+        local g = Respawn.SpawnAtPoint(seadTemplate, coord, heading, 5, altitude, 600)
+	    if not g then return end
+	    timer.scheduleFunction(function(group, time)
+		    setupSead(group)
+        end, g, timer.getTime() + 1)
+    end
 	seadActive = true
-	buildCapControlMenu()
+	_refreshDynamicSupportMenuOnSpawn(usedGroundSpawn)
     seadSpawnIndex = seadSpawnIndex + 1
 end
 
@@ -24946,122 +25573,125 @@ function spawnBomberAt(zoneName, targetZoneName,offsetNM)
 	if offsetNM and offsetNM > 0 then
 	coord = coord:Translate(UTILS.NMToMeters(offsetNM), heading + 180, true)
 	end
-	local g = Respawn.SpawnAtPoint( bombTemplate, coord, heading, 5 ,27000)
-		if not g then return end
-	timer.scheduleFunction(function(group, time)
-	local SpawnGroup = GROUP:FindByName(group:getName())
-	BomberGroup = FLIGHTGROUP:New(SpawnGroup)
-	BomberGroup:GetGroup():SetOptionRadioSilence(true)
-	BomberGroup:SetOutOfAGMRTB(true)
+    local function setupBomber(spawnedGroupLike, forcedHomebase)
+	    local SpawnGroup = _resolveDynamicSupportSpawnGroup(spawnedGroupLike)
+	    if not SpawnGroup then return end
+	    BomberGroup = FLIGHTGROUP:New(SpawnGroup)
+	    BomberGroup:GetGroup():SetOptionRadioSilence(true)
+	    BomberGroup:SetOutOfAGMRTB(true)
 
-	local homebase, distance = SpawnCords:GetClosestAirbase(0, 2)
-	if homebase then
-		BomberGroup:SetHomebase(homebase)
-	end
+	    local homebase = forcedHomebase or select(1, SpawnCords:GetClosestAirbase(0, 2))
+	    local originLabel = _getDynamicSupportOriginLabel(zoneName, forcedHomebase)
+	    if homebase then
+		    BomberGroup:SetHomebase(homebase)
+	    end
 
-    local BomberTargets   = SET_GROUP:New()
-    local setStaticBomber = SET_STATIC:New()
-    local zn = bc.indexedZones[targetZoneName]
-    if zn.built then
-        for _, v in pairs(zn.built) do
-            local grp = GROUP:FindByName(v)
-            if grp then
-                BomberTargets:AddGroup(grp)
-            end
-            local st = STATIC:FindByName(v,false)
-            if st then
-                setStaticBomber:AddStatic(st)
+        local BomberTargets   = SET_GROUP:New()
+        local setStaticBomber = SET_STATIC:New()
+        local zn = bc.indexedZones[targetZoneName]
+        if zn.built then
+            for _, v in pairs(zn.built) do
+                local grp = GROUP:FindByName(v)
+                if grp then
+                    BomberTargets:AddGroup(grp)
+                end
+                local st = STATIC:FindByName(v,false)
+                if st then
+                    setStaticBomber:AddStatic(st)
+                end
             end
         end
+
+    local BombMission = AUFTRAG:NewCASENHANCED(targetZone,27000,550,15,nil)
+	    local bombAttackOffsetNM = 15
+	    BombMission.missionWaypointOffsetNM= bombAttackOffsetNM
+	    BombMission:SetEngageAsGroup(false)
+	    BombMission:SetMissionSpeed(550)
+	    BombMission:AddConditionSuccess(function() return bc.indexedZones[targetZoneName].side == 0 end)
+	    BombMission:AddConditionFailure(function() return BomberGroup and bc.indexedZones[targetZoneName].side == 1 and BomberGroup:IsOutOfBombs() end)
+	    BombMission:SetMissionAltitude(27000)
+	    if Era == 'Coldwar' then
+		    BombMission:SetWeaponExpend(AI.Task.WeaponExpend.FOUR)
+	    else
+		    BombMission:SetWeaponExpend(AI.Task.WeaponExpend.ONE)
+	    end
+	    _setDynamicSupportGroundIngress(BombMission, zoneName, forcedHomebase, targetCoord, bombAttackOffsetNM, 27000, 550)
+	    
+	    BomberGroup:AddMission(BombMission)
+	    _attachDynamicSupportTakeoffMenuRefresh(BomberGroup, "Bomber group airborne, flying toward ingress for " .. targetZoneName .. ".")
+    function BombMission:OnAfterExecuting(From, Event, To)
+	    BombMission:SetROE(1)
+	    BombMission:SetROT(4)
+	    BombMission:SetMissionSpeed(450)
+	    end
+	    function BombMission:OnAfterSuccess(From, Event, To)
+		    trigger.action.outTextForCoalition(2, "Bomber Group has successfully completed its mission", 15)
+	    end
+	    if setStaticBomber:Count() > 0 then
+		    local auftragstatic = AUFTRAG:NewBAI(setStaticBomber, 25000)
+		    auftragstatic.missionWaypointOffsetNM= 15
+		    auftragstatic:SetWeaponExpend(AI.Task.WeaponExpend.ONE)
+		    auftragstatic:SetEngageAsGroup(false)
+		    auftragstatic:SetMissionSpeed(600)
+		    BomberGroup:AddMission(auftragstatic)
+		    function auftragstatic:OnAfterExecuting(From, Event, To)
+		    BomberGroup:SwitchROE(2)
+		    auftragstatic:SetFormation(131075)
+		    auftragstatic:SetMissionSpeed(380)
+		    end
+		    function auftragstatic:OnAfterSuccess(From, Event, To)
+			    if setStaticBomber:Count() > 0 then
+			    trigger.action.outTextForCoalition(2, "Bomber Group has successfully completed its mission", 15)
+			    end
+		    end
+	    end
+
+	    function BomberGroup:OnAfterLanded(From, Event, To)
+		    self:ScheduleOnce(5, function() self:Destroy() end)
+	    end
+	    function BomberGroup:OnAfterOutOfMissilesAG(From, Event, To)
+		    if BomberGroup then
+		    BomberGroup:SwitchROE(2)
+		    trigger.action.outTextForCoalition(2, "Bomber Group, returning to base", 15)
+		    end
+	    end
+	    function BomberGroup:OnAfterDead(From, Event, To)
+		    local landed = (From=="Landed") or (From=="Arrived")
+		    self:__Stop(1) 
+		    BomberGroup  = nil
+		    bomberActive = false
+		    buildCapControlMenu()
+		    if landed then
+			    trigger.action.outTextForCoalition(2, "Bomber Group have landed", 15)
+		    else
+			    trigger.action.outTextForCoalition(2, "Bomber Group have been killed", 15)
+		    end
+	    end
+	    if forcedHomebase then
+	        trigger.action.outTextForCoalition(2, "Bomber flight scrambling from " .. originLabel .. " to attack " .. targetZoneName, 15)
+	    else
+	        trigger.action.outTextForCoalition(2, "Bomber flight launched from " .. zoneName .. " to attack " .. targetZoneName, 15)
+	    end
     end
-
-local BombMission = AUFTRAG:NewCASENHANCED(targetZone,27000,550,15,nil)
-	BombMission.missionWaypointOffsetNM= 15
-	BombMission:SetEngageAsGroup(false)
-	BombMission:SetMissionSpeed(550)
-	BombMission:AddConditionSuccess(function() return bc.indexedZones[targetZoneName].side == 0 end)
-	BombMission:AddConditionFailure(function() return BomberGroup and bc.indexedZones[targetZoneName].side == 1 and BomberGroup:IsOutOfBombs() end)
-	BombMission:SetMissionAltitude(27000)
-	if Era == 'Coldwar' then
-		BombMission:SetWeaponExpend(AI.Task.WeaponExpend.FOUR)
-	else
-		BombMission:SetWeaponExpend(AI.Task.WeaponExpend.ONE)
-	end
-	
-	BomberGroup:AddMission(BombMission)
-function BombMission:OnAfterExecuting(From, Event, To)
-	BombMission:SetROE(1)
-	BombMission:SetROT(4)
-	BombMission:SetMissionSpeed(450)
-	end
---[[ 
-local BombMission = AUFTRAG:NewBAI(BomberTargets,27000)
-	BombMission.missionWaypointOffsetNM= 15
-	BombMission:SetEngageAsGroup(false)
-	BombMission:SetWeaponExpend(AI.Task.WeaponExpend.ONE)
-	BombMission:SetMissionSpeed(550)
-	BombMission:AddConditionSuccess(function() return bc.indexedZones[targetZoneName].side == 0 end)
-	BombMission:AddConditionFailure(function() return bc.indexedZones[targetZoneName].side == 1 and BomberGroup:IsOutOfBombs() end)
-	BomberGroup:AddMission(BombMission)
-	function BombMission:OnAfterExecuting(From, Event, To)
-	BombMission:SetROE(2)
-	BombMission:SetROT(4)
-	--BombMission:SetEngageDetected(15)
-	BombMission:SetMissionSpeed(450)
-	end ]]
-	function BombMission:OnAfterSuccess(From, Event, To)
-		trigger.action.outTextForCoalition(2, "Bomber Group has successfully completed its mission", 15)
-	end
-	if setStaticBomber:Count() > 0 then
-		local auftragstatic = AUFTRAG:NewBAI(setStaticBomber, 25000)
-		auftragstatic.missionWaypointOffsetNM= 15
-		auftragstatic:SetWeaponExpend(AI.Task.WeaponExpend.ONE)
-		auftragstatic:SetEngageAsGroup(false)
-		auftragstatic:SetMissionSpeed(600)
-		BomberGroup:AddMission(auftragstatic)
-		function auftragstatic:OnAfterExecuting(From, Event, To)
-		BomberGroup:SwitchROE(2)
-		auftragstatic:SetFormation(131075)
-		auftragstatic:SetMissionSpeed(380)
-		end
-		function auftragstatic:OnAfterSuccess(From, Event, To)
-			if setStaticBomber:Count() > 0 then
-			trigger.action.outTextForCoalition(2, "Bomber Group has successfully completed its mission", 15)
-			end
-		end
-	end
-
-	function BomberGroup:OnAfterLanded(From, Event, To)
-		self:ScheduleOnce(5, function() self:Destroy() end)
-	end
-	function BomberGroup:OnAfterOutOfMissilesAG(From, Event, To)
-		if BomberGroup then
-		BomberGroup:SwitchROE(2)
-		trigger.action.outTextForCoalition(2, "Bomber Group, returning to base", 15)
-		end
-	end
-	function BomberGroup:OnAfterDead(From, Event, To)
-		local landed = (From=="Landed") or (From=="Arrived")
-		self:__Stop(1) 
-		BomberGroup  = nil
-		bomberActive = false
-		buildCapControlMenu()
-		if landed then
-			trigger.action.outTextForCoalition(2, "Bomber Group have landed", 15)
-		else
-			trigger.action.outTextForCoalition(2, "Bomber Group have been killed", 15)
-		end
-	end
-	trigger.action.outTextForCoalition(2, "Bomber flight launched from " .. zoneName .. " to attack " .. targetZoneName, 15)
-  end, g, timer.getTime() + 1)
+    local bombSpawnName = bombTemplate .. tostring(bombSpawnIndex)
+    local spawned = _spawnDynamicSupportFromGround(bombTemplate, bombSpawnName, SpawnCords, setupBomber, nil, AIRBASE.TerminalType.OpenMedOrBig)
+    local usedGroundSpawn = spawned ~= nil
+	if not spawned then
+	    local g = Respawn.SpawnAtPoint(bombTemplate, coord, heading, 5, 27000)
+		if not g then return end
+	    timer.scheduleFunction(function(group, time)
+	        setupBomber(group)
+        end, g, timer.getTime() + 1)
+    end
 	bomberActive = true
-	buildCapControlMenu()
+	_refreshDynamicSupportMenuOnSpawn(usedGroundSpawn)
 	bombSpawnIndex = bombSpawnIndex + 1
 end
 
 StructureActive = false
 StructureGroup = nil
 StructureTemplate = (Era == 'Coldwar') and 'DynamicStructure_Template_CW' or 'DynamicStructure_Template'
+StructureSpawnIndex = 1
 StructureTargetMenu = nil
 
 function despawnStructure()
@@ -25084,71 +25714,91 @@ function spawnStructureAt(zoneName, targetZoneName,offsetNM)
 	if offsetNM and offsetNM > 0 then
 		coord = coord:Translate(UTILS.NMToMeters(offsetNM), heading + 180, true)
 	end
-	local g = Respawn.SpawnAtPoint(StructureTemplate, coord, heading, 5 ,27000)
-		if not g then return end
-	timer.scheduleFunction(function(group, time)
-	local SpawnGroup = GROUP:FindByName(group:getName())
-	StructureGroup = FLIGHTGROUP:New(SpawnGroup)
-	StructureGroup:GetGroup():SetOptionRadioSilence(true)
-	StructureGroup:SetOutOfAGMRTB(true)
+    local function setupStructure(spawnedGroupLike, forcedHomebase)
+	    local SpawnGroup = _resolveDynamicSupportSpawnGroup(spawnedGroupLike)
+	    if not SpawnGroup then return end
+	    StructureGroup = FLIGHTGROUP:New(SpawnGroup)
+	    StructureGroup:GetGroup():SetOptionRadioSilence(true)
+	    StructureGroup:SetOutOfAGMRTB(true)
 
-	local homebase, distance = SpawnCords:GetClosestAirbase(0, 2)
-	if homebase then
-		StructureGroup:SetHomebase(homebase)
-	end
+	    local homebase = forcedHomebase or select(1, SpawnCords:GetClosestAirbase(0, 2))
+	    local originLabel = _getDynamicSupportOriginLabel(zoneName, forcedHomebase)
+	    if homebase then
+		    StructureGroup:SetHomebase(homebase)
+	    end
 
-    local setStaticBomber = SET_STATIC:New()
-    local zn = bc.indexedZones[targetZoneName]
-    if zn.built then
-        for _, v in pairs(zn.built) do
-            local st = STATIC:FindByName(v,false)
-            if st then
-                setStaticBomber:AddStatic(st)
+        local setStaticBomber = SET_STATIC:New()
+        local zn = bc.indexedZones[targetZoneName]
+        if zn.built then
+            for _, v in pairs(zn.built) do
+                local st = STATIC:FindByName(v,false)
+                if st then
+                    setStaticBomber:AddStatic(st)
+                end
             end
         end
-    end
-	if setStaticBomber:Count() > 0 then
-		local auftragstatic = AUFTRAG:NewBAI(setStaticBomber, 25000)
-		auftragstatic.missionWaypointOffsetNM = 9
-		auftragstatic:SetWeaponExpend(AI.Task.WeaponExpend.TWO)
-		auftragstatic:SetEngageAsGroup(true)
-		auftragstatic:SetMissionSpeed(700)
-		StructureGroup:AddMission(auftragstatic)
-		function auftragstatic:OnAfterExecuting(From, Event, To)
-		StructureGroup:SwitchROE(2)
-		auftragstatic:SetFormation(131075)
-		auftragstatic:SetMissionSpeed(380)
-		end
-		function auftragstatic:OnAfterSuccess(From, Event, To)
-			trigger.action.outTextForCoalition(2, "Strike Group has successfully completed its mission", 15)
-		end
-	end
+	    if setStaticBomber:Count() > 0 then
+		    local auftragstatic = AUFTRAG:NewBAI(setStaticBomber, 25000)
+		    local structureAttackOffsetNM = 9
+		    auftragstatic.missionWaypointOffsetNM = structureAttackOffsetNM
+		    auftragstatic:SetWeaponExpend(AI.Task.WeaponExpend.TWO)
+		    auftragstatic:SetEngageAsGroup(true)
+		    auftragstatic:SetMissionSpeed(700)
+		    _setDynamicSupportGroundIngress(auftragstatic, zoneName, forcedHomebase, targetCoord, structureAttackOffsetNM, 25000, 700)
+		    StructureGroup:AddMission(auftragstatic)
+		    _attachDynamicSupportTakeoffMenuRefresh(StructureGroup, "Strike group airborne, flying toward ingress for " .. targetZoneName .. ".")
+		    function auftragstatic:OnAfterExecuting(From, Event, To)
+		    StructureGroup:SwitchROE(2)
+		    auftragstatic:SetFormation(131075)
+		    auftragstatic:SetMissionSpeed(380)
+		    end
+		    function auftragstatic:OnAfterSuccess(From, Event, To)
+			    trigger.action.outTextForCoalition(2, "Strike Group has successfully completed its mission", 15)
+		    end
+	    else
+		    _attachDynamicSupportTakeoffMenuRefresh(StructureGroup, "Strike group airborne, flying toward ingress for " .. targetZoneName .. ".")
+	    end
 
-	function StructureGroup:OnAfterLanded(From, Event, To)
-		self:ScheduleOnce(5, function() self:Destroy() end)
-	end
-	function StructureGroup:OnAfterOutOfMissilesAG(From, Event, To)
-		if StructureGroup then
-		StructureGroup:SwitchROE(2)
-		trigger.action.outTextForCoalition(2, "Infrastructure Group is now RTB", 15)
-		end
-	end
-	function StructureGroup:OnAfterDead(From, Event, To)
-		local landed = (From=="Landed") or (From=="Arrived")
-		self:__Stop(5) 
-		StructureGroup  = nil
-		StructureActive = false
-		buildCapControlMenu()
-		if landed then
-			trigger.action.outTextForCoalition(2, "Strike Group have landed", 15)
-		else
-			trigger.action.outTextForCoalition(2, "Strike Group have been killed", 15)
-		end
-	end
-	trigger.action.outTextForCoalition(2, "Strike Group launched from " .. zoneName .. " to attack " .. targetZoneName, 15)
-  end, g, timer.getTime() + 1)
+	    function StructureGroup:OnAfterLanded(From, Event, To)
+		    self:ScheduleOnce(5, function() self:Destroy() end)
+	    end
+	    function StructureGroup:OnAfterOutOfMissilesAG(From, Event, To)
+		    if StructureGroup then
+		    StructureGroup:SwitchROE(2)
+		    trigger.action.outTextForCoalition(2, "Infrastructure Group is now RTB", 15)
+		    end
+	    end
+	    function StructureGroup:OnAfterDead(From, Event, To)
+		    local landed = (From=="Landed") or (From=="Arrived")
+		    self:__Stop(5) 
+		    StructureGroup  = nil
+		    StructureActive = false
+		    buildCapControlMenu()
+		    if landed then
+			    trigger.action.outTextForCoalition(2, "Strike Group have landed", 15)
+		    else
+			    trigger.action.outTextForCoalition(2, "Strike Group have been killed", 15)
+		    end
+	    end
+	    if forcedHomebase then
+	        trigger.action.outTextForCoalition(2, "Strike Group scrambling from " .. originLabel .. " to attack " .. targetZoneName, 15)
+	    else
+	        trigger.action.outTextForCoalition(2, "Strike Group launched from " .. zoneName .. " to attack " .. targetZoneName, 15)
+	    end
+    end
+    local structureSpawnName = StructureTemplate .. tostring(StructureSpawnIndex)
+    local spawned = _spawnDynamicSupportFromGround(StructureTemplate, structureSpawnName, SpawnCords, setupStructure, nil, AIRBASE.TerminalType.OpenMedOrBig)
+    local usedGroundSpawn = spawned ~= nil
+	if not spawned then
+	    local g = Respawn.SpawnAtPoint(StructureTemplate, coord, heading, 5, 27000)
+		if not g then return end
+	    timer.scheduleFunction(function(group, time)
+	        setupStructure(group)
+        end, g, timer.getTime() + 1)
+    end
 	StructureActive = true
-	buildCapControlMenu()
+	StructureSpawnIndex = StructureSpawnIndex + 1
+	_refreshDynamicSupportMenuOnSpawn(usedGroundSpawn)
 end
 --trigger.action.outTextForCoalition(2,"", 10)
 --trigger.action.outText("", 10)
@@ -25443,6 +26093,9 @@ do
 					end
 					st:SetItem(key, tonumber(qty) or 0)
 				end
+					for _, forbiddenWeapon in ipairs(ForbiddWeaponsInAllEra or {}) do
+						st:SetItem(forbiddenWeapon, 0)
+					end
 				loaded = loaded + 1
 			end
 		end
@@ -27718,8 +28371,6 @@ end
 
 function WEAPONSLIST.SyncFromWarehouseLogistics(opts)
   if WarehouseLogistics ~= true then return false end
-  if not (STORAGE and STORAGE.FindByName) then return false end
-  if not (WEAPONSLIST and WEAPONSLIST.Items) then return false end
 
   opts = opts or {}
   local addToList = (opts.addToList ~= false)
@@ -27733,7 +28384,6 @@ function WEAPONSLIST.SyncFromWarehouseLogistics(opts)
     end
   end
 
-  -- Build mods set so we can skip mod-only items when AllowMods is false.
   local mods = {}
   for _, name in ipairs(WEAPONSLIST_MODS_ITEMS or {}) do
     mods[name] = true
@@ -27804,6 +28454,9 @@ function WEAPONSLIST.ClearWeaponsInStorage(storage)
 	for _, itemName in ipairs(WEAPONSLIST.GetAllItems() or {}) do
 		pcall(function() storage:SetItem(itemName, 0) end)
 	end
+	for _, forbiddenWeapon in ipairs(ForbiddWeaponsInAllEra or {}) do
+		storage:SetItem(forbiddenWeapon, 0)
+	end
 	return true
 end
 
@@ -27814,6 +28467,11 @@ function WEAPONSLIST.ClearWeaponsAtAirbase(airbaseName)
 	if not storage then return false end
 	return WEAPONSLIST.ClearWeaponsInStorage(storage)
 end
+
+ForbiddWeaponsInAllEra = ForbiddWeaponsInAllEra or {
+    "weapons.bombs.RN-24",
+    "weapons.bombs.RN-28",
+}
 
 restrictedWeapons = restrictedWeapons or {
     -- Apache Radar
@@ -27918,6 +28576,10 @@ restockAircraft = restockAircraft or {
 "UH-60L_DAP","UH-60L","Bronco-OV-10A","Ka-50_3","Ka-50","SK-60","T-45","OH-6A","FA-18FT","EA-18G","F-22A","FA-18E","B-52H","FA-18F","FA-18ET","F15EX","A-29B","F-23A","Mi-28NE","SU22","AV8BNA","Su-30MKA","Su-30MKI","Su-30MKM","Su-30SM",
 "JAS39Gripen_AG","MiG-31BM","JAS39Gripen","Su-35S","Su-35","JAS39Gripen_BVR", "MH-6J","AH-6J"}
 
+ForbiddWeaponsInAllEra = ForbiddWeaponsInAllEra or {
+    "weapons.bombs.RN-24",
+    "weapons.bombs.RN-28",
+}
 
 
 local restrictedWeaponSet = {}
@@ -27973,6 +28635,9 @@ function checkWeaponsList(airbase)
 				if (not okAmt) or (amt == nil) or (amt >= 0 and amt < 10000000) then
 					pcall(storage.SetItem, storage, acName, 1073741823)
 				end
+			end
+			for _, forbiddenWeapon in ipairs(ForbiddWeaponsInAllEra or {}) do
+				storage:SetItem(forbiddenWeapon, 0)
 			end
 		end
 		return
@@ -28043,6 +28708,9 @@ function checkWeaponsList(airbase)
 
         removeRestricted(storage, airbaseName)
         restockColdwarLogisticCenter(storage,airbaseName)
+		for _, forbiddenWeapon in ipairs(ForbiddWeaponsInAllEra or {}) do
+			storage:SetItem(forbiddenWeapon, 0)
+		end
     end
 
     if Era == 'Coldwar' then
@@ -28109,6 +28777,9 @@ function checkWeaponsList(airbase)
                     pcall(storage.SetItem, storage, acName, 1073741823)
                 end
             end
+			for _, forbiddenWeapon in ipairs(ForbiddWeaponsInAllEra or {}) do
+				storage:SetItem(forbiddenWeapon, 0)
+			end
         end
     end
 end

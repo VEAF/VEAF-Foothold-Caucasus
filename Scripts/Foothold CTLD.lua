@@ -1521,6 +1521,27 @@ local function getWarehouseItemsForCategory(categoryKey)
   return list
 end
 
+local function isStrictSmartWarehouseWeapon(itemName)
+  if type(itemName) ~= "string" or type(WarehouseWeaponCaps) ~= "table" then
+    return false
+  end
+  for i = 1, #WarehouseWeaponCaps do
+    if WarehouseWeaponCaps[i] == itemName then
+      return true
+    end
+  end
+  return false
+end
+
+local function getStrictSmartWarehouseDelta(itemName, baseDelta)
+  local delta = math.max(0, math.floor(tonumber(baseDelta) or 0))
+  if delta <= 0 then return 0 end
+  if StrictSmartWeaponsInventory == true and isStrictSmartWarehouseWeapon(itemName) then
+    delta = math.floor(delta / 2)
+  end
+  return delta
+end
+
 local function grantZoneBundle(zoneName)
   local bundle = WAREHOUSE_SUPPLY_TYPES["10 of everything CH-47"] or WAREHOUSE_SUPPLY_TYPES["10 of everything MI-8"]
   if not bundle then return end
@@ -1889,7 +1910,7 @@ processZoneSupplyDeliveries = function()
           end
 
           if moved then
-            if not entry.wasAirborne and not entry._gcLoadedMsg then
+            if not entry.wasAirborne and not entry._gcLoadedMsg and not entry._isC130 then
               local staticName = staticObj and staticObj.GetName and staticObj:GetName() or (entry.cargoName or tostring(key))
               sendZoneSupplyMessage(entry, string.format("Crate %s loaded by ground crew!", tostring(staticName)), 10)
               entry._gcLoadedMsg = true
@@ -2469,7 +2490,7 @@ zoneSupplyApplyOne = function(key)
       zoneSupplyEnqueueRemoval(staticObj,0)
     end
     c130SupplyLogOnce(entry, key, "_fhLogDeliver", "DELIVER", string.format("zone=%s verb=warehouse", tostring(zoneName)))
-    if not isCtldZone and not (entry.pickupZone and zoneName == entry.pickupZone) then
+    if not (entry.pickupZone and zoneName == entry.pickupZone) then
       local pname = resolveZoneSupplyPlayer(entry)
       local reward = meta.reward or ((meta.categories and #meta.categories > 1) and 100 or 50)
       if pname then
@@ -2477,7 +2498,7 @@ zoneSupplyApplyOne = function(key)
         if warehouseSupplyMissionTargetZone == zoneName and not warehouseSupplyMissionWinner then
           warehouseSupplyMissionWinner = pname
         end
-        if bc and bc.playerContributions[2][pname] ~= nil then
+        if bc.playerContributions[2][pname] ~= nil then
           bc:addContribution(pname, 2, reward)
           bc:addTempStat(pname, "Warehouse delivery", 1)
         end
@@ -2945,6 +2966,10 @@ adjustWarehouseStockAtZone = function(zoneName, deltaPerItem, categories)
 
   local adjusted = 0
   local skippedLow = 0
+  local forbiddenWeaponsInAllEraSet = {}
+  for _, forbiddenWeapon in ipairs(ForbiddWeaponsInAllEra or {}) do
+    forbiddenWeaponsInAllEraSet[forbiddenWeapon] = true
+  end
 
   for i = 1, #cats do
     local catKey = cats[i]
@@ -2956,21 +2981,32 @@ adjustWarehouseStockAtZone = function(zoneName, deltaPerItem, categories)
     for j = 1, #items do
       local itemName = items[j]
       if itemName then
-        local current = storage:GetItemAmount(itemName) or 0
+        if not forbiddenWeaponsInAllEraSet[itemName] then
+          local current = storage:GetItemAmount(itemName) or 0
 
-        if delta < 0 then
-          if current >= need then
-            storage:SetItem(itemName, current + delta)
-            adjusted = adjusted + 1
+          if delta < 0 then
+            if current >= need then
+              storage:SetItem(itemName, current + delta)
+              adjusted = adjusted + 1
+            else
+              skippedLow = skippedLow + 1
+            end
           else
-            skippedLow = skippedLow + 1
+            if not (Era == "Coldwar" and WEAPONSLIST.IsRestricted(itemName)) then
+              local addDelta = getStrictSmartWarehouseDelta(itemName, delta)
+              if addDelta > 0 then
+                storage:SetItem(itemName, current + addDelta)
+                adjusted = adjusted + 1
+              end
+            end
           end
-        else
-          storage:SetItem(itemName, current + delta)
-          adjusted = adjusted + 1
         end
       end
     end
+  end
+
+  for _, forbiddenWeapon in ipairs(ForbiddWeaponsInAllEra or {}) do
+    storage:SetItem(forbiddenWeapon, 0)
   end
 
   if CTLD_Logging then
@@ -4023,6 +4059,29 @@ local function scheduleRefundFlush()
     end, {}, timer.getTime() + 2)
 end
 
+local function refundOrReturnRejectedTroops(deployer, cargoName, canCaptureZone)
+    local cname = cargoName or "unknown"
+    if CTLDCost and priceOf then
+        local dcs = deployer and deployer.GetDCSObject and deployer:GetDCSObject() or nil
+        local gid = dcs and dcs:getID() or nil
+        local refund = priceOf(cname) or 0
+        local key = deployer and deployer.GetName and deployer:GetName() or "unknown"
+        if refund > 0 then
+            refundPendingSumByKey[key] = (refundPendingSumByKey[key] or 0) + refund
+            if gid and not refundPendingGidByKey[key] then refundPendingGidByKey[key] = gid end
+            if dcs and not refundPendingDcsByKey[key] then refundPendingDcsByKey[key] = dcs end
+            scheduleRefundFlush()
+        end
+    end
+    if canCaptureZone ~= true and cargoName and cargoName ~= "unknown" then
+        local cargoObj = Foothold_ctld:_FindTroopsCargoObject(cargoName)
+        if cargoObj then
+            Foothold_ctld:AddStockTroops(cargoName, 1)
+            Foothold_ctld:_SendMessage("Engineers have returned to base!", 10, false, deployer)
+        end
+    end
+end
+
 function Foothold_ctld:OnAfterTroopsDeployed(From, Event, To, Group, Unit, Troops)
     if not Group then return end
 
@@ -4142,26 +4201,7 @@ function Foothold_ctld:OnAfterTroopsDeployed(From, Event, To, Group, Unit, Troop
                     local sameZone = pickupZoneName and zoneName and pickupZoneName == zoneName
                     local need = currentZone:canRecieveSupply() or false
                     if sameZone or not need then
-                        local cname = cargoName or "unknown"
-                        if CTLDCost and priceOf then
-                            local dcs = Group and Group.GetDCSObject and Group:GetDCSObject() or nil
-                            local gid = dcs and dcs:getID() or nil
-                            local refund = priceOf(cname) or 0
-                            local key = Group and Group:GetName() or "unknown"
-                            if refund > 0 then
-                                refundPendingSumByKey[key] = (refundPendingSumByKey[key] or 0) + refund
-                                if gid and not refundPendingGidByKey[key] then refundPendingGidByKey[key] = gid end
-                                if dcs and not refundPendingDcsByKey[key] then refundPendingDcsByKey[key] = dcs end
-                                scheduleRefundFlush()
-                            end
-                        end
-                        if canCaptureZone ~= true and cargoName and cargoName ~= "unknown" then
-                            local cargoObj = Foothold_ctld:_FindTroopsCargoObject(cargoName)
-                            if cargoObj then
-                                Foothold_ctld:AddStockTroops(cargoName, 1)
-                                Foothold_ctld:_SendMessage("Engineers have returned to base!", 10, false, Group)
-                            end
-                        end
+                        refundOrReturnRejectedTroops(Group, cargoName, canCaptureZone)
                         troopGroup:Destroy()
                         deployedTroops[troopGroupName] = nil
                         deployedTroopsSet:RemoveGroupsByName(troopGroupName)
@@ -4394,6 +4434,15 @@ function CaptureZoneIfNeutral()
                 return
             end
             scheduleNext(5)
+            return
+        end
+
+        local sameZone = data.pickupZoneName and zoneName and data.pickupZoneName == zoneName
+        if sameZone then
+            refundOrReturnRejectedTroops(data.deployer, data.cargoName, data.canCaptureZone)
+            troopGroup:Destroy()
+            cleanupDeployment(troopGroupName)
+            scheduleNext(1)
             return
         end
 

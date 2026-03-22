@@ -1,10 +1,10 @@
-# VEAF Foothold Caucasus v3.3.3
+# VEAF Foothold Caucasus v3.3.6
 
 ## Presentation
 
 This is a modification of the original Foothold Caucasus mission by Lekaa, that I adapted to make it load all the script files and config directly from the server.
 
-**Done using the latest version updated on 2026.03.20.**
+**Done using the latest version updated on 2026.03.22.**
 
 ## Update
 

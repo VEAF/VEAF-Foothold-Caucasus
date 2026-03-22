@@ -193,14 +193,14 @@ RankLoseWhenKilledAmount = 100
 SplashDamage = false
 
 -- If true, show Foothold kill messages.
-ShowKills = true
+ShowKills = false
 
 -- If true, limit shop purchases by personal credits earned (rank gates):
 --   >  250 cost requires   100 earned
 --   > 1000 cost requires  1000 earned
 --   > 2000 cost requires  2000 earned
 --   > 3000 cost requires  3000 earned
-StoreLimit = true
+StoreLimit = false
 
 -- If false, everyone can access the full shop.
 RankingSystem = true
@@ -241,10 +241,9 @@ AutoFillResources = 5
 NoAIBlueSupplies = false
 
 -- This option is the legacy option. this won't be used if WarehouseLogistics = true
-
 AllowedToCarrySupplies = {
     ["Ka-50"]         = false,
-    ["Ka-50_3"]       = false,
+    ["Ka-50_3"]       = true,
     ["Mi-24P"]        = true,
     ["SA342Mistral"]  = false,
     ["SA342L"]        = false,
@@ -252,14 +251,14 @@ AllowedToCarrySupplies = {
     ["SA342Minigun"]  = false,
     ["UH-60L"]        = true,
     ["UH-60L_DAP"]    = true,
-    ["AH-64D_BLK_II"] = false,
+    ["AH-64D_BLK_II"] = true,
     ["UH-1H"]         = true,
     ["Mi-8MT"]        = true,
     ["Hercules"]      = true,
     ["OH58D"]         = false,
     ["CH-47Fbl1"]     = true,
-    ["Bronco-OV-10A"] = false,
-    ["OH-6A"]         = false,
+    ["Bronco-OV-10A"] = true,
+    ["OH-6A"]         = true,
     ["C-130J-30"]     = true,
 }
 

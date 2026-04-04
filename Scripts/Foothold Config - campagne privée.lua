@@ -163,7 +163,7 @@ UseStatics = true
 
 -- PVE_Only is a flag where you can decide if you want to disable players from spawning in red zones.
 -- This is when the player chooses Red coalition.
-PVE_Only = false -- If true, players can not spawn in red coalition zones.
+PVE_Only = true -- If true, players can not spawn in red coalition zones.
 
 -- "Modern" or "Coldwar" ("Gulfwar" if the map is Iraq).
 -- In the editor, Don't copy to all ships, make sure all planes in every warehouse are set to LIMITED!!!
@@ -192,13 +192,13 @@ CreditLosewhenKilled = false
 CreditLosewhenKilledAmount = 100
 
 -- If true, when players die they lose 100 rank credits (only if RankingSystem == true).
-RankLoseWhenKilled = true
+RankLoseWhenKilled = false
 
 -- If you want to change the amount, you can do it here.
 RankLoseWhenKilledAmount = 100
 
 -- If true, loads enhanced bomb blast effects (may cause stutters).
-SplashDamage = false
+SplashDamage = true
 
 -- If true, show Foothold kill messages.
 ShowKills = true
@@ -208,10 +208,10 @@ ShowKills = true
 --   > 1000 cost requires  1000 earned
 --   > 2000 cost requires  2000 earned
 --   > 3000 cost requires  3000 earned
-StoreLimit = true
+StoreLimit = false
 
 -- If false, everyone can access the full shop.
-RankingSystem = true
+RankingSystem = false
 
 -- friendly fire ranking penalty
 FriendlyFireRankPenalty = 500

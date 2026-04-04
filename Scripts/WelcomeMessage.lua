@@ -342,29 +342,114 @@ function findOrAssignSlot(playerName, groupName, zoneName)
     return nil, nil
 end
 
+local defaultPreferredOrder = {
+    ["F.A.18"] = {"Arctic1","Bender2","Crimson3","Dusty4","Lion3"},
+    ["F.16CM"] = {"Indy9","Jester1","Venom4"},
+    ["A.10C"] = {"Hawg8","Tusk2","Pig7"},
+    ["AH.64D"] = {"Rage9","Salty1"},
+    ["AJS37"] = {"Fenris6","Grim7"},
+    ["UH.1H"] = {"Nitro5"},
+    ["CH.47F"] = {"Greyhound3"},
+    ["F.15E.S4"] = {"Hitman3"},
+    ["F.14B"] = {"Elvis5","Mustang4"},
+    [".OH.58D"] = {"Blackjack4"},
+    ["Ka.50.III"] = {"Orca6"},
+    ["AV.8B"] = {"Quarterback1"},
+    ["M.2000"] = {"Quebec8"},
+    ["F.4E.45MC"] = {"Savage1","Scary2"},
+    ["MiG.29A.Fulcrum"] = {"Wedge7"},
+    ["Mi.24P"] = {"Scorpion3"},
+    ["C.130J.30"] = {"Mighty1"},
+}
+
+local function splitCallsignParts(callsign)
+    local stem, numberPart = string.match(callsign, "^(.-)(%d+)$")
+    if stem then
+        return stem, tonumber(numberPart)
+    end
+    return callsign, nil
+end
+
+local function pickReplacementCallsign(baseCallsign, remainingAssignments)
+    local baseStem, baseNumber = splitCallsignParts(baseCallsign)
+    local selectedCallsign = nil
+    local selectedDistance = nil
+
+    for callsign in pairs(remainingAssignments) do
+        local stem, number = splitCallsignParts(callsign)
+        if stem == baseStem then
+            local distance = math.abs((number or 0) - (baseNumber or 0))
+            if (not selectedCallsign)
+                or (distance < selectedDistance)
+                or (distance == selectedDistance and callsign < selectedCallsign) then
+                selectedCallsign = callsign
+                selectedDistance = distance
+            end
+        end
+    end
+
+    return selectedCallsign
+end
+
+local function resolvePreferredOrder(prefix, typeAssignments)
+    local preferredOrder = {}
+    local remainingAssignments = {}
+    local baseOrder = defaultPreferredOrder[prefix] or {}
+
+    for callsign in pairs(typeAssignments) do
+        remainingAssignments[callsign] = true
+    end
+
+    for _, baseCallsign in ipairs(baseOrder) do
+        local selectedCallsign = nil
+        if remainingAssignments[baseCallsign] then
+            selectedCallsign = baseCallsign
+        else
+            selectedCallsign = pickReplacementCallsign(baseCallsign, remainingAssignments)
+        end
+
+        if selectedCallsign then
+            preferredOrder[#preferredOrder + 1] = selectedCallsign
+            remainingAssignments[selectedCallsign] = nil
+        end
+    end
+
+    local extras = {}
+    for callsign in pairs(remainingAssignments) do
+        extras[#extras + 1] = callsign
+    end
+    table.sort(extras)
+
+    for _, callsign in ipairs(extras) do
+        preferredOrder[#preferredOrder + 1] = callsign
+    end
+
+    return preferredOrder
+end
+
+local function applyCallsignOverrides()
+    if type(CallsignOverrides) ~= "table" then
+        return
+    end
+
+    for prefix, configuredAssignments in pairs(CallsignOverrides) do
+        if type(configuredAssignments) == "table" then
+            local rebuiltAssignments = {}
+            for callsign, configuredIFFs in pairs(configuredAssignments) do
+                rebuiltAssignments[callsign] = {
+                    IFFs = configuredIFFs,
+                    assignments = {}
+                }
+            end
+            aircraftAssignments[prefix] = rebuiltAssignments
+        end
+    end
+end
+
 function getPreferredOrder(groupName)
     for prefix, typeAssignments in pairs(aircraftAssignments) do
         if string.find(groupName, prefix) then
-            local order
-            if prefix == "F.A.18"               then preferredOrder = {"Arctic1","Bender2","Crimson3","Dusty4","Lion3"}
-            elseif prefix == "F.16CM"           then preferredOrder = {"Indy9","Jester1","Venom4"}
-            elseif prefix == "A.10C"            then preferredOrder = {"Hawg8","Tusk2","Pig7"}
-            elseif prefix == "AH.64D"           then preferredOrder = {"Rage9","Salty1"}
-            elseif prefix == "AJS37"            then preferredOrder = {"Fenris6","Grim7"}
-            elseif prefix == "UH.1H"            then preferredOrder = {"Nitro5"}
-            elseif prefix == "CH.47F"           then preferredOrder = {"Greyhound3"}
-            elseif prefix == "F.15E.S4"         then preferredOrder = {"Hitman3"}
-            elseif prefix == "F.14B"           then preferredOrder = {"Elvis5","Mustang4"}
-            elseif prefix == ".OH.58D"          then preferredOrder = {"Blackjack4"}
-            elseif prefix == "Ka.50.III"        then preferredOrder = {"Orca6"}
-            elseif prefix == "AV.8B"            then preferredOrder = {"Quarterback1"}
-            elseif prefix == "M.2000"           then preferredOrder = {"Quebec8"}
-            elseif prefix == "F.4E.45MC"        then preferredOrder = {"Savage1","Scary2"}
-            elseif prefix == "MiG.29A.Fulcrum"  then preferredOrder = {"Wedge7"}
-            elseif prefix == "Mi.24P"           then preferredOrder = {"Scorpion3"}
-            elseif prefix == "C.130J.30"        then preferredOrder = {"Mighty1"}
-            end
-            return prefix, preferredOrder
+            return prefix, resolvePreferredOrder(prefix, typeAssignments)
         end
     end
 end
@@ -520,6 +605,8 @@ aircraftAssignments = {
         },
     },
 }
+
+applyCallsignOverrides()
 
 function releaseSlot(playerName, zoneName)
     if zoneAssignments[zoneName] then

@@ -34296,8 +34296,16 @@ if self.launcher then
 self.launcherName=self.launcher:getName()
 self.launcherUnit=UNIT:Find(self.launcher)
 end
-self.coordinate=COORDINATE:NewFromVec3(self.launcher:getPoint())
+local point = nil
+if self.launcher then
+point = self.launcher:getPoint()
+elseif WeaponObject.getPoint then
+point = WeaponObject:getPoint()
+end
+if point then
+self.coordinate=COORDINATE:NewFromVec3(point)
 self.lid=string.format("[%s] %s | ",self.typeName,self.name)
+end
 if self.launcherUnit then
 self.releaseHeading=self.launcherUnit:GetHeading()
 self.releaseAltitudeASL=self.launcherUnit:GetAltitude()
@@ -78575,6 +78583,13 @@ end
 return self
 end
 function CTLD:IsUnitInZone(Unit,Zonetype)
+if not Unit then
+if Zonetype==CTLD.CargoZoneType.SHIP then
+return false,nil,nil,1000000,nil
+else
+return false,nil,nil,1000000
+end
+end
 self:T(self.lid.." IsUnitInZone")
 self:T(Zonetype)
 local unitname=Unit:GetName()
@@ -78596,6 +78611,13 @@ local zoneret=nil
 local zonewret=nil
 local zonenameret=nil
 local unitcoord=Unit:GetCoordinate()
+if not unitcoord then
+if Zonetype==CTLD.CargoZoneType.SHIP then
+return false,nil,nil,1000000,nil
+else
+return false,nil,nil,1000000
+end
+end
 local unitVec2=unitcoord:GetVec2()
 for _,_cargozone in pairs(zonetable)do
 local czone=_cargozone

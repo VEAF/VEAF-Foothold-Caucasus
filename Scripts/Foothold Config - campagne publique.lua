@@ -46,6 +46,14 @@ GlobalSettings.difficultyScaling = { [1]=1.0, [2]=1.0 }
 -- This value multiplies AI respawn timers for supply missions only.
 GlobalSettings.supplyDifficultyScaling = { [1]=1.0, [2]=1.0 }
 
+-- ONLY VALID ON CAUCASUS, PERSIAN GULF AND SYRIA.
+-- if false, the mission will start from the other end. Carrier zone will be disabled.
+StartNormal = false
+-- 
+-- When the mission is completed, if you want the server to restart automatically and reset everything, then set this to true.
+-- If false, you will have a menu where you can choose to restart the mission. 
+AutoRestart = true
+--
 -- ============================================================================
 -- Difficulty Settings
 -- ============================================================================
@@ -193,14 +201,14 @@ RankLoseWhenKilledAmount = 100
 SplashDamage = false
 
 -- If true, show Foothold kill messages.
-ShowKills = false
+ShowKills = true
 
 -- If true, limit shop purchases by personal credits earned (rank gates):
 --   >  250 cost requires   100 earned
 --   > 1000 cost requires  1000 earned
 --   > 2000 cost requires  2000 earned
 --   > 3000 cost requires  3000 earned
-StoreLimit = false
+StoreLimit = true
 
 -- If false, everyone can access the full shop.
 RankingSystem = true
@@ -243,7 +251,7 @@ NoAIBlueSupplies = false
 -- This option is the legacy option. this won't be used if WarehouseLogistics = true
 AllowedToCarrySupplies = {
     ["Ka-50"]         = false,
-    ["Ka-50_3"]       = true,
+    ["Ka-50_3"]       = false,
     ["Mi-24P"]        = true,
     ["SA342Mistral"]  = false,
     ["SA342L"]        = false,
@@ -251,14 +259,14 @@ AllowedToCarrySupplies = {
     ["SA342Minigun"]  = false,
     ["UH-60L"]        = true,
     ["UH-60L_DAP"]    = true,
-    ["AH-64D_BLK_II"] = true,
+    ["AH-64D_BLK_II"] = false,
     ["UH-1H"]         = true,
     ["Mi-8MT"]        = true,
     ["Hercules"]      = true,
     ["OH58D"]         = false,
     ["CH-47Fbl1"]     = true,
-    ["Bronco-OV-10A"] = true,
-    ["OH-6A"]         = true,
+    ["Bronco-OV-10A"] = false,
+    ["OH-6A"]         = false,
     ["C-130J-30"]     = true,
 }
 
@@ -601,6 +609,80 @@ CsarHoverSeconds = 10
 -- Chance (0-100) that hostile infantry will spawn at a CSAR location.
 CsarHostileInfantryChance = 25
 -- ============================================================================
+-- Welcome Message settings
+-- ============================================================================
+-- Below, you can change the callsigns in the welcome message and their IFF codes.
+-- The IFF codes are only functional if you use LotATC and configure the same numbers there.
+-- If IFF is not important to you, keep the numbers as-is and only change the callsigns.
+
+CallsignOverrides = {
+    ["F.A.18"] = {
+        ["Arctic1"] = {1400, 1401, 1402, 1403},
+        ["Pirate2"] = {1404, 1405, 1406, 1407},
+        ["Pirate3"] = {1410, 1411, 1412, 1413},
+        ["Slayer4"] = {1300, 1301, 1302, 1303},
+        ["Arctic5"] = {1310, 1311, 1312, 1313},
+    },
+    ["F.16CM"] = {
+        ["Ninja1"] = {1500, 1501, 1502, 1503},
+        ["Ninja2"] = {1510, 1511, 1512, 1513},
+        ["Ninja3"] = {1610, 1611, 1612, 1613},
+    },
+    ["A.10C"] = {
+        ["Archer1"] = {1330, 1331, 1332, 1333},
+        ["Archer2"] = {1350, 1351, 1352, 1353},
+        ["Archer3"] = {1340, 1341, 1342, 1343},
+    },
+    ["AH.64D"] = {
+        ["Blade1"] = {1610, 1611, 1612, 1613},
+        ["Blade2"] = {1620, 1621, 1622, 1623},
+    },
+    ["Ka.50.III"] = {
+        ["Biche1"] = {1560, 1561, 1562, 1563},
+    },
+    ["AJS37"] = {
+        ["Fenris6"] = {1060, 1061, 1062, 1063},
+        ["Grim7"] = {1070, 1071, 1072, 1073},
+    },
+    ["UH.1H"] = {
+        ["Cesar1"] = {1050, 1051, 1052, 1053},
+    },
+    ["CH.47F"] = {
+        ["Prime2"] = {1370, 1371, 1372, 1373},
+    },
+    ["F.15E.S4"] = {
+        ["Bengal1"] = {1360, 1361, 1362, 1363},
+    },
+    ["AV.8B"] = {
+        ["Quarterback1"] = {1434, 1435, 1436, 1437},
+    },
+    ["M.2000"] = {
+        ["Quebec8"] = {1600, 1601, 1602, 1603},
+    },
+    [".OH.58D"] = {
+        ["Blackjack4"] = {1440, 1441, 1442, 1443},
+    },
+    ["F.14B"] = {
+        ["Elvis5"] = {1100, 1101, 1102, 1103},
+        ["Mustang4"] = {1104, 1105, 1106, 1107},
+    },
+    ["F.4E.45MC"] = {
+        ["Casper1"] = {0120, 0121, 0122, 0123},
+        ["Casper2"] = {0130, 0131, 0132, 0133},
+    },
+    ["MiG.29A.Fulcrum"] = {
+        ["Wedge7"] = {0524, 0525, 0526, 0527},
+    },
+    ["Mi.24P"] = {
+        ["Biche2"] = {0610, 0611, 0612, 0613},
+    },
+    ["C.130J.30"] = {
+        ["Prime1"] = {1160, 1161, 1162, 1163},
+    },
+}
+
+
+-- ============================================================================
 -- Advanced Settings
 -- ============================================================================
 
@@ -942,7 +1024,7 @@ restrictedWeapons = {
     "weapons.missiles.GB-6-HE",
     "weapons.missiles.GB-6-SFW",
     "weapons.missiles.HJ-12",
-    "weapons.missiles.HOT3_MBDA",
+    --"weapons.missiles.HOT3_MBDA",
     "weapons.missiles.KD_20",
     "weapons.missiles.KD_63",
     "weapons.missiles.KD_63B",
@@ -951,7 +1033,7 @@ restrictedWeapons = {
     "weapons.missiles.LS_6_500",
     "weapons.missiles.MICA_R",
     "weapons.missiles.MICA_T",
-    "weapons.missiles.Mistral",
+    --"weapons.missiles.Mistral",
     "weapons.missiles.PL-12",
     "weapons.missiles.PL-5EII",
     "weapons.missiles.PL-8B",
@@ -998,6 +1080,16 @@ restrictedWeapons = {
  -- Strike eagle is F-15ESE
 -- In this list, you can either remove or add what is allowed in the coldwar era.
 allowedPlanes = {
+  "MiG-19P","Mirage-F1AD","F/A-18A","Su-24MR","F-4E-45MC","MiG-23MLD","Mirage-F1CR","SA342Mistral","Mi-24V","F-15E","AJS37","UH-1H",
+  "UH-60L","MB-339A","F-14A-135-GR", "F-14A-135-GR-Early", "F-15C","F-16A MLU","Mirage-F1BD","P3C_Orion","Mirage-F1M-EE","An-30M","F-5E-3_FC",
+  "Mirage-F1EQ","A-10A", "Mirage-F1M-CE","Mirage-F1ED","Ka-27","E-2C","UH-60A","Mirage-F1C","Mirage-F1CE","AH-1W","MiG-21Bis","Mirage-F1BE",
+  "MB-339APAN","Hercules","Su-25","SA342M","Mirage-F1EDA","OH58D","MiG-15bis_FC","Mirage-F1CZ", "Mirage-F1BQ", "Mirage-F1B","AV8BNA",
+  "Mirage-F1C-200","Mirage-F1DDA","MiG-15bis","Mirage-F1CJ","Mirage-F1CK","Mirage-F1AZ", "A-10C_2", "Mirage-F1CT","A-10C","M-2000C","F-15ESE",
+  "Mirage-F1EH","Mirage-F1CH","SA342Minigun","MiG-29A","Bronco-OV-10A","OH-6A", "Mirage-F1CG","F-5E-3","F-86F Sabre","F-14A","L-39C","C-101CC","SU22","A-4E-C",
+  "SA342L","Mi-8MT","Mirage-F1EE","Mi-24P","CH-47Fbl1","FA-18C_hornet","F-16C_50", "MiG-29 Fulcrum","UH-60L_DAP","C-130J-30","F-14B","AH-64D_BLK_II","MH-6J","AH-6J","Mi-28NE"}
+
+-- In this list, you can either remove or add what is allowed for the (RED SIDE) in the coldwar era.
+allowedPlanesRed = {
   "MiG-19P","Mirage-F1AD","F/A-18A","Su-24MR","F-4E-45MC","MiG-23MLD","Mirage-F1CR","SA342Mistral","Mi-24V","F-15E","AJS37","UH-1H",
   "UH-60L","MB-339A","F-14A-135-GR", "F-14A-135-GR-Early", "F-15C","F-16A MLU","Mirage-F1BD","P3C_Orion","Mirage-F1M-EE","An-30M","F-5E-3_FC",
   "Mirage-F1EQ","A-10A", "Mirage-F1M-CE","Mirage-F1ED","Ka-27","E-2C","UH-60A","Mirage-F1C","Mirage-F1CE","AH-1W","MiG-21Bis","Mirage-F1BE",

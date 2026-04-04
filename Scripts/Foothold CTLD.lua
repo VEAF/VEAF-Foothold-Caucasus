@@ -11,7 +11,7 @@ BASE:I("CTLD : is loading.")
 CTLD_Logging = false
 CTLD_Logging_DEEP = false
 
-Foothold_ctld = CTLD:New(coalition.side.BLUE,{"CH.47", "UH.1H", "Hercules", "Mi.8MT","Ми.8МТВ2","Ми.24П", "Bronco.OV", "UH.60L", "Mi.24P", "OH58D", "KA.50", "AH.64D", "UH.60.DAP","C.130J.30"},"Lufttransportbrigade I")
+Foothold_ctld = CTLD:New(coalition.side.BLUE,{"CH.47","Ka.50.3","SA342L", "UH.1H", "Hercules", "Mi.8MT","Ми.8МТВ2","Ми.24П", "Bronco.OV", "UH.60L", "Mi.24P", "OH58D", "KA.50", "AH.64D", "UH.60.DAP","C.130J.30"},"Lufttransportbrigade I")
 Foothold_ctld.dropcratesanywhere = true
 Foothold_ctld.forcehoverload = false
 Foothold_ctld.CrateDistance = 65
@@ -151,14 +151,15 @@ Foothold_ctld:AddUnits("Avenger",{"CTLD_CARGO_Avenger"}, CTLD_CARGO.Enum.VEHICLE
 Foothold_ctld:AddUnits("Humvee scout",{"CTLD_CARGO_Scout"}, CTLD_CARGO.Enum.VEHICLE, 10, "Support")
 Foothold_ctld:AddUnits("FV-107 Scimitar",{"CTLD_CARGO_Scimitar"}, CTLD_CARGO.Enum.VEHICLE, 10, "Support")
 Foothold_ctld:AddUnits("FV-101 Scorpion",{"CTLD_CARGO_Scorpion"}, CTLD_CARGO.Enum.VEHICLE, 10, "Support")
-Foothold_ctld:AddCratesCargo("FARP",{"CTLD_TROOP_FOB"},CTLD_CARGO.Enum.FOB,3,1500,10, "FARP",nil,nil,nil,"Cargos","ammo_cargo",nil, "cds_crate")
+Foothold_ctld:AddCratesCargo("FARP",{"CTLD_TROOP_FOB"},CTLD_CARGO.Enum.FOB,3,1200,10, "FARP",nil,nil,nil,"Cargos","ammo_cargo",nil, "cds_crate")
 
 local function addStaticFromType(name, typeName, mass, subCategory, unitTypes, displayName) return Foothold_ctld:AddStaticsCargoFromType(name, typeName, mass, nil, subCategory, true, nil, unitTypes, nil, nil, nil, displayName) end
 
 addStaticFromType("Zone supplies C-130J", "iso_container_small", 4000, "Zone supplies", {"C-130J-30"}, "Zone supplies")
 addStaticFromType("Zone supplies CH-47", "cds_crate", 3500, "Zone supplies", {"CH-47Fbl1"}, "Zone supplies")
 addStaticFromType("Zone supplies UH-1H", "ammo_cargo", 500, "Zone supplies", {"UH-1H"}, "Zone supplies")
-addStaticFromType("Zone supplies MI-8", "ammo_cargo", 3000, "Zone supplies", {"Mi-8MT"}, "Zone supplies")
+addStaticFromType("Zone supplies SA342L", "ammo_cargo", 350, "Zone supplies", {"SA342L"}, "Zone supplies")
+addStaticFromType("Zone supplies MI-8", "ammo_cargo", 2300, "Zone supplies", {"Mi-8MT"}, "Zone supplies")
 addStaticFromType("Zone supplies Blackhawk", "ammo_cargo", 2000, "Zone supplies", {"UH-60L_DAP","UH-60L"}, "Zone supplies")
 addStaticFromType("Zone supplies Mi-24P", "ammo_cargo", 500, "Zone supplies", {"Mi-24P"}, "Zone supplies")
 
@@ -200,6 +201,7 @@ local ZONE_SUPPLY_TYPES = {
   ["Zone supplies Mi-24P"] = true,
   ["Zone supplies CH-47"] = true,
   ["Zone supplies Blackhawk"] = true,
+  ["Zone supplies SA342L"] = true,
 }
 
 ---------------------------------------------------------------------------
@@ -252,7 +254,7 @@ MAX_SAVED_FARPS      = MAX_SAVED_FARPS or 3
 
 CTLDUnitCapabilities = CTLDUnitCapabilities or {
     ["SA342Mistral"] = { false, true, 0, 2, 10, 400 },
-    ["SA342L"] = { false, true, 0, 2, 10, 400 },
+    ["SA342L"] = { false, true, 1, 2, 10, 400 },
     ["SA342M"] = { false, true, 0, 2, 10, 400 },
     ["SA342Minigun"] = { false, true, 0, 2, 10, 400 },
     ["UH-1H"] = { true, true, 1, 8, 15, 800 },
@@ -1068,6 +1070,7 @@ local ZONE_SUPPLY_AIRCRAFT_DIMENSIONS = {
   ["Mi-8MTV2"] = { width = 6, height = 6, length = 15, ropelength = 30 },
   ["Mi-8MT"] = { width = 6, height = 6, length = 15, ropelength = 30 },
   ["UH-1H"] = { width = 4, height = 4, length = 9, ropelength = 25 },
+  ["SA342L"] = { width = 4, height = 4, length = 12, ropelength = 25 },
   ["Mi-24P"] = { width = 4, height = 5, length = 11, ropelength = 25 },
   ["UH-60L"] = { width = 4, height = 5, length = 10, ropelength = 25 },
   ["UH-60L_DAP"] = { width = 4, height = 5, length = 10, ropelength = 25 },

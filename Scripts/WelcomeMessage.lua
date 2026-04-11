@@ -103,6 +103,28 @@ local function InitAtisZones()
     atisZones = BuildAtisZonesFromFootholdZones()
 end
 
+local function zoneNameContainsToken(zoneName, token)
+    if not token or token == "" then return false end
+    local zoneText = tostring(zoneName or "")
+    if zoneText == "" then return false end
+    local tokenText = tostring(token)
+    if string.find(zoneText, tokenText, 1, true) then return true end
+    return string.find(string.lower(zoneText), string.lower(tokenText), 1, true) ~= nil
+end
+
+local function isCarrierZoneName(zoneName)
+    if zoneNameContainsToken(zoneName, "carrier") then return true end
+    local extraCarrierZoneNames = GlobalSettings.carrierZoneNames or CarrierZoneNames
+    if type(extraCarrierZoneNames) == "table" then
+        for _, token in ipairs(extraCarrierZoneNames) do
+            if zoneNameContainsToken(zoneName, token) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 -- Build once at script load (this file is executed after Foothold `zones` is created).
 InitAllZones()
 InitAtisZones()
@@ -656,7 +678,7 @@ local function AirBoss(name)
     return _AIRBOSS[name]
 end
 
-local function refreshBeacons()
+function refreshBeacons()
     if IsGroupActive("CVN-73") then
         local ab = AirBoss("CVN-73")
         if not ab then return end
@@ -838,7 +860,7 @@ end
 
 local function sendATISInformation(client, group, zoneName)
     if not client then return end
-    if string.find(zoneName,"Carrier") then
+    if isCarrierZoneName(zoneName) then
         local mother = IsGroupActive("CVN-73") and "CVN-73"
                     or IsGroupActive("CVN-72") and "CVN-72"
                     or IsGroupActive("CVN-59") and "CVN-59"
@@ -882,7 +904,7 @@ local MainMenu = {}
 
 local function getNearestCarrierName(coord)
     local nearest=nil local minDist=math.huge
-    for _,name in ipairs({"CVN-73","CVN-72","CVN-59","CVN-74"}) do
+    for _,name in ipairs({"CVN-73","CVN-72","CVN-59","CVN-74", "Khasab Tarawa"}) do
         if IsGroupActive(name) then
             local unit=UNIT:FindByName(name)
             if unit then
@@ -935,7 +957,7 @@ function getClosestFriendlyAirbaseInfo(client)
             local trueBrg  = playerCoord:HeadingTo(airbase:GetCoordinate(),nil)
             local magDecl  = playerCoord:GetMagneticDeclination()
             local magBrg   = (trueBrg - magDecl + 360) % 360
-            if not string.find(zoneName,"Carrier") and dist < closestNormalDistance then
+            if not isCarrierZoneName(zoneName) and dist < closestNormalDistance then
                 closestNormalZoneName = zoneName
                 closestNormalDistance = dist
                 closestNormalBearing  = magBrg
@@ -988,7 +1010,7 @@ function SetupATISMenu(client)
 
     local entries = {}
     for zoneName, details in pairs(atisZones) do
-        if not zoneName:find("Carrier") then
+        if not isCarrierZoneName(zoneName) then
             local airbase = GetAirbaseByNameCached(details.airbaseName)
             if airbase and airbase:GetCoalitionName() == 'Blue' then
                 local wpSuffix = (type(WaypointList) == "table" and WaypointList[zoneName]) or ""
@@ -1098,7 +1120,7 @@ function static:processPlayerSpawn(player, zoneNameOverride)
                         carrierWindMessage=getCarrierWind(carrierHull)
                         carrierName,tacanCode=hullPrettyAndTCN(carrierHull)
                     end
-                    if string.find(zoneName, "Carrier") and carrierHull then
+                    if isCarrierZoneName(zoneName) and carrierHull then
 
                     if assignedCallsign and assignedIFF then
                         greetingMessage = string.format("Welcome aboard %s, %s!\n\nYou have been assigned to %s, IFF %04d.\n\nStandby for weather report from Mother.", carrierName, rankDisplay, assignedCallsign, assignedIFF)
@@ -1182,7 +1204,7 @@ function static:processPlayerSpawn(player, zoneNameOverride)
                                         zoneAssignments[zoneName][fullCS] = playerName
                                         globalCallsignAssignments[playerName] = {callsign = fullCS, zoneName = zoneName,groupName=groupName}
                                         if followID[playerName] then followID[playerName]:Stop() followID[playerName]=nil end
-                                        if string.find(zoneName,"Carrier") and carrierHull then
+                                        if isCarrierZoneName(zoneName) and carrierHull then
                                             sendGreetingToPlayer(UnitName, string.format("Welcome aboard %s, %s!\n\nYou have been assigned to %s, IFF %04d.\n\nStandby for weather report from Mother.", carrierName, playerName, fullCS, iff))
                                             followID[playerName] = SCHEDULER:New(nil, sendDetailedMessageToPlayer, {playerUnitID, string.format("Welcome aboard %s, %s!\n\n%s, %s, %s\n\nTCN: %s, %s\n\nOnce 7 miles out, push Tactical on CH 3.", carrierName, fullCS, carrierWindMessage, temperatureMessage, altimeterMessage, tacanCode, brcMessage), playerGroupID, UnitName}, 60)
                                         else
@@ -1293,16 +1315,16 @@ function EnableEscortRequestMenu(group)
         return
     end
     local groupName = group:GetName()
-    if menuEscortRequest[groupName] then
-        menuEscortRequest[groupName]:Remove()
+    if escortRequestMenus[groupName] then
+        escortRequestMenus[groupName]:Remove()
     end
 end
 function RequestEscort(group)
     EscortClientGroup(group)
     local groupName = group:GetName()
-    if menuEscortRequest[groupName] then
-        menuEscortRequest[groupName]:Remove()
-        menuEscortRequest[groupName] = nil
+    if escortRequestMenus[groupName] then
+        escortRequestMenus[groupName]:Remove()
+        escortRequestMenus[groupName] = nil
     end
 end
 function RemoveRequestEscortMenu(group)
@@ -1753,7 +1775,7 @@ function static:OnEventTakeoff(EventData)
 
         MESSAGE:New("Escort is available, " .. EventData.IniPlayerName .. ".", 10, ""):ToUnit(playerUnit)
         AddEscortRequestMenu(playerGroup)
-        menuEscortRequest[PGName] = spawnedGroups[PGName].menuEscortRequest
+        menuEscortRequest[PGName] = escortRequestMenus[PGName]
 
     end
 end
@@ -1792,24 +1814,27 @@ function static:OnEventPlayerLeaveUnit(EventData)
 
     if EventData.id == EVENTS.PlayerLeaveUnit or EventData.id == EVENTS.PilotDead or EventData.id == EVENTS.Ejection then
         if EventData.IniUnit and EventData.IniPlayerName then
+            local playerName = EventData.IniPlayerName
             local playerUnit = EventData.IniUnit
             playerGroup = playerUnit:GetGroup()
             local groupName = playerGroup and playerGroup:GetName()
-
-            local playerName = EventData.IniPlayerName
             if (not groupName) and globalCallsignAssignments[playerName] then
                 groupName = globalCallsignAssignments[playerName].groupName
             end
 
+            local groupId = playerGroup and playerGroup:GetID() or (bc.groupByPlayer and bc.groupByPlayer[playerName])
+
             cleanupEscortForGroupName(groupName)
 
-            if followID and playerName and followID[playerName] then
+            if followID[playerName] then
                 followID[playerName]:Stop()
                 followID[playerName] = nil
             end
-            if activeCSMenus and groupName and activeCSMenus[groupName] then
-                activeCSMenus[groupName]:Remove()
-                activeCSMenus[groupName] = nil
+            if groupName then
+                if activeCSMenus[groupName] then
+                    activeCSMenus[groupName]:Remove()
+                    activeCSMenus[groupName] = nil
+                end
             end
 
             if globalCallsignAssignments[playerName] then
@@ -1818,6 +1843,27 @@ function static:OnEventPlayerLeaveUnit(EventData)
 
                 releaseSlot(playerName, zoneName)
                 globalCallsignAssignments[playerName] = nil
+            end
+            if groupId then
+                if bc.groupSupportMenus[groupId] then
+                    local supportState = bc.groupSupportMenus[groupId]
+                    for _, handle in ipairs(supportState.items or {}) do
+                        missionCommands.removeItemForGroup(groupId, handle)
+                    end
+                    if supportState.menu then
+                        missionCommands.removeItemForGroup(groupId, supportState.menu)
+                    end
+                    bc.groupSupportMenus[groupId] = nil
+                end
+                if bc.playerNames then
+                    bc.playerNames[groupId] = nil
+                end
+            end
+            if bc.groupByPlayer then
+                bc.groupByPlayer[playerName] = nil
+            end
+            if bc.groupNameByPlayer then
+                bc.groupNameByPlayer[playerName] = nil
             end
         else
             local clientSet = SET_CLIENT:New():FilterCategories("plane"):FilterCategories("helicopter"):FilterCoalitions("blue"):FilterAlive():FilterOnce()
@@ -1833,16 +1879,40 @@ function static:OnEventPlayerLeaveUnit(EventData)
                 if not alivePlayers[playerName] then
                     local zoneName=callsignInfo.zoneName
                     local gname=callsignInfo.groupName
+                    local groupId = bc.groupByPlayer and bc.groupByPlayer[playerName]
                     cleanupEscortForGroupName(gname)
                     releaseSlot(playerName,zoneName)
-                    if followID and followID[playerName] then followID[playerName]:Stop() followID[playerName]=nil end
-                    if activeCSMenus and gname and activeCSMenus[gname] then activeCSMenus[gname]:Remove() activeCSMenus[gname]=nil end
+                    if followID[playerName] then followID[playerName]:Stop() followID[playerName]=nil end
+                    if gname then
+                        if activeCSMenus[gname] then activeCSMenus[gname]:Remove() activeCSMenus[gname]=nil end
+                    end
+                    if groupId then
+                        if bc.groupSupportMenus[groupId] then
+                            local supportState = bc.groupSupportMenus[groupId]
+                            for _, handle in ipairs(supportState.items or {}) do
+                                missionCommands.removeItemForGroup(groupId, handle)
+                            end
+                            if supportState.menu then
+                                missionCommands.removeItemForGroup(groupId, supportState.menu)
+                            end
+                            bc.groupSupportMenus[groupId] = nil
+                        end
+                        if bc.playerNames then
+                            bc.playerNames[groupId] = nil
+                        end
+                    end
+                    if bc.groupByPlayer then
+                        bc.groupByPlayer[playerName] = nil
+                    end
+                    if bc.groupNameByPlayer then
+                        bc.groupNameByPlayer[playerName] = nil
+                    end
                     globalCallsignAssignments[playerName]=nil
                 end
             end
         end
     end
-    if activeCSMenus and playerGroup then
+    if playerGroup then
     activeCSMenus[playerGroup:GetName()] = nil
     end
 end

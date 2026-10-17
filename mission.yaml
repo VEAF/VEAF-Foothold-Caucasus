@@ -22,12 +22,11 @@ custom_scripts:
     - path: src/scripts/Moose.lua
     - path: src/scripts/Foothold_Localization.lua
     - path: "src/scripts/Foothold Config.lua"
-    - path: src/scripts/zoneCommander.lua
-    - path: src/scripts/MA_Setup_CA.lua
+    - path: src/scripts/zoneCommanderv2.lua
+    - path: src/scripts/EWRS.lua
+    - path: src/scripts/MA_Setup_CAv2.lua
     - path: src/scripts/WelcomeMessage.lua
     - path: src/scripts/Zeus.lua
-      delay_seconds: 3
-    - path: src/scripts/EWRS.lua
       delay_seconds: 3
     - path: "src/scripts/Foothold CTLD.lua"
       delay_seconds: 3
@@ -95,7 +94,6 @@ modules:
   ctld: false
   aien: false
   csar: false
-  hercules: false
   skynet: false
   tum: false
 
